@@ -1,0 +1,117 @@
+========================================================
+ ABACUS WORK PACKAGE TRACKER  -  SETUP ON macOS
+========================================================
+
+You only need to do STEP 1 to STEP 3 once, on a new Mac.
+After that, starting it is just STEP 4.
+
+
+STEP 1 - Install Python 3 (one time)
+------------------------------------
+Option A (simplest):
+  1. Go to:  https://www.python.org/downloads/
+  2. Click "Download Python", run the .pkg installer, click through.
+
+Option B (if you use Homebrew):
+  1. Open the Terminal app.
+  2. Run:  brew install python
+
+
+STEP 2 - Make sure Microsoft Excel for Mac is installed (one time)
+------------------------------------------------------------------
+Excel for Mac must be installed so the tracker can save your edits
+back into the spreadsheets. Viewing works without it; saving does not.
+
+
+STEP 3 - Start the tracker
+--------------------------
+The most reliable way (works every time, no setup needed).
+
+Read this bit carefully - it's the #1 thing people get wrong:
+
+   You must type the word  bash  followed by pressing the SPACE BAR ONCE,
+   and then WITHOUT pressing Return, drag the file in. It all goes on ONE
+   line. Do NOT press Return straight after typing "bash".
+
+Step by step:
+
+  1. Open Terminal:  press Cmd + Space, type  Terminal , press Return.
+
+  2. Type these four letters:            b a s h
+     Then tap the SPACE BAR once.
+     Your line now reads:                bash
+                                              ^ (cursor sits one space after)
+     ***  DO NOT PRESS RETURN HERE.  ***
+
+  3. Drag the file  RUN - MAC.command  from Finder onto the Terminal window
+     and let go. Terminal fills in its location, so the line becomes:
+
+        bash /Users/you/.../Abacus HTML/RUN - MAC.command
+        ^^^^ ^                          ^
+        bash  space                     the dragged file - all one line
+
+  4. NOW press Return.
+
+WRONG (this causes "Permission denied"):
+     - typing  bash  and pressing Return on its own, THEN running the file.
+     - dragging the file in without  bash  and a space in front of it.
+RIGHT:
+     - bash  + space + dragged file, all on one line, THEN Return.
+
+That's it - the app starts and your browser opens automatically, usually at:
+      http://127.0.0.1:5010
+(If that port is busy it picks another one automatically - the exact address
+is printed in the Terminal window as "running at ...". If the browser doesn't
+open, copy that address into it yourself.)
+
+--- Optional: make it double-clickable instead ---
+If you'd rather just double-click it in future:
+  - Right-click (or Control-click)  RUN - MAC.command  ->  Open,
+    then click  Open  on the warning. (Do this once.)
+  - If double-click still does nothing, in Terminal type  chmod +x
+    then a SPACE, drag the file in, and press Return - once.
+
+The FIRST time you save an edit, macOS asks:
+   "Terminal wants to control Microsoft Excel"
+Click  OK / Allow  - otherwise edits can't be written back.
+
+The FIRST run also pauses for a minute to download a couple of small
+components (needs internet). After that it starts in a few seconds.
+
+
+TO STOP IT
+----------
+Close the Terminal window, or click in it and press Control + C.
+
+
+TROUBLESHOOTING
+---------------
+* "Python 3 is not installed" message:
+    - Do STEP 1, then try again.
+
+* "Permission denied" (e.g. "...RUN - MAC.command: Permission denied"):
+    - This means the file was run BY ITSELF, without "bash " in front.
+    - Fix: type   bash   then a SPACE, drag the file in, press Return - so
+      the line reads   bash /Users/.../RUN - MAC.command   all together.
+    - (Running "bash <file>" doesn't need the file to be executable; running
+      it on its own does, and Dropbox doesn't keep that permission.)
+
+* "RUN - MAC.command" won't open / "cannot be opened":
+    - Use the reliable method in STEP 3 (Terminal: type  bash  space,
+      drag the file in, press Return). That always works.
+
+* Browser shows "can't connect":
+    - Make sure the Terminal window is still open, then retry the exact
+      address it prints ("running at http://127.0.0.1:....") after a few seconds.
+
+* Edits aren't saving (badge shows a warning):
+    - Make sure you clicked "OK" on the "control Microsoft Excel" prompt.
+    - Close the two Excel files if you have them open, so the app can
+      write to them (it retries automatically):
+        Process_Abacus_Vertical.xlsm
+        Abacus_prompts into outcomes_20 01 26.xlsx
+    - NOTE: the Mac save-back has not yet been tested on a real Mac.
+      If it keeps failing, note the message shown in the Terminal /
+      the badge and send it over so it can be fixed. Your edits are
+      NOT lost in the meantime - they stay queued and the dashboard
+      still works for viewing and editing.

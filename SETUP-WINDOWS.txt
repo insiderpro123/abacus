@@ -1,0 +1,67 @@
+========================================================
+ ABACUS WORK PACKAGE TRACKER  -  SETUP ON WINDOWS
+========================================================
+
+You only need to do STEP 1 and STEP 2 once, on a new computer.
+After that, starting it is just STEP 3.
+
+
+STEP 1 - Install Python (one time)
+----------------------------------
+1. Go to:  https://www.python.org/downloads/
+2. Click the big yellow "Download Python" button.
+3. Run the downloaded installer.
+4. IMPORTANT: on the very first screen, TICK the box
+      [x] Add python.exe to PATH
+   (bottom of the window), THEN click "Install Now".
+5. When it finishes, click Close.
+
+
+STEP 2 - Make sure Microsoft Excel is installed (one time)
+----------------------------------------------------------
+Excel (the normal desktop app) must be installed so the tracker
+can save your edits back into the spreadsheets.
+Viewing works without it, but saving edits does not.
+
+
+STEP 3 - Start the tracker (every time you want to use it)
+----------------------------------------------------------
+1. Double-click  RUN - WINDOWS.bat  (in this folder).
+2. A black window opens - leave it open. This IS the app running.
+3. Your web browser opens automatically, usually at:
+      http://127.0.0.1:5010
+   (If that port is busy it picks another automatically - the exact address
+   is shown in the black window as "running at ...". If the browser doesn't
+   open, copy that address into it.)
+
+The FIRST time you run it, it will pause for a minute while it
+downloads a couple of small components (needs internet). After
+that it starts in a few seconds.
+
+
+TO STOP IT
+----------
+Close the black window, or click in it and press Ctrl + C.
+
+
+TROUBLESHOOTING
+---------------
+* "Python is not installed" message:
+    - You skipped STEP 1, or didn't tick "Add Python to PATH".
+      Re-run the Python installer, choose "Modify", and enable PATH,
+      or reinstall following STEP 1 exactly.
+
+* Browser shows "can't connect":
+    - Make sure the black window is still open.
+    - Try the exact address shown in the window ("running at http://127.0.0.1:....")
+      again after a few seconds.
+
+* Edits aren't saving (badge shows a warning):
+    - Close the two Excel files if you have them open, so the app
+      can write to them. It retries automatically.
+    - The files are:
+        Process_Abacus_Vertical.xlsm
+        Abacus_prompts into outcomes_20 01 26.xlsx
+
+* Nothing else needs installing - Flask/openpyxl are fetched
+  automatically on first run.

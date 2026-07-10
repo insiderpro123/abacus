@@ -1,0 +1,28 @@
+# Render Blueprint - creates the web service + a managed Postgres database.
+# In Render: New -> Blueprint -> pick this repo. Then set APP_PASSWORD in the
+# web service's Environment tab. (SECRET_KEY is generated; DATABASE_URL is wired
+# automatically from the database below.)
+databases:
+  - name: abacus-db
+    plan: free
+    region: frankfurt
+
+services:
+  - type: web
+    name: abacus-tracker
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: abacus-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: APP_PASSWORD
+        sync: false          # set this yourself in the Render dashboard
+      - key: PYTHON_VERSION
+        value: "3.12.6"

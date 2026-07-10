@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Local database
+abacus.db
+
+# Client data — NEVER commit to GitHub. These stay on your machine and are only
+# used locally to seed the database (see README "Seed the database").
+*.xlsm
+*.xlsx
+project_icons.json
+pending_changes.json
+pending_guidance.json
+
+# Editor / tooling
+.claude/
+.vscode/
+.DS_Store

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Abacus · Work Package Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <main>
+    <header class="pagehead">
+      <img class="ip-logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
+    </header>
+
+    <section class="controls">
+      <div class="filters" id="filters">
+        <button class="chip active" data-filter="Active">Active</button>
+        <button class="chip" data-filter="Inactive">Inactive</button>
+      </div>
+      <div class="controls-right">
+        <div class="legend">
+          <span><i class="sw done"></i>Complete</span>
+          <span><i class="sw progress"></i>In progress</span>
+          <span><i class="sw todo"></i>Outstanding</span>
+          <span><i class="sw na"></i>Not started</span>
+          <span><i class="sw nr"></i>Not required</span>
+        </div>
+        <span id="sync" class="sync"></span>
+      </div>
+    </section>
+
+    <div id="status" class="status"></div>
+
+    <!-- Summary matrix (expanded detail panels render inline below each row) -->
+    <section class="card">
+      <div class="matrix-wrap">
+        <table class="matrix" id="matrix">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
