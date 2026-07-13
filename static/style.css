@@ -489,3 +489,74 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 /* unticked = Not required */
 .nr-item.nr-off { color: var(--nr); text-decoration: line-through; text-decoration-color: var(--nr); }
 .nr-item.nr-off .scode { color: var(--nr); }
+
+/* --------------------------------------------------------------------- */
+/* Mobile / small screens                                                */
+/* The matrix stays a spreadsheet-style horizontal scroll (project name  */
+/* column pinned left); everything else reflows to fit a narrow screen.  */
+/* --------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  body { font-size: 13px; -webkit-text-size-adjust: 100%; }
+  main { padding: 10px 12px 48px; }
+
+  .pagehead { padding: 2px 0 6px; margin-bottom: 6px; }
+  .ip-logo { height: 26px; }
+
+  /* controls stack and align left */
+  .controls { justify-content: flex-start; gap: 8px 12px; margin-bottom: 10px; }
+  .controls-right { width: 100%; justify-content: space-between; gap: 8px 12px; }
+  .legend { gap: 6px 12px; font-size: 11px; }
+
+  /* matrix scrolls sideways; keep a usable minimum width */
+  .matrix-wrap { -webkit-overflow-scrolling: touch; }
+  table.matrix { min-width: 620px; }
+  .matrix thead th.wp-col, .matrix tbody td.wp-col { width: 128px; }
+  .matrix thead th { font-size: 10px; }
+  .proc-th .pnum { width: 22px; height: 22px; line-height: 22px; font-size: 12px; margin-bottom: 4px; }
+  .proc-th .ptitle { font-size: 10px; }
+  .wp-cell { gap: 7px; padding: 7px 4px 7px 6px; }
+  .wp-icon { width: 22px; height: 22px; min-width: 22px; font-size: 10px; }
+  .wp-icon.emoji { font-size: 14px; }
+  .wp-title { font-size: 11.5px; }
+  .wp-client { font-size: 8.5px; }
+  .cell-pill { height: 30px; font-size: 11px; }
+  .section-head { font-size: 14px; }
+
+  /* expanded detail panel: pin to the viewport and fit its width so it
+     reads vertically instead of forcing a wide sideways scroll */
+  .panel { left: 8px; width: calc(100vw - 32px); max-width: calc(100vw - 32px); }
+  .panel-row > td { padding: 8px 6px 12px; }
+  .panel-head { padding: 10px 12px; gap: 8px; }
+  .panel-head h2 { font-size: 14px; }
+  .panel-head-actions { gap: 8px; }
+  .gantt { padding: 12px 10px; }
+
+  /* timeline overview: smaller cells, still scrollable */
+  .timeline { grid-template-columns: repeat(12, minmax(48px, 1fr)); min-width: 560px; gap: 4px; }
+  .tl-phase { padding: 6px; min-height: 58px; }
+
+  /* phase rows: slimmer label so the bar keeps room */
+  .grow-label { width: 148px; min-width: 118px; padding: 8px 4px 8px 6px; gap: 6px; }
+  .grow-label .gnum { width: 22px; height: 22px; min-width: 22px; }
+  .grow-label .gtitle { font-size: 11px; }
+  .gtrack { min-width: 84px; padding: 8px 6px 8px 0; }
+  .gpct { width: 38px; min-width: 38px; font-size: 12px; }
+  .phase-setall { opacity: 1; }   /* no hover on touch: always show */
+  .subs { padding-left: 14px; }
+  .sub-item .edit-hint { display: none; }
+
+  /* modals go near-fullscreen */
+  .modal-overlay { padding: 8px; }
+  .modal { width: 100%; max-height: 94vh; }
+  .modal-head { padding: 12px 14px; }
+  .modal-body { padding: 12px 14px; }
+  .modal-foot { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+  .status-picker { gap: 6px; }
+  .status-opt { padding: 7px 10px; font-size: 12px; }
+
+  /* reference/guidance rows stack label above value */
+  .ref-row { flex-direction: column; }
+  .ref-label { width: 100%; min-width: 0; padding: 8px 12px; }
+  .ref-input, .ref-value { border-left: none; }
+  .ref-input { border-top: 1px solid var(--line); }
+}
