@@ -113,11 +113,12 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 .matrix thead th.proc-th { vertical-align: top; }
 
 /* section header rows */
-.section-row td { padding: 16px 2px 2px; background: var(--bg); }
+.section-row td { padding: 2px 2px 2px; background: var(--bg); }
 .section-head {
   font-size: 15px; color: #4a4a4a; font-weight: 400;
   border-bottom: 1px solid #d5d5d0; padding-bottom: 7px;
   display: flex; align-items: center; gap: 10px;
+  margin-top: -7px;
 }
 .section-count {
   font-size: 11px; font-weight: 700; color: #fff; background: var(--muted);
@@ -150,9 +151,9 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 .proc-th .pnum {
   display: inline-block; width: 24px; height: 24px; line-height: 24px;
   border-radius: 4px; background: var(--accent-bright); color: var(--accent-ink);
-  font-weight: 800; font-size: 13px; margin-bottom: 7px;
+  font-weight: 800; font-size: 13px; margin-bottom: 6px;
 }
-.proc-th .ptitle { display: block; font-size: 13px; line-height: 1.32; margin: 0 auto; color: #222a31; font-weight: 600; word-break: break-word; hyphens: auto; }
+.proc-th .ptitle { display: block; font-size: 12px; line-height: 1.25; margin: 0 auto; color: #222a31; font-weight: 400; word-break: break-word; hyphens: auto; }
 
 .wp-row { cursor: pointer; transition: background .12s; }
 .wp-row:hover td { background: #f4f6f9; }
