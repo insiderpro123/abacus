@@ -192,13 +192,15 @@ def get_data():
             wpfin = fin.get(wp.id, set())
             phases, group_pcts = [], []
             for p in processes:
-                subs_out, answered, nr, score_sum = [], 0, 0, 0.0
+                subs_out, answered, nr, score_sum, todo = [], 0, 0, 0.0, 0
                 for sub in subs_by_process.get(p.num, []):
                     raw = wpvals.get(sub["code"], "")
                     st = status_of(raw)
                     if st in SCORE:
                         answered += 1
                         score_sum += SCORE[st]
+                        if st == "todo":
+                            todo += 1
                     elif st == "nr":
                         nr += 1
                     subs_out.append({"code": sub["code"], "label": sub["label"],
@@ -214,6 +216,9 @@ def get_data():
                     pct = round(score_sum / effective * 100)
                 if pct >= 100:
                     pstatus = "done"
+                elif todo > 0:
+                    # any outstanding sub-point flags the whole phase red
+                    pstatus = "todo"
                 elif answered == 0 and nr == 0 and not is_fin:
                     pstatus = "na"
                 else:

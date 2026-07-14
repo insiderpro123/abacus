@@ -157,7 +157,9 @@ function renderWpRow(w) {
     const pill = el("div", "cell-pill " + ph.status);
     pill.title = `${ph.num}. ${ph.title} - ${ph.pct}%`;
     if (ph.status !== "na") {
-      pill.innerHTML = `<div class="fill ${ph.status}" style="width:${ph.pct}%"></div><span>${ph.pct}%</span>`;
+      // outstanding phases fill the whole box red regardless of %
+      const fillW = ph.status === "todo" ? 100 : ph.pct;
+      pill.innerHTML = `<div class="fill ${ph.status}" style="width:${fillW}%"></div><span>${ph.pct}%</span>`;
     } else {
       pill.innerHTML = `<span>–</span>`;
     }
@@ -261,7 +263,7 @@ function buildPanel(w) {
   w.phases.forEach((ph) => {
     const c = el("div", "tl-phase");
     c.innerHTML = `
-      <div class="tl-fill ${ph.status}" style="height:${ph.pct}%"></div>
+      <div class="tl-fill ${ph.status}" style="height:${ph.status === "todo" ? 100 : ph.pct}%"></div>
       <div class="tl-dot ${ph.status}"></div>
       <div class="tl-num">${ph.num}</div>
       <div class="tl-pct">${ph.status === "na" ? "–" : ph.pct + "%"}</div>

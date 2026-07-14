@@ -185,6 +185,8 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 .cell-pill .fill {
   position: absolute; left: 0; top: 0; bottom: 0; opacity: .32;
 }
+/* outstanding cells read as a clear red warning, not a pale tint */
+.cell-pill.todo .fill { opacity: .5; }
 .cell-pill span { position: relative; z-index: 2; }
 .cell-pill.done span, .cell-pill.progress span, .cell-pill.todo span { color: var(--text); }
 .fill.done { background: var(--done); }
