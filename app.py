@@ -14,8 +14,7 @@ import hmac
 import os
 import re
 import secrets
-import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from flask import (
     Flask, jsonify, render_template, request, redirect, url_for, session,
@@ -32,25 +31,6 @@ app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # Shared team password (set APP_PASSWORD in production; default is for local dev only)
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "abacus")
-
-# --------------------------------------------------------------------------- #
-# Single-seat lock + idle timeout
-# Only one person may be signed in at a time. The current holder is released
-# after IDLE_MINUTES with no requests, freeing the seat for someone else.
-# NOTE: this state lives in memory, so the app must run a single worker
-# (gunicorn -w 1). With >1 worker each would track its own seat.
-# --------------------------------------------------------------------------- #
-IDLE_MINUTES = int(os.environ.get("IDLE_MINUTES", 5))
-IDLE_LIMIT = timedelta(minutes=IDLE_MINUTES)
-_seat_lock = threading.Lock()
-_seat = {"token": None, "last": None}  # token = active session id, last = datetime of last activity
-
-
-def _seat_expire_if_idle(now):
-    """Release the seat if the holder has been idle past the limit. Caller holds _seat_lock."""
-    if _seat["token"] is not None and _seat["last"] is not None and now - _seat["last"] > IDLE_LIMIT:
-        _seat.update(token=None, last=None)
-
 
 init_db()  # create tables if missing (safe to call every start)
 
@@ -140,44 +120,23 @@ def _dup_exists(s, client, name, exclude_id=None):
 @app.before_request
 def _require_login():
     p = request.path
-    if p == "/login" or p == "/logout" or p.startswith("/static/"):
+    if p == "/login" or p.startswith("/static/"):
         return
-    if not session.get("authed"):
-        if p.startswith("/api/"):
-            return jsonify({"error": "Not authenticated"}), 401
-        return redirect(url_for("login"))
-    # Authed: enforce the single seat and refresh this holder's activity.
-    now = datetime.utcnow()
-    with _seat_lock:
-        _seat_expire_if_idle(now)
-        if _seat["token"] is None or session.get("seat") != _seat["token"]:
-            # Seat was taken over by someone else, or expired from inactivity.
-            session.clear()
-            if p.startswith("/api/"):
-                return jsonify({"error": "session_expired"}), 401
-            return redirect(url_for("login"))
-        _seat["last"] = now
+    if session.get("authed"):
+        return
+    if p.startswith("/api/"):
+        return jsonify({"error": "Not authenticated"}), 401
+    return redirect(url_for("login"))
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if not hmac.compare_digest(request.form.get("password", ""), APP_PASSWORD):
-            return render_template("login.html", error="Incorrect password"), 401
-        now = datetime.utcnow()
-        with _seat_lock:
-            _seat_expire_if_idle(now)
-            if _seat["token"] is not None:
-                return render_template(
-                    "login.html",
-                    error=f"Someone else is signed in right now. Try again after {IDLE_MINUTES} minutes of their inactivity.",
-                ), 409
-            token = secrets.token_hex(16)
-            _seat.update(token=token, last=now)
-        session["authed"] = True
-        session["seat"] = token
-        session.permanent = True
-        return redirect(url_for("index"))
+        if hmac.compare_digest(request.form.get("password", ""), APP_PASSWORD):
+            session["authed"] = True
+            session.permanent = True
+            return redirect(url_for("index"))
+        return render_template("login.html", error="Incorrect password"), 401
     if session.get("authed"):
         return redirect(url_for("index"))
     return render_template("login.html", error=None)
@@ -185,10 +144,6 @@ def login():
 
 @app.route("/logout")
 def logout():
-    tok = session.get("seat")
-    with _seat_lock:
-        if tok is not None and _seat["token"] == tok:
-            _seat.update(token=None, last=None)
     session.clear()
     return redirect(url_for("login"))
 

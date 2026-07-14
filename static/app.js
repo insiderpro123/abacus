@@ -4,37 +4,6 @@ const openWPs = new Set();
 const openPhases = new Set(); // key: wpId + ":" + phaseNum
 let syncPoll = null;
 
-/* --------------------------------------------------------------------- */
-/* Session guard: single seat + 5-minute idle cutoff.                     */
-/* If the server drops our session (idle too long, or someone else took   */
-/* the seat), any API call returns 401 -> send the user back to login.    */
-/* A client-side idle timer also returns to login after 5 minutes of no   */
-/* interaction, so the screen reflects being cut off without a click.     */
-/* --------------------------------------------------------------------- */
-const IDLE_MS = 5 * 60 * 1000;
-(function installSessionGuard() {
-  const nativeFetch = window.fetch.bind(window);
-  let bouncing = false;
-  window.fetch = async (...args) => {
-    const res = await nativeFetch(...args);
-    if (res.status === 401 && !bouncing) {
-      bouncing = true;
-      window.location.href = "/login";
-    }
-    return res;
-  };
-
-  let idleTimer = null;
-  const resetIdle = () => {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { window.location.href = "/logout"; }, IDLE_MS);
-  };
-  ["mousemove", "mousedown", "keydown", "scroll", "touchstart"].forEach((evt) =>
-    window.addEventListener(evt, resetIdle, { passive: true })
-  );
-  resetIdle();
-})();
-
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);

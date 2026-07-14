@@ -14,7 +14,7 @@ services:
     region: frankfurt
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -w 1 app:app
+    startCommand: gunicorn app:app
     envVars:
       - key: DATABASE_URL
         fromDatabase:
