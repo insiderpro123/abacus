@@ -178,7 +178,7 @@ function renderWpRow(w) {
       <span class="wp-icon${w.icon ? " emoji" : ""}" style="background:${color}">${w.icon ? esc(w.icon) : esc(initials(w.client))}</span>
       <span class="wp-text">
         <span class="wp-client">${esc(w.client)}</span>
-        <span class="wp-title">${esc(w.name)}${w.year ? `<span class="wp-year">${esc(w.year)}</span>` : ""}</span>
+        <span class="wp-title">${esc(w.name)}</span>
       </span>
     </div>`;
   tr.appendChild(nameTd);
@@ -248,7 +248,7 @@ function buildPanel(w) {
   const toggleLabel = isActive ? "Make inactive" : "Make active";
   const toggleTo = isActive ? "Inactive" : "Active";
   head.innerHTML = `<div class="panel-head-left">
-        <h2>${esc(w.client)} - ${esc(w.name)}${w.year ? ` <span class="panel-year">${esc(w.year)}</span>` : ""}</h2>
+        <h2>${esc(w.client)} - ${esc(w.name)}</h2>
         <span class="badge ${esc(w.status)}">${esc(w.status)}</span>
         <span class="panel-overall" title="Overall progress">${w.overall}% complete</span>
         ${locked ? '<span class="lock-note">🔒 Locked - make active to edit</span>' : ""}
@@ -530,23 +530,14 @@ function openProjectForm(mode, wp) {
       <span class="close" title="Close">✕</span>
     </div>
     <div class="modal-body">
-      <div class="field-2col">
-        <div style="flex:1;min-width:0">
-          <div class="field-label">Client</div>
-          <input class="text-input" id="ap-client" placeholder="e.g. Bridgepoint" autocomplete="off"
-            value="${isEdit ? esc(wp.client) : ""}" />
-        </div>
-        <div style="width:110px">
-          <div class="field-label">Year</div>
-          <input class="text-input" id="ap-year" placeholder="e.g. 2026" autocomplete="off" maxlength="9"
-            value="${isEdit ? esc(wp.year || "") : ""}" />
-        </div>
-      </div>
-      <div class="field-label">Project name <span class="field-hint">short title, max 60 characters</span></div>
-      <input class="text-input" id="ap-name" placeholder="e.g. Cost Base Review" autocomplete="off" maxlength="60"
+      <div class="field-label">Client</div>
+      <input class="text-input" id="ap-client" placeholder="e.g. Bridgepoint" autocomplete="off"
+        value="${isEdit ? esc(wp.client) : ""}" />
+      <div class="field-label">Project name <span class="field-hint">short title, max 40 characters</span></div>
+      <input class="text-input" id="ap-name" placeholder="e.g. Cost Base Review" autocomplete="off" maxlength="40"
         value="${isEdit ? esc(wp.name) : ""}" />
       <div class="field-label">Description
-        <span class="field-hint">optional · max 35 words (<span id="ap-desc-count">0</span>/35)</span>
+        <span class="field-hint">optional · max 60 words (<span id="ap-desc-count">0</span>/60)</span>
       </div>
       <textarea class="text-input" id="ap-desc" rows="2"
         placeholder="A bit more detail about this piece of work…">${isEdit ? esc(wp.description || "") : ""}</textarea>
@@ -588,7 +579,7 @@ function openProjectForm(mode, wp) {
   const syncDesc = () => {
     const n = wordCount(descEl.value);
     descCount.textContent = n;
-    descCount.parentElement.classList.toggle("over", n > 35);
+    descCount.parentElement.classList.toggle("over", n > 60);
   };
   descEl.addEventListener("input", syncDesc);
   syncDesc();
@@ -613,15 +604,13 @@ function openProjectForm(mode, wp) {
   modal.querySelector("#ap-save").addEventListener("click", async () => {
     const client = modal.querySelector("#ap-client").value.trim();
     const name = modal.querySelector("#ap-name").value.trim();
-    const year = modal.querySelector("#ap-year").value.trim();
     const description = descEl.value.trim();
     const icon = emojiInput.value.trim();
     // validation
     if (!client || !name) { alert("Please enter both a client and a project name."); return; }
-    if (!year) { alert("Please enter the year this project relates to (e.g. 2026)."); return; }
     if (!icon) { alert("Please choose an emoji icon."); return; }
     if (/^[\x00-\x7F]+$/.test(icon)) { alert("The icon must be an emoji (a picture), not text."); return; }
-    if (wordCount(description) > 35) { alert("The description is too long — please keep it to 35 words or fewer."); return; }
+    if (wordCount(description) > 60) { alert("The description is too long — please keep it to 60 words or fewer."); return; }
     // unticked = Not required
     const nr_codes = [...modal.querySelectorAll('input[type="checkbox"]:not(:checked)')].map((x) => x.dataset.code);
     const btn = modal.querySelector("#ap-save");
@@ -630,8 +619,8 @@ function openProjectForm(mode, wp) {
     try {
       const url = isEdit ? "/api/edit_project" : "/api/add_project";
       const payload = isEdit
-        ? { wp_id: wp.wp_id, client, name, year, description, icon, nr_codes }
-        : { client, name, year, description, icon, nr_codes };
+        ? { wp_id: wp.wp_id, client, name, description, icon, nr_codes }
+        : { client, name, description, icon, nr_codes };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

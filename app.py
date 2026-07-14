@@ -94,8 +94,8 @@ def _mark_saved():
 
 
 # Project field rules
-MAX_NAME_LEN = 60          # short project title
-MAX_DESC_WORDS = 35        # detailed description word cap
+MAX_NAME_LEN = 40          # short project title
+MAX_DESC_WORDS = 60        # detailed description word cap
 
 
 def _valid_icon(icon):
@@ -109,12 +109,10 @@ def _word_count(text):
     return len(_clean(text).split())
 
 
-def _project_errors(client, name, year, icon, description):
+def _project_errors(client, name, icon, description):
     """Return an error string for the add/edit project form, or '' if valid."""
     if not client or not name:
         return "Client and project name are required."
-    if not year:
-        return "Please enter the year this project relates to."
     if len(name) > MAX_NAME_LEN:
         return f"Project name is too long (max {MAX_NAME_LEN} characters)."
     if not _valid_icon(icon):
@@ -124,15 +122,14 @@ def _project_errors(client, name, year, icon, description):
     return ""
 
 
-def _dup_exists(s, client, name, year, exclude_id=None):
-    """True if another work package already has this client + name + year (case-insensitive)."""
-    c, n, y = client.strip().lower(), name.strip().lower(), (year or "").strip().lower()
+def _dup_exists(s, client, name, exclude_id=None):
+    """True if another work package already has this client + name (case-insensitive)."""
+    c, n = client.strip().lower(), name.strip().lower()
     for wp in s.query(WorkPackage).all():
         if exclude_id is not None and wp.id == exclude_id:
             continue
         if ((wp.client or "").strip().lower() == c
-                and (wp.name or "").strip().lower() == n
-                and (wp.year or "").strip().lower() == y):
+                and (wp.name or "").strip().lower() == n):
             return True
     return False
 
@@ -273,7 +270,7 @@ def get_data():
             overall = round(sum(group_pcts) / len(group_pcts)) if group_pcts else 0
             work_packages.append({
                 "wp_id": str(wp.id), "client": wp.client, "name": wp.name,
-                "description": wp.description or "", "year": wp.year or "",
+                "description": wp.description or "",
                 "status": wp.status or "Unknown", "points": wp.points or "",
                 "icon": wp.icon or "", "overall": overall, "phases": phases,
             })
@@ -377,20 +374,19 @@ def api_add_project():
     body = request.get_json(force=True, silent=True) or {}
     client = _clean(body.get("client"))
     name = _clean(body.get("name"))
-    year = _clean(body.get("year"))
     icon = _clean(body.get("icon"))
     description = _clean(body.get("description"))
     nr_codes = [c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)]
-    err = _project_errors(client, name, year, icon, description)
+    err = _project_errors(client, name, icon, description)
     if err:
         return jsonify({"error": err}), 400
     with SessionLocal.begin() as s:
-        if _dup_exists(s, client, name, year):
-            return jsonify({"error": f"A project '{client} - {name}' for {year} already exists."}), 409
+        if _dup_exists(s, client, name):
+            return jsonify({"error": f"A project '{client} - {name}' already exists."}), 409
         max_id = s.query(WorkPackage.id).order_by(WorkPackage.id.desc()).first()
         new_id = (max_id[0] if max_id else 0) + 1
         s.add(WorkPackage(id=new_id, client=client, name=name, description=description,
-                          year=year, status="Active", icon=icon))
+                          status="Active", icon=icon))
         for code in nr_codes:
             s.add(WpStatus(wp_id=new_id, code=code, value="N/R"))
     _mark_saved()
@@ -403,13 +399,12 @@ def api_edit_project():
     wp_id = _clean(body.get("wp_id"))
     client = _clean(body.get("client"))
     name = _clean(body.get("name"))
-    year = _clean(body.get("year"))
     icon = _clean(body.get("icon"))
     description = _clean(body.get("description"))
     desired = {c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)}
     if not wp_id:
         return jsonify({"error": "wp_id is required"}), 400
-    err = _project_errors(client, name, year, icon, description)
+    err = _project_errors(client, name, icon, description)
     if err:
         return jsonify({"error": err}), 400
     with SessionLocal.begin() as s:
@@ -418,10 +413,10 @@ def api_edit_project():
         wp = s.get(WorkPackage, int(wp_id)) if wp_id.isdigit() else None
         if not wp:
             return jsonify({"error": "work package not found"}), 404
-        if _dup_exists(s, client, name, year, exclude_id=wp.id):
-            return jsonify({"error": f"A project '{client} - {name}' for {year} already exists."}), 409
+        if _dup_exists(s, client, name, exclude_id=wp.id):
+            return jsonify({"error": f"A project '{client} - {name}' already exists."}), 409
         wp.client, wp.name, wp.icon = client, name, icon
-        wp.description, wp.year = description, year
+        wp.description = description
         current = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
         all_codes = [row[0] for row in s.query(Subprocess.code).all()]
         for code in all_codes:
@@ -451,13 +446,13 @@ def api_duplicate_project():
         base = f"{src.name} (copy)"
         new_name = base
         n = 2
-        while _dup_exists(s, src.client, new_name, src.year or ""):
+        while _dup_exists(s, src.client, new_name):
             new_name = f"{src.name} (copy {n})"
             n += 1
         max_id = s.query(WorkPackage.id).order_by(WorkPackage.id.desc()).first()
         new_id = (max_id[0] if max_id else 0) + 1
         s.add(WorkPackage(id=new_id, client=src.client, name=new_name,
-                          description=src.description or "", year=src.year or "",
+                          description=src.description or "",
                           status="Active", icon=src.icon or ""))
         # copy only the Not-required configuration (fresh progress)
         for st in s.query(WpStatus).filter_by(wp_id=src.id, value="N/R").all():
