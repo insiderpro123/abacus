@@ -14,7 +14,8 @@ import hmac
 import os
 import re
 import secrets
-from datetime import datetime
+import threading
+from datetime import datetime, timedelta
 
 from flask import (
     Flask, jsonify, render_template, request, redirect, url_for, session,
@@ -31,6 +32,25 @@ app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # Shared team password (set APP_PASSWORD in production; default is for local dev only)
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "abacus")
+
+# --------------------------------------------------------------------------- #
+# Single-seat lock + idle timeout
+# Only one person may be signed in at a time. The current holder is released
+# after IDLE_MINUTES with no requests, freeing the seat for someone else.
+# NOTE: this state lives in memory, so the app must run a single worker
+# (gunicorn -w 1). With >1 worker each would track its own seat.
+# --------------------------------------------------------------------------- #
+IDLE_MINUTES = int(os.environ.get("IDLE_MINUTES", 5))
+IDLE_LIMIT = timedelta(minutes=IDLE_MINUTES)
+_seat_lock = threading.Lock()
+_seat = {"token": None, "last": None}  # token = active session id, last = datetime of last activity
+
+
+def _seat_expire_if_idle(now):
+    """Release the seat if the holder has been idle past the limit. Caller holds _seat_lock."""
+    if _seat["token"] is not None and _seat["last"] is not None and now - _seat["last"] > IDLE_LIMIT:
+        _seat.update(token=None, last=None)
+
 
 init_db()  # create tables if missing (safe to call every start)
 
@@ -73,29 +93,94 @@ def _mark_saved():
     _last_saved.update(when=datetime.now().strftime("%H:%M:%S"), ok=True, message="Saved")
 
 
+# Project field rules
+MAX_NAME_LEN = 60          # short project title
+MAX_DESC_WORDS = 35        # detailed description word cap
+
+
+def _valid_icon(icon):
+    """Require a real emoji: non-empty, short, and containing a non-ASCII char
+    (so plain text like 'abc' is rejected)."""
+    icon = _clean(icon)
+    return bool(icon) and len(icon) <= 8 and re.search(r"[^\x00-\x7F]", icon) is not None
+
+
+def _word_count(text):
+    return len(_clean(text).split())
+
+
+def _project_errors(client, name, year, icon, description):
+    """Return an error string for the add/edit project form, or '' if valid."""
+    if not client or not name:
+        return "Client and project name are required."
+    if not year:
+        return "Please enter the year this project relates to."
+    if len(name) > MAX_NAME_LEN:
+        return f"Project name is too long (max {MAX_NAME_LEN} characters)."
+    if not _valid_icon(icon):
+        return "Please choose an emoji icon (a picture, not text)."
+    if _word_count(description) > MAX_DESC_WORDS:
+        return f"Description is too long (max {MAX_DESC_WORDS} words)."
+    return ""
+
+
+def _dup_exists(s, client, name, year, exclude_id=None):
+    """True if another work package already has this client + name + year (case-insensitive)."""
+    c, n, y = client.strip().lower(), name.strip().lower(), (year or "").strip().lower()
+    for wp in s.query(WorkPackage).all():
+        if exclude_id is not None and wp.id == exclude_id:
+            continue
+        if ((wp.client or "").strip().lower() == c
+                and (wp.name or "").strip().lower() == n
+                and (wp.year or "").strip().lower() == y):
+            return True
+    return False
+
+
 # --------------------------------------------------------------------------- #
 # Authentication (single shared password)
 # --------------------------------------------------------------------------- #
 @app.before_request
 def _require_login():
     p = request.path
-    if p == "/login" or p.startswith("/static/"):
+    if p == "/login" or p == "/logout" or p.startswith("/static/"):
         return
-    if session.get("authed"):
-        return
-    if p.startswith("/api/"):
-        return jsonify({"error": "Not authenticated"}), 401
-    return redirect(url_for("login"))
+    if not session.get("authed"):
+        if p.startswith("/api/"):
+            return jsonify({"error": "Not authenticated"}), 401
+        return redirect(url_for("login"))
+    # Authed: enforce the single seat and refresh this holder's activity.
+    now = datetime.utcnow()
+    with _seat_lock:
+        _seat_expire_if_idle(now)
+        if _seat["token"] is None or session.get("seat") != _seat["token"]:
+            # Seat was taken over by someone else, or expired from inactivity.
+            session.clear()
+            if p.startswith("/api/"):
+                return jsonify({"error": "session_expired"}), 401
+            return redirect(url_for("login"))
+        _seat["last"] = now
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if hmac.compare_digest(request.form.get("password", ""), APP_PASSWORD):
-            session["authed"] = True
-            session.permanent = True
-            return redirect(url_for("index"))
-        return render_template("login.html", error="Incorrect password"), 401
+        if not hmac.compare_digest(request.form.get("password", ""), APP_PASSWORD):
+            return render_template("login.html", error="Incorrect password"), 401
+        now = datetime.utcnow()
+        with _seat_lock:
+            _seat_expire_if_idle(now)
+            if _seat["token"] is not None:
+                return render_template(
+                    "login.html",
+                    error=f"Someone else is signed in right now. Try again after {IDLE_MINUTES} minutes of their inactivity.",
+                ), 409
+            token = secrets.token_hex(16)
+            _seat.update(token=token, last=now)
+        session["authed"] = True
+        session["seat"] = token
+        session.permanent = True
+        return redirect(url_for("index"))
     if session.get("authed"):
         return redirect(url_for("index"))
     return render_template("login.html", error=None)
@@ -103,6 +188,10 @@ def login():
 
 @app.route("/logout")
 def logout():
+    tok = session.get("seat")
+    with _seat_lock:
+        if tok is not None and _seat["token"] == tok:
+            _seat.update(token=None, last=None)
     session.clear()
     return redirect(url_for("login"))
 
@@ -184,6 +273,7 @@ def get_data():
             overall = round(sum(group_pcts) / len(group_pcts)) if group_pcts else 0
             work_packages.append({
                 "wp_id": str(wp.id), "client": wp.client, "name": wp.name,
+                "description": wp.description or "", "year": wp.year or "",
                 "status": wp.status or "Unknown", "points": wp.points or "",
                 "icon": wp.icon or "", "overall": overall, "phases": phases,
             })
@@ -287,14 +377,20 @@ def api_add_project():
     body = request.get_json(force=True, silent=True) or {}
     client = _clean(body.get("client"))
     name = _clean(body.get("name"))
+    year = _clean(body.get("year"))
     icon = _clean(body.get("icon"))
+    description = _clean(body.get("description"))
     nr_codes = [c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)]
-    if not client or not name:
-        return jsonify({"error": "client and name are required"}), 400
+    err = _project_errors(client, name, year, icon, description)
+    if err:
+        return jsonify({"error": err}), 400
     with SessionLocal.begin() as s:
+        if _dup_exists(s, client, name, year):
+            return jsonify({"error": f"A project '{client} - {name}' for {year} already exists."}), 409
         max_id = s.query(WorkPackage.id).order_by(WorkPackage.id.desc()).first()
         new_id = (max_id[0] if max_id else 0) + 1
-        s.add(WorkPackage(id=new_id, client=client, name=name, status="Active", icon=icon))
+        s.add(WorkPackage(id=new_id, client=client, name=name, description=description,
+                          year=year, status="Active", icon=icon))
         for code in nr_codes:
             s.add(WpStatus(wp_id=new_id, code=code, value="N/R"))
     _mark_saved()
@@ -307,17 +403,25 @@ def api_edit_project():
     wp_id = _clean(body.get("wp_id"))
     client = _clean(body.get("client"))
     name = _clean(body.get("name"))
+    year = _clean(body.get("year"))
     icon = _clean(body.get("icon"))
+    description = _clean(body.get("description"))
     desired = {c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)}
-    if not wp_id or not client or not name:
-        return jsonify({"error": "wp_id, client and name are required"}), 400
+    if not wp_id:
+        return jsonify({"error": "wp_id is required"}), 400
+    err = _project_errors(client, name, year, icon, description)
+    if err:
+        return jsonify({"error": err}), 400
     with SessionLocal.begin() as s:
         if _is_locked(s, wp_id):
             return jsonify({"error": "This work package is inactive (locked). Make it active to edit."}), 403
         wp = s.get(WorkPackage, int(wp_id)) if wp_id.isdigit() else None
         if not wp:
             return jsonify({"error": "work package not found"}), 404
+        if _dup_exists(s, client, name, year, exclude_id=wp.id):
+            return jsonify({"error": f"A project '{client} - {name}' for {year} already exists."}), 409
         wp.client, wp.name, wp.icon = client, name, icon
+        wp.description, wp.year = description, year
         current = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
         all_codes = [row[0] for row in s.query(Subprocess.code).all()]
         for code in all_codes:
@@ -328,6 +432,38 @@ def api_edit_project():
                 _set_point(s, wp.id, code, "")
     _mark_saved()
     return jsonify({"ok": True, "pending": 0})
+
+
+@app.route("/api/duplicate_project", methods=["POST"])
+def api_duplicate_project():
+    """Clone an existing work package's setup (client, name+' (copy)', description,
+    year, icon and its Not-required points) into a new Active project. Progress is
+    NOT copied — the copy starts fresh."""
+    body = request.get_json(force=True, silent=True) or {}
+    wp_id = _clean(body.get("wp_id"))
+    if not wp_id.isdigit():
+        return jsonify({"error": "invalid wp_id"}), 400
+    with SessionLocal.begin() as s:
+        src = s.get(WorkPackage, int(wp_id))
+        if not src:
+            return jsonify({"error": "work package not found"}), 404
+        # find a non-clashing name "<name> (copy)", "(copy 2)", ...
+        base = f"{src.name} (copy)"
+        new_name = base
+        n = 2
+        while _dup_exists(s, src.client, new_name, src.year or ""):
+            new_name = f"{src.name} (copy {n})"
+            n += 1
+        max_id = s.query(WorkPackage.id).order_by(WorkPackage.id.desc()).first()
+        new_id = (max_id[0] if max_id else 0) + 1
+        s.add(WorkPackage(id=new_id, client=src.client, name=new_name,
+                          description=src.description or "", year=src.year or "",
+                          status="Active", icon=src.icon or ""))
+        # copy only the Not-required configuration (fresh progress)
+        for st in s.query(WpStatus).filter_by(wp_id=src.id, value="N/R").all():
+            s.add(WpStatus(wp_id=new_id, code=st.code, value="N/R"))
+    _mark_saved()
+    return jsonify({"ok": True, "wp_id": str(new_id)})
 
 
 @app.route("/api/update_guidance", methods=["POST"])

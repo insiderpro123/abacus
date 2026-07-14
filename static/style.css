@@ -146,6 +146,8 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 .wp-text { display: flex; flex-direction: column; min-width: 0; }
 .wp-client { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; line-height: 1.3; }
 .wp-title { font-size: 13.5px; font-weight: 700; color: var(--text); line-height: 1.25; }
+.wp-year { margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--muted); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; white-space: nowrap; }
 .wp-conf { font-weight: 400; font-style: italic; font-size: 11px; color: var(--muted); }
 
 .proc-th .pnum {
@@ -224,12 +226,14 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
   color: var(--muted); font-family: inherit;
 }
 .status-toggle:hover { border-color: var(--todo); color: var(--todo); }
-.edit-wp {
+.edit-wp, .dup-wp {
   background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
   font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer;
   color: var(--muted); font-family: inherit;
 }
-.edit-wp:hover { border-color: var(--accent); color: var(--accent); }
+.edit-wp:hover, .dup-wp:hover { border-color: var(--accent); color: var(--accent); }
+.panel-year { font-size: 12px; font-weight: 700; color: var(--muted); }
+.panel-desc { width: 100%; margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
 .lock-note { font-size: 11px; font-weight: 600; color: var(--muted); }
 /* locked (inactive) panels: points/phases are read-only */
 .panel.locked .grow, .panel.locked .sub-item, .panel.locked .seg { cursor: default; }
@@ -445,6 +449,9 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
   background: var(--panel); outline: none; margin-bottom: 4px;
 }
 .text-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(18,125,148,.18); }
+textarea.text-input { resize: vertical; min-height: 44px; line-height: 1.4; }
+.field-2col { display: flex; gap: 12px; align-items: flex-start; }
+.field-hint.over { color: var(--todo); font-weight: 700; }
 
 /* emoji picker */
 .emoji-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }

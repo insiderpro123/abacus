@@ -66,7 +66,9 @@ class WorkPackage(Base):
     __tablename__ = "work_package"
     id = Column(Integer, primary_key=True, autoincrement=False)  # ids assigned explicitly
     client = Column(String(255), nullable=False, default="")
-    name = Column(String(255), nullable=False, default="")
+    name = Column(String(255), nullable=False, default="")       # short project title
+    description = Column(Text, default="")           # optional longer description (<=35 words)
+    year = Column(String(16), default="")            # e.g. "2026" or "2025/26"
     status = Column(String(32), nullable=False, default="Active")
     points = Column(String(32), default="")          # legacy 'Jira points', not edited
     icon = Column(String(16), default="")            # emoji shown on the card
@@ -91,6 +93,26 @@ class WpFinished(Base):
     process_num = Column(Integer, ForeignKey("process.num"), primary_key=True)
 
 
+def _ensure_columns():
+    """Lightweight migration: add columns that were introduced after the table
+    was first created (so an existing SQLite/Postgres DB gains them without a wipe)."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    if "work_package" not in insp.get_table_names():
+        return
+    existing = {c["name"] for c in insp.get_columns("work_package")}
+    to_add = []
+    if "description" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN description TEXT DEFAULT ''")
+    if "year" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN year VARCHAR(16) DEFAULT ''")
+    if to_add:
+        with engine.begin() as conn:
+            for stmt in to_add:
+                conn.execute(text(stmt))
+
+
 def init_db():
-    """Create any missing tables."""
+    """Create any missing tables, then add any newly-introduced columns."""
     Base.metadata.create_all(engine)
+    _ensure_columns()

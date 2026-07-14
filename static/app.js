@@ -4,6 +4,37 @@ const openWPs = new Set();
 const openPhases = new Set(); // key: wpId + ":" + phaseNum
 let syncPoll = null;
 
+/* --------------------------------------------------------------------- */
+/* Session guard: single seat + 5-minute idle cutoff.                     */
+/* If the server drops our session (idle too long, or someone else took   */
+/* the seat), any API call returns 401 -> send the user back to login.    */
+/* A client-side idle timer also returns to login after 5 minutes of no   */
+/* interaction, so the screen reflects being cut off without a click.     */
+/* --------------------------------------------------------------------- */
+const IDLE_MS = 5 * 60 * 1000;
+(function installSessionGuard() {
+  const nativeFetch = window.fetch.bind(window);
+  let bouncing = false;
+  window.fetch = async (...args) => {
+    const res = await nativeFetch(...args);
+    if (res.status === 401 && !bouncing) {
+      bouncing = true;
+      window.location.href = "/login";
+    }
+    return res;
+  };
+
+  let idleTimer = null;
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { window.location.href = "/logout"; }, IDLE_MS);
+  };
+  ["mousemove", "mousedown", "keydown", "scroll", "touchstart"].forEach((evt) =>
+    window.addEventListener(evt, resetIdle, { passive: true })
+  );
+  resetIdle();
+})();
+
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
@@ -147,7 +178,7 @@ function renderWpRow(w) {
       <span class="wp-icon${w.icon ? " emoji" : ""}" style="background:${color}">${w.icon ? esc(w.icon) : esc(initials(w.client))}</span>
       <span class="wp-text">
         <span class="wp-client">${esc(w.client)}</span>
-        <span class="wp-title">${esc(w.name)}</span>
+        <span class="wp-title">${esc(w.name)}${w.year ? `<span class="wp-year">${esc(w.year)}</span>` : ""}</span>
       </span>
     </div>`;
   tr.appendChild(nameTd);
@@ -217,16 +248,22 @@ function buildPanel(w) {
   const toggleLabel = isActive ? "Make inactive" : "Make active";
   const toggleTo = isActive ? "Inactive" : "Active";
   head.innerHTML = `<div class="panel-head-left">
-        <h2>${esc(w.client)} - ${esc(w.name)}</h2>
+        <h2>${esc(w.client)} - ${esc(w.name)}${w.year ? ` <span class="panel-year">${esc(w.year)}</span>` : ""}</h2>
         <span class="badge ${esc(w.status)}">${esc(w.status)}</span>
         <span class="panel-overall" title="Overall progress">${w.overall}% complete</span>
         ${locked ? '<span class="lock-note">🔒 Locked - make active to edit</span>' : ""}
+        ${w.description ? `<div class="panel-desc">${esc(w.description)}</div>` : ""}
       </div>
       <span class="panel-head-actions">
+        <button class="dup-wp" title="Create a copy of this project">Duplicate</button>
         ${locked ? "" : '<button class="edit-wp">Edit</button>'}
         <button class="status-toggle">${toggleLabel}</button>
         <span class="close" title="Collapse">✕</span>
       </span>`;
+  head.querySelector(".dup-wp").addEventListener("click", (e) => {
+    e.stopPropagation();
+    duplicateProject(w);
+  });
   if (!locked) {
     head.querySelector(".edit-wp").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -389,6 +426,7 @@ async function bulkSet(w, ph, value) {
     if (json.error) throw new Error(json.error);
     await load();
     startSyncPoll();
+    maybePromptComplete(w.wp_id);
   } catch (e) {
     alert("Could not update: " + e.message);
   }
@@ -407,6 +445,39 @@ async function setStatus(w, status) {
     startSyncPoll();
   } catch (e) {
     alert("Could not change status: " + e.message);
+  }
+}
+
+async function duplicateProject(w) {
+  if (!confirm(`Create a copy of "${w.client} - ${w.name}"?\n\nThe copy starts fresh (progress not copied) so you can adjust it.`)) return;
+  try {
+    const res = await fetch("/api/duplicate_project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wp_id: w.wp_id }),
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    filter = "Active";
+    document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c.dataset.filter === "Active"));
+    if (json.wp_id) openWPs.add(String(json.wp_id));
+    await load();
+    startSyncPoll();
+    // open the copy's edit form so client/name/year can be tweaked straight away
+    const nw = (DATA.work_packages || []).find((x) => x.wp_id === String(json.wp_id));
+    if (nw) openProjectForm("edit", nw);
+  } catch (e) {
+    alert("Could not duplicate: " + e.message);
+  }
+}
+
+// When a project hits 100%, offer to mark it inactive.
+async function maybePromptComplete(wpId) {
+  const w = (DATA?.work_packages || []).find((x) => x.wp_id === String(wpId));
+  if (w && w.overall >= 100 && (w.status || "").toLowerCase() === "active") {
+    if (confirm(`"${w.client} - ${w.name}" is now 100% complete.\n\nMark it inactive?`)) {
+      await setStatus(w, "Inactive");
+    }
   }
 }
 
@@ -459,17 +530,29 @@ function openProjectForm(mode, wp) {
       <span class="close" title="Close">✕</span>
     </div>
     <div class="modal-body">
-      <div class="field-label">Client</div>
-      <input class="text-input" id="ap-client" placeholder="e.g. Bridgepoint" autocomplete="off"
-        value="${isEdit ? esc(wp.client) : ""}" />
-      <div class="field-label">Project / work package name</div>
-      <input class="text-input" id="ap-name" placeholder="e.g. Cost Base Review" autocomplete="off"
-        value="${isEdit ? esc(wp.name) : ""}" />
-      <div class="field-label">Icon
-        <span class="field-hint">pick an emoji, or type your own (leave blank to use initials)</span>
+      <div class="field-2col">
+        <div style="flex:1;min-width:0">
+          <div class="field-label">Client</div>
+          <input class="text-input" id="ap-client" placeholder="e.g. Bridgepoint" autocomplete="off"
+            value="${isEdit ? esc(wp.client) : ""}" />
+        </div>
+        <div style="width:110px">
+          <div class="field-label">Year</div>
+          <input class="text-input" id="ap-year" placeholder="e.g. 2026" autocomplete="off" maxlength="9"
+            value="${isEdit ? esc(wp.year || "") : ""}" />
+        </div>
       </div>
+      <div class="field-label">Project name <span class="field-hint">short title, max 60 characters</span></div>
+      <input class="text-input" id="ap-name" placeholder="e.g. Cost Base Review" autocomplete="off" maxlength="60"
+        value="${isEdit ? esc(wp.name) : ""}" />
+      <div class="field-label">Description
+        <span class="field-hint">optional · max 35 words (<span id="ap-desc-count">0</span>/35)</span>
+      </div>
+      <textarea class="text-input" id="ap-desc" rows="2"
+        placeholder="A bit more detail about this piece of work…">${isEdit ? esc(wp.description || "") : ""}</textarea>
+      <div class="field-label">Icon <span class="field-hint">required · pick an emoji (a picture, not text)</span></div>
       <div class="emoji-row">
-        <input class="emoji-input" id="ap-emoji" maxlength="4" placeholder="🙂" value="${esc(curIcon)}" />
+        <input class="emoji-input" id="ap-emoji" maxlength="8" placeholder="🙂" value="${esc(curIcon)}" />
         ${emojiBtns}
       </div>
       <div class="field-label">Which points apply?
@@ -498,6 +581,18 @@ function openProjectForm(mode, wp) {
   });
   emojiInput.addEventListener("input", syncEmojiButtons);
 
+  // live word counter for the description (cap 35 words)
+  const descEl = modal.querySelector("#ap-desc");
+  const descCount = modal.querySelector("#ap-desc-count");
+  const wordCount = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
+  const syncDesc = () => {
+    const n = wordCount(descEl.value);
+    descCount.textContent = n;
+    descCount.parentElement.classList.toggle("over", n > 35);
+  };
+  descEl.addEventListener("input", syncDesc);
+  syncDesc();
+
   // ticked = required, unticked = Not required. Show a struck-through cue when off.
   const syncItem = (cb) => cb.closest(".nr-item").classList.toggle("nr-off", !cb.checked);
   modal.querySelectorAll('.nr-item input[type="checkbox"]').forEach((cb) => {
@@ -518,21 +613,25 @@ function openProjectForm(mode, wp) {
   modal.querySelector("#ap-save").addEventListener("click", async () => {
     const client = modal.querySelector("#ap-client").value.trim();
     const name = modal.querySelector("#ap-name").value.trim();
-    if (!client || !name) {
-      alert("Please enter both a client and a project name.");
-      return;
-    }
+    const year = modal.querySelector("#ap-year").value.trim();
+    const description = descEl.value.trim();
     const icon = emojiInput.value.trim();
+    // validation
+    if (!client || !name) { alert("Please enter both a client and a project name."); return; }
+    if (!year) { alert("Please enter the year this project relates to (e.g. 2026)."); return; }
+    if (!icon) { alert("Please choose an emoji icon."); return; }
+    if (/^[\x00-\x7F]+$/.test(icon)) { alert("The icon must be an emoji (a picture), not text."); return; }
+    if (wordCount(description) > 35) { alert("The description is too long — please keep it to 35 words or fewer."); return; }
     // unticked = Not required
     const nr_codes = [...modal.querySelectorAll('input[type="checkbox"]:not(:checked)')].map((x) => x.dataset.code);
     const btn = modal.querySelector("#ap-save");
     btn.disabled = true;
-    btn.textContent = isEdit ? "Saving…" : "Adding… (writing to Excel)";
+    btn.textContent = isEdit ? "Saving…" : "Adding…";
     try {
       const url = isEdit ? "/api/edit_project" : "/api/add_project";
       const payload = isEdit
-        ? { wp_id: wp.wp_id, client, name, icon, nr_codes }
-        : { client, name, icon, nr_codes };
+        ? { wp_id: wp.wp_id, client, name, year, description, icon, nr_codes }
+        : { client, name, year, description, icon, nr_codes };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -674,6 +773,7 @@ function openEditor(w, s) {
       closeEditor();
       await load();
       startSyncPoll();
+      maybePromptComplete(w.wp_id);
     } catch (e) {
       btn.disabled = false;
       btn.textContent = "Save";
