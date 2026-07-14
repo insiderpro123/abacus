@@ -258,12 +258,19 @@ function buildPanel(w) {
         <button class="dup-wp" title="Create a copy of this project">Duplicate</button>
         ${locked ? "" : '<button class="edit-wp">Edit</button>'}
         <button class="status-toggle">${toggleLabel}</button>
+        ${locked ? '<button class="delete-wp" title="Permanently delete this project">Delete</button>' : ""}
         <span class="close" title="Collapse">✕</span>
       </span>`;
   head.querySelector(".dup-wp").addEventListener("click", (e) => {
     e.stopPropagation();
     duplicateProject(w);
   });
+  if (locked) {
+    head.querySelector(".delete-wp").addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteProject(w);
+    });
+  }
   if (!locked) {
     head.querySelector(".edit-wp").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -448,6 +455,24 @@ async function setStatus(w, status) {
   }
 }
 
+async function deleteProject(w) {
+  if (!confirm(`Permanently delete "${w.client} - ${w.name}"?\n\nThis removes the project and all of its progress. This cannot be undone.`)) return;
+  try {
+    const res = await fetch("/api/delete_project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wp_id: w.wp_id }),
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    openWPs.delete(String(w.wp_id));
+    await load();
+    startSyncPoll();
+  } catch (e) {
+    alert("Could not delete: " + e.message);
+  }
+}
+
 async function duplicateProject(w) {
   if (!confirm(`Create a copy of "${w.client} - ${w.name}"?\n\nThe copy starts fresh (progress not copied) so you can adjust it.`)) return;
   try {
@@ -519,6 +544,8 @@ function openProjectForm(mode, wp) {
   const emojiBtns = EMOJI_CHOICES.map((e) =>
     `<button type="button" class="emoji-btn${e === curIcon ? " sel" : ""}" data-emoji="${e}">${e}</button>`
   ).join("");
+  // pre-fill the "type your own" box only when the current icon isn't in the grid
+  const customInit = EMOJI_CHOICES.includes(curIcon) ? "" : curIcon;
 
   const modal = el("div", "modal");
   modal.innerHTML = `
@@ -543,8 +570,11 @@ function openProjectForm(mode, wp) {
         placeholder="A bit more detail about this piece of work…">${isEdit ? esc(wp.description || "") : ""}</textarea>
       <div class="field-label">Icon <span class="field-hint">required · pick an emoji (a picture, not text)</span></div>
       <div class="emoji-row">
-        <input class="emoji-input" id="ap-emoji" maxlength="8" placeholder="🙂" value="${esc(curIcon)}" />
         ${emojiBtns}
+      </div>
+      <div class="emoji-custom">
+        <span>Or type your own:</span>
+        <input class="emoji-input" id="ap-emoji" maxlength="8" placeholder="🙂" value="${esc(customInit)}" />
       </div>
       <div class="field-label">Which points apply?
         <span class="field-hint">leave ticked = required · <b>untick</b> anything that is Not required</span>
@@ -560,17 +590,26 @@ function openProjectForm(mode, wp) {
     </div>`;
 
   const emojiInput = modal.querySelector("#ap-emoji");
+  // single source of truth for the chosen icon (grid pick OR typed custom emoji)
+  let chosenEmoji = curIcon;
   const syncEmojiButtons = () => {
     modal.querySelectorAll(".emoji-btn").forEach((b) =>
-      b.classList.toggle("sel", b.dataset.emoji === emojiInput.value.trim()));
+      b.classList.toggle("sel", b.dataset.emoji === chosenEmoji));
   };
   modal.querySelectorAll(".emoji-btn").forEach((b) => {
     b.addEventListener("click", () => {
-      emojiInput.value = emojiInput.value.trim() === b.dataset.emoji ? "" : b.dataset.emoji;
+      // toggle: click the selected one again to clear it
+      chosenEmoji = chosenEmoji === b.dataset.emoji ? "" : b.dataset.emoji;
+      emojiInput.value = "";          // a grid pick is not a custom entry
       syncEmojiButtons();
     });
   });
-  emojiInput.addEventListener("input", syncEmojiButtons);
+  emojiInput.addEventListener("input", () => {
+    // typing a custom emoji overrides any grid selection
+    chosenEmoji = emojiInput.value.trim();
+    syncEmojiButtons();
+  });
+  syncEmojiButtons();
 
   // live word counter for the description (cap 35 words)
   const descEl = modal.querySelector("#ap-desc");
@@ -605,7 +644,7 @@ function openProjectForm(mode, wp) {
     const client = modal.querySelector("#ap-client").value.trim();
     const name = modal.querySelector("#ap-name").value.trim();
     const description = descEl.value.trim();
-    const icon = emojiInput.value.trim();
+    const icon = chosenEmoji.trim();
     // validation
     if (!client || !name) { alert("Please enter both a client and a project name."); return; }
     if (!icon) { alert("Please choose an emoji icon."); return; }

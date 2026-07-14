@@ -232,6 +232,12 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
   color: var(--muted); font-family: inherit;
 }
 .edit-wp:hover, .dup-wp:hover { border-color: var(--accent); color: var(--accent); }
+.delete-wp {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer;
+  color: var(--muted); font-family: inherit;
+}
+.delete-wp:hover { border-color: var(--todo); color: #fff; background: var(--todo); }
 .panel-year { font-size: 12px; font-weight: 700; color: var(--muted); }
 .panel-desc { width: 100%; margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
 .lock-note { font-size: 11px; font-weight: 600; color: var(--muted); }
@@ -455,6 +461,7 @@ textarea.text-input { resize: vertical; min-height: 44px; line-height: 1.4; }
 
 /* emoji picker */
 .emoji-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
+.emoji-custom { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .emoji-input {
   width: 46px; text-align: center; border: 1px solid var(--line); border-radius: 5px;
   padding: 6px 4px; font-size: 18px; background: var(--panel); outline: none;

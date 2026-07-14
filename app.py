@@ -369,6 +369,26 @@ def api_set_status():
     return jsonify({"ok": True, "pending": 0})
 
 
+@app.route("/api/delete_project", methods=["POST"])
+def api_delete_project():
+    """Permanently delete a work package. Only allowed once it is inactive
+    (locked), so an active project can't be removed by accident. Its status
+    and finished rows are cleaned up by the cascade on the relationships."""
+    body = request.get_json(force=True, silent=True) or {}
+    wp_id = _clean(body.get("wp_id"))
+    if not wp_id:
+        return jsonify({"error": "invalid wp_id"}), 400
+    with SessionLocal.begin() as s:
+        wp = s.get(WorkPackage, int(wp_id)) if wp_id.isdigit() else None
+        if not wp:
+            return jsonify({"error": "work package not found"}), 404
+        if (wp.status or "").strip().lower() == "active":
+            return jsonify({"error": "Make the project inactive before deleting it."}), 403
+        s.delete(wp)
+    _mark_saved()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/add_project", methods=["POST"])
 def api_add_project():
     body = request.get_json(force=True, silent=True) or {}
