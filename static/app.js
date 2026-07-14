@@ -551,7 +551,7 @@ function openProjectForm(mode, wp) {
       <div class="nr-picker">${groupsHtml}</div>
     </div>
     <div class="modal-foot">
-      <span class="modal-note">${isEdit ? "Changes are saved and written to Excel." : "Added as an <b>Active</b> project and written to Excel."}</span>
+      <span class="modal-note">${isEdit ? "Changes are saved automatically." : "Added as an <b>Active</b> project."}</span>
       <div>
         <button class="btn" id="ap-cancel">Cancel</button>
         <button class="btn btn-primary" id="ap-save">${isEdit ? "Save changes" : "Add project"}</button>
@@ -716,7 +716,7 @@ function openEditor(w, s) {
       </div>
     </div>
     <div class="modal-foot">
-      <span class="modal-note">Saved to the dashboard instantly, then written back to Excel.</span>
+      <span class="modal-note">Saved to the dashboard instantly.</span>
       <div>
         <button class="btn" id="modal-cancel">Cancel</button>
         <button class="btn btn-primary" id="modal-save">Save</button>
