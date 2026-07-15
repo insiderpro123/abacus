@@ -73,6 +73,11 @@ class WorkPackage(Base):
     points = Column(String(32), default="")          # legacy 'Jira points', not edited
     icon = Column(String(16), default="")            # emoji shown on the card
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Jira link (read-only): mapped project key + last-synced story-point totals
+    jira_project_key = Column(String(32), default="")
+    jira_done = Column(Integer, default=0)
+    jira_total = Column(Integer, default=0)
+    jira_synced_at = Column(DateTime, nullable=True)
 
     statuses = relationship("WpStatus", cascade="all, delete-orphan", backref="wp")
     finished = relationship("WpFinished", cascade="all, delete-orphan", backref="wp")
@@ -106,6 +111,14 @@ def _ensure_columns():
         to_add.append("ALTER TABLE work_package ADD COLUMN description TEXT DEFAULT ''")
     if "year" not in existing:
         to_add.append("ALTER TABLE work_package ADD COLUMN year VARCHAR(16) DEFAULT ''")
+    if "jira_project_key" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN jira_project_key VARCHAR(32) DEFAULT ''")
+    if "jira_done" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN jira_done INTEGER DEFAULT 0")
+    if "jira_total" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN jira_total INTEGER DEFAULT 0")
+    if "jira_synced_at" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN jira_synced_at TIMESTAMP")
     if to_add:
         with engine.begin() as conn:
             for stmt in to_add:

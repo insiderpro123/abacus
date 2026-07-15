@@ -24,6 +24,7 @@ from models import (
     init_db, SessionLocal,
     Process, Subprocess, WorkPackage, WpStatus, WpFinished,
 )
+import jira_client
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -233,6 +234,9 @@ def get_data():
                 "description": wp.description or "",
                 "status": wp.status or "Unknown", "points": wp.points or "",
                 "icon": wp.icon or "", "overall": overall, "phases": phases,
+                "jira_project_key": wp.jira_project_key or "",
+                "jira_done": wp.jira_done or 0, "jira_total": wp.jira_total or 0,
+                "jira_synced_at": wp.jira_synced_at.strftime("%d %b %H:%M") if wp.jira_synced_at else "",
             })
 
     return {
@@ -242,6 +246,7 @@ def get_data():
         "reference": reference,
         "pending": 0,
         "last_flush": dict(_last_saved),
+        "jira_configured": jira_client.is_configured(),
     }
 
 
@@ -356,6 +361,7 @@ def api_add_project():
     name = _clean(body.get("name"))
     icon = _clean(body.get("icon"))
     description = _clean(body.get("description"))
+    jira_key = _clean(body.get("jira_project_key")).upper()
     nr_codes = [c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)]
     err = _project_errors(client, name, icon, description)
     if err:
@@ -366,11 +372,52 @@ def api_add_project():
         max_id = s.query(WorkPackage.id).order_by(WorkPackage.id.desc()).first()
         new_id = (max_id[0] if max_id else 0) + 1
         s.add(WorkPackage(id=new_id, client=client, name=name, description=description,
-                          status="Active", icon=icon))
+                          status="Active", icon=icon, jira_project_key=jira_key))
         for code in nr_codes:
             s.add(WpStatus(wp_id=new_id, code=code, value="N/R"))
     _mark_saved()
     return jsonify({"ok": True, "wp_id": str(new_id)})
+
+
+# --------------------------------------------------------------------------- #
+# Jira (read-only): epic picker + on-demand story-point refresh.
+# Each work package is linked to a Jira epic (chosen from a dropdown); points
+# are summed over the issues under that epic.
+# --------------------------------------------------------------------------- #
+@app.route("/api/jira/epics")
+def api_jira_epics():
+    """List of Jira epics for the Edit-form dropdown. Token stays server-side."""
+    if not jira_client.is_configured():
+        return jsonify({"configured": False, "epics": []})
+    try:
+        return jsonify({"configured": True, "epics": jira_client.list_epics()})
+    except jira_client.JiraError as e:
+        return jsonify({"configured": True, "error": str(e), "epics": []}), 502
+
+
+@app.route("/api/jira/refresh", methods=["POST"])
+def api_jira_refresh():
+    """Re-pull done/total story points for the epic linked to each work package."""
+    if not jira_client.is_configured():
+        return jsonify({"error": "Jira is not configured on the server."}), 400
+    # read the linked epics with a short-lived session (no network under a write lock)
+    with SessionLocal() as s:
+        linked = [(wp.id, (wp.jira_project_key or "").strip())
+                  for wp in s.query(WorkPackage).all() if (wp.jira_project_key or "").strip()]
+    results, errors = {}, []
+    for wp_id, key in linked:
+        try:
+            results[wp_id] = jira_client.epic_points(key)
+        except jira_client.JiraError as e:
+            errors.append({"epic": key, "error": str(e)})
+    now = datetime.utcnow()
+    with SessionLocal.begin() as s:
+        for wp_id, pts in results.items():
+            wp = s.get(WorkPackage, wp_id)
+            if wp:
+                wp.jira_done, wp.jira_total, wp.jira_synced_at = pts["done"], pts["total"], now
+    _mark_saved()
+    return jsonify({"ok": True, "updated": len(results), "errors": errors})
 
 
 @app.route("/api/edit_project", methods=["POST"])
@@ -381,6 +428,7 @@ def api_edit_project():
     name = _clean(body.get("name"))
     icon = _clean(body.get("icon"))
     description = _clean(body.get("description"))
+    jira_key = _clean(body.get("jira_project_key")).upper()
     desired = {c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)}
     if not wp_id:
         return jsonify({"error": "wp_id is required"}), 400
@@ -397,6 +445,10 @@ def api_edit_project():
             return jsonify({"error": f"A project '{client} - {name}' already exists."}), 409
         wp.client, wp.name, wp.icon = client, name, icon
         wp.description = description
+        if jira_key != (wp.jira_project_key or ""):
+            # epic link changed -> clear stale totals until the next refresh
+            wp.jira_project_key = jira_key
+            wp.jira_done, wp.jira_total, wp.jira_synced_at = 0, 0, None
         current = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
         all_codes = [row[0] for row in s.query(Subprocess.code).all()]
         for code in all_codes:

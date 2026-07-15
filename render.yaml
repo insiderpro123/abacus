@@ -24,5 +24,12 @@ services:
         generateValue: true
       - key: APP_PASSWORD
         sync: false          # set this yourself in the Render dashboard
+      # Jira (read-only story points). JIRA_API_TOKEN is a secret set by hand.
+      - key: JIRA_BASE_URL
+        value: "https://insiderpro.atlassian.net"
+      - key: JIRA_EMAIL
+        value: "team@insiderpro.co.uk"
+      - key: JIRA_API_TOKEN
+        sync: false          # set this yourself in the Render dashboard (read-only token)
       - key: PYTHON_VERSION
         value: "3.12.6"

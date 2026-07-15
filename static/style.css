@@ -464,6 +464,14 @@ textarea.text-input { resize: vertical; min-height: 44px; line-height: 1.4; }
 /* emoji picker */
 .emoji-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
 .emoji-custom { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+
+/* Jira story-points badge (card + panel header) */
+.jira-badge {
+  display: inline-block; font-size: 10px; font-weight: 700; line-height: 1;
+  padding: 3px 7px; border-radius: 10px; white-space: nowrap;
+  color: var(--accent); background: #e9f6f9; border: 1px solid var(--accent-bright);
+}
+.wp-text .jira-badge { margin-top: 3px; align-self: flex-start; }
 .emoji-input {
   width: 46px; text-align: center; border: 1px solid var(--line); border-radius: 5px;
   padding: 6px 4px; font-size: 18px; background: var(--panel); outline: none;

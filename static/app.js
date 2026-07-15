@@ -49,6 +49,8 @@ function visibleWPs() {
 
 function render() {
   renderMatrix();
+  const jiraBtn = document.getElementById("jira-refresh");
+  if (jiraBtn) jiraBtn.style.display = (DATA && DATA.jira_configured) ? "" : "none";
 }
 
 function renderMatrix() {
@@ -148,6 +150,7 @@ function renderWpRow(w) {
       <span class="wp-text">
         <span class="wp-client">${esc(w.client)}</span>
         <span class="wp-title">${esc(w.name)}</span>
+        ${w.jira_total > 0 ? `<span class="jira-badge" title="Story points from Jira${w.jira_synced_at ? " · synced " + esc(w.jira_synced_at) : ""}">Jira ${w.jira_done}/${w.jira_total} pts</span>` : ""}
       </span>
     </div>`;
   tr.appendChild(nameTd);
@@ -222,6 +225,7 @@ function buildPanel(w) {
         <h2>${esc(w.client)} - ${esc(w.name)}</h2>
         <span class="badge ${esc(w.status)}">${esc(w.status)}</span>
         <span class="panel-overall" title="Overall progress">${w.overall}% complete</span>
+        ${w.jira_total > 0 ? `<span class="jira-badge" title="Story points from Jira epic ${esc(w.jira_project_key)}${w.jira_synced_at ? " · synced " + esc(w.jira_synced_at) : ""}">Jira ${w.jira_done}/${w.jira_total} pts</span>` : ""}
         ${locked ? '<span class="lock-note">🔒 Locked - make active to edit</span>' : ""}
         ${w.description ? `<div class="panel-desc">${esc(w.description)}</div>` : ""}
       </div>
@@ -492,6 +496,7 @@ function openProjectForm(mode, wp) {
   const curNr = new Set();
   if (isEdit && wp) wp.phases.forEach((ph) => ph.subs.forEach((s) => { if (s.status === "nr") curNr.add(s.code); }));
   const curIcon = isEdit && wp ? (wp.icon || "") : "";
+  const curJira = isEdit && wp ? (wp.jira_project_key || "") : "";
 
   const overlay = el("div", "modal-overlay");
   overlay.id = "editor";
@@ -547,6 +552,12 @@ function openProjectForm(mode, wp) {
         <span>Or type your own:</span>
         <input class="emoji-input" id="ap-emoji" maxlength="8" placeholder="🙂" value="${esc(customInit)}" />
       </div>
+      <div class="field-label" id="ap-jira-label" style="display:none">Jira epic
+        <span class="field-hint">optional · pulls completed / total story points from this epic</span>
+      </div>
+      <select class="text-input" id="ap-jira" style="display:none">
+        <option value="">— none —</option>
+      </select>
       <div class="field-label">Which points apply?
         <span class="field-hint">leave ticked = required · <b>untick</b> anything that is Not required</span>
       </div>
@@ -581,6 +592,35 @@ function openProjectForm(mode, wp) {
     syncEmojiButtons();
   });
   syncEmojiButtons();
+
+  // Jira epic dropdown — shown only when the server has Jira configured.
+  // Epics are grouped by their Jira project via <optgroup>.
+  const jiraSel = modal.querySelector("#ap-jira");
+  const jiraLabel = modal.querySelector("#ap-jira-label");
+  fetch("/api/jira/epics").then((r) => r.json()).then((j) => {
+    if (!j.configured || !(j.epics || []).length) return; // stays hidden
+    const groups = {};
+    j.epics.forEach((e) => { (groups[e.project] = groups[e.project] || []).push(e); });
+    Object.keys(groups).sort().forEach((proj) => {
+      const og = document.createElement("optgroup");
+      og.label = proj;
+      groups[proj].forEach((e) => {
+        const o = document.createElement("option");
+        o.value = e.key;
+        o.textContent = `${e.key} — ${e.summary}`;
+        if (e.key === curJira) o.selected = true;
+        og.appendChild(o);
+      });
+      jiraSel.appendChild(og);
+    });
+    // keep a previously-linked epic selectable even if it's no longer returned
+    if (curJira && ![...jiraSel.options].some((o) => o.value === curJira)) {
+      const o = document.createElement("option");
+      o.value = curJira; o.textContent = curJira; o.selected = true;
+      jiraSel.appendChild(o);
+    }
+    jiraLabel.style.display = ""; jiraSel.style.display = "";
+  }).catch(() => {});
 
   // live word counter for the description (cap 35 words)
   const descEl = modal.querySelector("#ap-desc");
@@ -623,14 +663,15 @@ function openProjectForm(mode, wp) {
     if (wordCount(description) > 60) { alert("The description is too long — please keep it to 60 words or fewer."); return; }
     // unticked = Not required
     const nr_codes = [...modal.querySelectorAll('input[type="checkbox"]:not(:checked)')].map((x) => x.dataset.code);
+    const jira_project_key = jiraSel ? jiraSel.value : "";
     const btn = modal.querySelector("#ap-save");
     btn.disabled = true;
     btn.textContent = isEdit ? "Saving…" : "Adding…";
     try {
       const url = isEdit ? "/api/edit_project" : "/api/add_project";
       const payload = isEdit
-        ? { wp_id: wp.wp_id, client, name, description, icon, nr_codes }
-        : { client, name, description, icon, nr_codes };
+        ? { wp_id: wp.wp_id, client, name, description, icon, nr_codes, jira_project_key }
+        : { client, name, description, icon, nr_codes, jira_project_key };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -836,6 +877,31 @@ $("#filters").addEventListener("click", (e) => {
   chip.classList.add("active");
   filter = chip.dataset.filter;
   render();
+});
+
+// Jira: on-demand refresh of all mapped projects
+$("#jira-refresh").addEventListener("click", async () => {
+  const btn = $("#jira-refresh");
+  const sync = $("#sync");
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Syncing…";
+  try {
+    const res = await fetch("/api/jira/refresh", { method: "POST" });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    await load();
+    if (sync) {
+      const failed = (json.errors || []).length;
+      sync.className = "sync " + (failed ? "error" : "ok");
+      sync.textContent = `Jira: updated ${json.updated}${failed ? `, ${failed} failed` : ""}`;
+    }
+  } catch (e) {
+    if (sync) { sync.className = "sync error"; sync.textContent = "Jira refresh failed: " + e.message; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
 });
 
 window.addEventListener("resize", sizePanels);
