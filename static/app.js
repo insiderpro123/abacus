@@ -556,7 +556,7 @@ function openProjectForm(mode, wp) {
         <span class="field-hint">optional · pulls completed / total story points from this epic</span>
       </div>
       <select class="text-input" id="ap-jira" style="display:none">
-        <option value="">— none —</option>
+        <option value="">none</option>
       </select>
       <div class="field-label">Which points apply?
         <span class="field-hint">leave ticked = required · <b>untick</b> anything that is Not required</span>
@@ -607,7 +607,7 @@ function openProjectForm(mode, wp) {
       groups[proj].forEach((e) => {
         const o = document.createElement("option");
         o.value = e.key;
-        o.textContent = `${e.key} — ${e.summary}`;
+        o.textContent = `${e.key}: ${e.summary}`;
         if (e.key === curJira) o.selected = true;
         og.appendChild(o);
       });
@@ -660,7 +660,7 @@ function openProjectForm(mode, wp) {
     if (!client || !name) { alert("Please enter both a client and a project name."); return; }
     if (!icon) { alert("Please choose an emoji icon."); return; }
     if (/^[\x00-\x7F]+$/.test(icon)) { alert("The icon must be an emoji (a picture), not text."); return; }
-    if (wordCount(description) > 60) { alert("The description is too long — please keep it to 60 words or fewer."); return; }
+    if (wordCount(description) > 60) { alert("The description is too long: please keep it to 60 words or fewer."); return; }
     // unticked = Not required
     const nr_codes = [...modal.querySelectorAll('input[type="checkbox"]:not(:checked)')].map((x) => x.dataset.code);
     const jira_project_key = jiraSel ? jiraSel.value : "";
