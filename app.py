@@ -121,6 +121,22 @@ def _backfill_task_points():
 
 _backfill_task_points()
 
+
+def _patch_outcomes():
+    """Apply the reviewed outcome wording for sub-points 1.3/4.1/4.2 (see
+    patch_outcomes.py). Idempotent: only writes when the text differs, so it runs
+    harmlessly on every startup and updates the live DB on deploy."""
+    from patch_outcomes import OUTCOMES
+    from models import Subprocess as _Sub
+    with SessionLocal.begin() as s:
+        for code, text in OUTCOMES.items():
+            sp = s.get(_Sub, code)
+            if sp and (sp.outcomes or "").strip() != text:
+                sp.outcomes = text
+
+
+_patch_outcomes()
+
 # --------------------------------------------------------------------------- #
 # Status helpers (unchanged meaning from the Excel version)
 # --------------------------------------------------------------------------- #
