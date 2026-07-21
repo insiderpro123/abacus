@@ -110,6 +110,17 @@ def _backfill_sub_nums():
 
 _backfill_sub_nums()
 
+
+def _backfill_task_points():
+    """Ensure every task has at least 1 point (no blank/'-' tasks)."""
+    from models import WpTask as _WpTask
+    with SessionLocal.begin() as s:
+        for t in s.query(_WpTask).filter((_WpTask.points == 0) | (_WpTask.points.is_(None))).all():
+            t.points = 1
+
+
+_backfill_task_points()
+
 # --------------------------------------------------------------------------- #
 # Status helpers (unchanged meaning from the Excel version)
 # --------------------------------------------------------------------------- #
@@ -616,8 +627,8 @@ def api_sync_status():
 # --------------------------------------------------------------------------- #
 TASK_STATUSES = ("todo", "progress", "done")
 MAX_TASK_LEN = 200
-# Modified Fibonacci story points (0 = unset), capped at 21
-TASK_POINTS = (0, 1, 2, 3, 5, 8, 13, 21)
+# Modified Fibonacci story points, capped at 21 (minimum + default is 1)
+TASK_POINTS = (1, 2, 3, 5, 8, 13, 21)
 
 
 def _task_dict(t):
@@ -639,11 +650,11 @@ def api_tasks_add():
     wp_id = _clean(body.get("wp_id"))
     title = _clean(body.get("title"))[:MAX_TASK_LEN]
     try:
-        points = int(body.get("points", 0))
+        points = int(body.get("points", 1))
     except (TypeError, ValueError):
-        points = 0
+        points = 1
     if points not in TASK_POINTS:
-        points = 0
+        points = 1
     if not wp_id.isdigit():
         return jsonify({"error": "invalid wp_id"}), 400
     if not title:

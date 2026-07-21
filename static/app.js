@@ -1106,11 +1106,12 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeEdito
 /* ------------------------------------------------------------------ */
 const TASK_NEXT = { todo: "progress", progress: "done", done: "todo" };
 const TASK_LABEL = { todo: "To Do", progress: "In Progress", done: "Complete" };
-const POINT_CHOICES = [0, 1, 2, 3, 5, 8, 13, 21];   // 0 = unset (shown as "–")
+const POINT_CHOICES = [1, 2, 3, 5, 8, 13, 21];   // modified Fibonacci; minimum + default 1
 
 function pointsSelectHtml(cls, current) {
+  const cur = POINT_CHOICES.includes(current) ? current : 1;   // never blank/"-": default 1
   const opts = POINT_CHOICES.map((p) =>
-    `<option value="${p}"${p === current ? " selected" : ""}>${p === 0 ? "– pts" : p + " pts"}</option>`
+    `<option value="${p}"${p === cur ? " selected" : ""}>${p} pts</option>`
   ).join("");
   return `<select class="${cls}" title="Story points (modified Fibonacci)">${opts}</select>`;
 }
@@ -1165,19 +1166,21 @@ function buildTaskBoard(w) {
       ${subs.length ? `<select class="task-subwp" title="Link to a sub-workpackage">${subWpOptions(t.sub_wp_id)}</select>` : ""}
       ${pointsSelectHtml("task-points", t.points || 0)}
       <button class="task-del" title="Delete task">✕</button>`;
-    card.title = TASK_LABEL[t.status] + " - click to move to " + TASK_LABEL[TASK_NEXT[t.status]];
+    card.title = "Click to advance · double-click to rename";
+    if (t.status !== "done") card.querySelector(".task-title").classList.add("renamable");
+    // single click advances the status (To Do -> In Progress amber -> Complete);
+    // double click edits the wording. A short timer disambiguates the two.
+    const isControl = (e) => e.target.closest(".task-del") || e.target.closest(".task-points") || e.target.closest(".task-subwp");
+    let clickTimer = null;
     card.addEventListener("click", (e) => {
-      if (e.target.closest(".task-del") || e.target.closest(".task-points") || e.target.closest(".task-subwp")) return;
-      setTaskStatus(t, TASK_NEXT[t.status]);
+      if (isControl(e) || clickTimer) return;
+      clickTimer = setTimeout(() => { clickTimer = null; setTaskStatus(t, TASK_NEXT[t.status]); }, 220);
     });
-    // double-click the wording to rename (working tasks only)
-    const titleEl = card.querySelector(".task-title");
-    if (t.status !== "done") {
-      titleEl.title = "Double-click to rename";
-      titleEl.classList.add("renamable");
-      titleEl.addEventListener("click", (e) => e.stopPropagation());   // don't advance on title click
-      titleEl.addEventListener("dblclick", (e) => { e.stopPropagation(); startRename(t, titleEl); });
-    }
+    card.addEventListener("dblclick", (e) => {
+      if (isControl(e)) return;
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }   // cancel the single-click advance
+      if (t.status !== "done") startRename(t, card.querySelector(".task-title"));
+    });
     const sel = card.querySelector(".task-points");
     sel.addEventListener("click", (e) => e.stopPropagation());
     sel.addEventListener("change", (e) => { e.stopPropagation(); setTaskPoints(t, parseInt(sel.value, 10)); });
@@ -1286,12 +1289,12 @@ function buildTaskBoard(w) {
   // Small pop-out: type the task + pick points, then Add.
   function openAddPopout() {
     closeEditor();
-    let chosen = 0;
+    let chosen = 1;   // minimum + default
     const overlay = el("div", "modal-overlay");
     overlay.id = "editor";
     overlay.addEventListener("click", (e) => { if (e.target === overlay) closeEditor(); });
     const chips = POINT_CHOICES.map((p) =>
-      `<button type="button" class="point-chip${p === 0 ? " sel" : ""}" data-p="${p}">${p === 0 ? "–" : p}</button>`
+      `<button type="button" class="point-chip${p === chosen ? " sel" : ""}" data-p="${p}">${p}</button>`
     ).join("");
     const modal = el("div", "modal addtask-modal");
     modal.innerHTML = `
