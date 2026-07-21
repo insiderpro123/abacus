@@ -16,7 +16,7 @@ from datetime import datetime
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text, DateTime, ForeignKey,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship, backref
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -54,7 +54,7 @@ class Subprocess(Base):
     process_num = Column(Integer, ForeignKey("process.num"), nullable=False, index=True)
     seq = Column(Integer, nullable=False)            # order within the phase
     question = Column(Text, default="")              # original WP_Master question text
-    # guidance (shared per code) — 'outcomes' doubles as the displayed label
+    # guidance (shared per code) - 'outcomes' doubles as the displayed label
     outcomes = Column(Text, default="")
     operational = Column(Text, default="")
     top_level = Column(Text, default="")
@@ -78,9 +78,19 @@ class WorkPackage(Base):
     jira_done = Column(Integer, default=0)
     jira_total = Column(Integer, default=0)
     jira_synced_at = Column(DateTime, nullable=True)
+    # External links (per work package) shown as buttons on the detail panel
+    confluence_url = Column(Text, default="")
+    dropbox_url = Column(Text, default="")
+    jamie_tag = Column(String(128), default="")   # Jamie tag NAME for this project's meeting notes
+    # NULL = top-level project; set = a sub-work-package nested under another work package
+    parent_id = Column(Integer, ForeignKey("work_package.id", ondelete="CASCADE"), nullable=True, index=True)
+    sub_num = Column(Integer, nullable=True)   # per-parent sub-work-package number (1, 2, 3 ...)
 
     statuses = relationship("WpStatus", cascade="all, delete-orphan", backref="wp")
     finished = relationship("WpFinished", cascade="all, delete-orphan", backref="wp")
+    tasks = relationship("WpTask", cascade="all, delete-orphan", backref="wp")
+    children = relationship("WorkPackage", cascade="all, delete-orphan",
+                            backref=backref("parent", remote_side=[id]))
 
 
 class WpStatus(Base):
@@ -96,6 +106,33 @@ class WpFinished(Base):
     __tablename__ = "wp_finished"
     wp_id = Column(Integer, ForeignKey("work_package.id", ondelete="CASCADE"), primary_key=True)
     process_num = Column(Integer, ForeignKey("process.num"), primary_key=True)
+
+
+class WpTask(Base):
+    """A free-form task on a work package's simple two-box task board.
+    status: 'todo' (red) | 'progress' (amber) | 'done' (green, right-hand box)."""
+    __tablename__ = "wp_task"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    wp_id = Column(Integer, ForeignKey("work_package.id", ondelete="CASCADE"),
+                   index=True, nullable=False)
+    title = Column(Text, nullable=False, default="")
+    status = Column(String(16), nullable=False, default="todo")   # todo | progress | done
+    points = Column(Integer, default=0)   # modified Fibonacci story points (0 = unset)
+    sub_wp_id = Column(Integer, nullable=True)   # optional link to one of the WP's sub-work-packages
+    seq = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Customer(Base):
+    """A customer login. Linked to a client (all that client's projects) and a
+    Jamie tag NAME used to pull their meeting notes. Password is hashed."""
+    __tablename__ = "customer"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    client = Column(String(255), default="")      # client they're linked to
+    jamie_tag = Column(String(128), default="")   # Jamie tag NAME for their meetings
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 def _ensure_columns():
@@ -119,6 +156,23 @@ def _ensure_columns():
         to_add.append("ALTER TABLE work_package ADD COLUMN jira_total INTEGER DEFAULT 0")
     if "jira_synced_at" not in existing:
         to_add.append("ALTER TABLE work_package ADD COLUMN jira_synced_at TIMESTAMP")
+    if "confluence_url" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN confluence_url TEXT DEFAULT ''")
+    if "dropbox_url" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN dropbox_url TEXT DEFAULT ''")
+    if "jamie_tag" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN jamie_tag VARCHAR(128) DEFAULT ''")
+    if "parent_id" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN parent_id INTEGER")
+    if "sub_num" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN sub_num INTEGER")
+    # wp_task.points (the table may already exist from an earlier run without this column)
+    if "wp_task" in insp.get_table_names():
+        task_cols = {c["name"] for c in insp.get_columns("wp_task")}
+        if "points" not in task_cols:
+            to_add.append("ALTER TABLE wp_task ADD COLUMN points INTEGER DEFAULT 0")
+        if "sub_wp_id" not in task_cols:
+            to_add.append("ALTER TABLE wp_task ADD COLUMN sub_wp_id INTEGER")
     if to_add:
         with engine.begin() as conn:
             for stmt in to_add:

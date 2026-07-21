@@ -1,6 +1,6 @@
 @echo off
-REM ---- Abacus Work Package Tracker launcher (Windows) ----
-REM Double-click this file to start the tracker.
+REM ---- Abacus Full System (Test) launcher (Windows) ----
+REM Double-click this file to start the test server.
 cd /d "%~dp0"
 
 REM Find a Python launcher
@@ -16,8 +16,8 @@ if not defined PY (
   exit /b 1
 )
 
-echo Starting Abacus Work Package Tracker...
-echo Your browser will open automatically at http://127.0.0.1:5010
+echo Starting Abacus Full System (Test)...
+echo Your browser will open automatically at http://127.0.0.1:5070
 echo (Press Ctrl+C to stop)
 
 %PY% -m pip install -r requirements.txt >nul 2>&1

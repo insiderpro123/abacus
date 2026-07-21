@@ -2,7 +2,7 @@
 
 > **Quick links**
 > - **App:** https://abacus-tracker.onrender.com
-> - **Password:** shared team password — _ask Sam Hucks_ (kept out of this page on purpose)
+> - **Password:** shared team password - _ask Sam Hucks_ (kept out of this page on purpose)
 > - **Code (GitHub):** https://github.com/insiderpro123/abacus
 > - **Hosting (Render):** https://dashboard.render.com
 
@@ -27,7 +27,7 @@ It is hosted on **Render** and protected by a single **shared team password**.
 3. You'll land on the dashboard.
 
 > ⏳ **First visit of the day may take ~30–50 seconds to load.** The free hosting "sleeps"
-> when idle and wakes on the first request. After it wakes it's fast. Just wait — don't refresh
+> when idle and wakes on the first request. After it wakes it's fast. Just wait - don't refresh
 > repeatedly.
 
 ---
@@ -73,16 +73,16 @@ Click any sub-point to open its editor:
 
 - **Set the status:** Complete / In progress / Outstanding / Not started / **Not required**.
 - **Guidance for the point** (shared across all projects): _Operational relevant, Abacus Top
-  level, Existing Assets, Comment_ — editable here.
+  level, Existing Assets, Comment_ - editable here.
 
 Other controls (on an expanded, Active project):
 
-- **Set all** on a phase — set every point in that phase at once (leaves any "Not required"
+- **Set all** on a phase - set every point in that phase at once (leaves any "Not required"
   points untouched).
-- **Edit** (top of the panel) — change the client, project name, emoji icon, or which points
+- **Edit** (top of the panel) - change the client, project name, emoji icon, or which points
   are Not required. In that form, a **ticked** box = the point applies; **untick** a box to
   mark it **Not required**.
-- **Make inactive / Make active** — see below.
+- **Make inactive / Make active** - see below.
 
 Every change saves immediately; a "✓ Saved" note appears top-right.
 
@@ -90,18 +90,18 @@ Every change saves immediately; a "✓ Saved" note appears top-right.
 
 ## Adding, and Active vs Inactive (locking)
 
-- **+ Add project** (below the Active list) — enter client, project name, an optional emoji,
+- **+ Add project** (below the Active list) - enter client, project name, an optional emoji,
   and tick which points already apply. New projects start as **Active**.
-- **Make inactive** — parks a project. **Inactive projects are locked (read-only)** — you can
+- **Make inactive** - parks a project. **Inactive projects are locked (read-only)** - you can
   view them but not edit points, run Set all, or edit details.
-- **Make active** — unlocks an inactive project so it can be edited again.
+- **Make active** - unlocks an inactive project so it can be edited again.
 
 ---
 
 ## Where the data lives
 
 - All data is stored in a **PostgreSQL database on Render** (EU / Frankfurt region). The
-  database is the single source of truth — the old Excel files are no longer used day-to-day.
+  database is the single source of truth - the old Excel files are no longer used day-to-day.
 - Access is limited to whoever has the **URL + team password**.
 
 ---
@@ -132,11 +132,11 @@ Every change saves immediately; a "✓ Saved" note appears top-right.
 
 | Problem | Fix |
 |---------|-----|
-| Page slow / spinner on first load | Normal — the free host is waking up (~30–50s). Wait. |
+| Page slow / spinner on first load | Normal - the free host is waking up (~30–50s). Wait. |
 | "Incorrect password" | Check with Sam; the password may have been changed. |
 | Can't edit a project | It's **Inactive** (locked). Click **Make active** first. |
 | An edit didn't stick | Refresh; check the "✓ Saved" note appeared. |
-| Site won't load at all | Check the Render dashboard — the service may be redeploying or the free DB may have expired. |
+| Site won't load at all | Check the Render dashboard - the service may be redeploying or the free DB may have expired. |
 
 ---
 

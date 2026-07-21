@@ -5,13 +5,13 @@ Pulls completed / total story points for a Jira project so the dashboard can
 show delivery progress. Read-only: nothing here writes to Jira.
 
 Configuration comes entirely from environment variables (never hardcode the
-token — it is a secret):
+token - it is a secret):
   JIRA_BASE_URL    site URL, e.g. https://insiderpro.atlassian.net   (default below)
   JIRA_EMAIL       the account the API token belongs to              (default below)
   JIRA_API_TOKEN   an Atlassian API token (READ-ONLY, scoped)        (required; no default)
 
 Auth: HTTP Basic (email:token). NOTE: modern *scoped* API tokens only work
-against the platform gateway https://api.atlassian.com/ex/jira/{cloudId}/... —
+against the platform gateway https://api.atlassian.com/ex/jira/{cloudId}/... -
 the site URL (…atlassian.net/rest/…) returns 401 for them. So we discover the
 site's cloudId from the public {site}/_edge/tenant_info endpoint and send all
 authenticated calls through the gateway.

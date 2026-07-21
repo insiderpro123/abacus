@@ -1,0 +1,166 @@
+/* Customer portal - styled to match the Jamie Meeting Dashboard.
+   Brand accents: teal #4cc6df, dark slate #444545 */
+:root {
+    --teal: #4cc6df;
+    --teal-dark: #2ea6bf;
+    --ink: #2b2c2c;
+    --slate: #444545;
+    --muted: #7b8285;
+    --line: #e6eaec;
+    --bg: #ffffff;
+    --bg-soft: #f6f8f9;
+    --shadow: 0 1px 3px rgba(20,30,40,.06), 0 6px 24px rgba(20,30,40,.05);
+    --radius: 14px;
+    --green: #33b679;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Topbar ---------- */
+.topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px; border-bottom: 1px solid var(--line);
+    background: #fff; position: sticky; top: 0; z-index: 20;
+}
+.topbar-left h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.topbar-left .subtitle { font-size: 13px; color: var(--muted); }
+.topbar-right { display: flex; align-items: center; gap: 20px; }
+.logo { height: 34px; width: auto; }
+.btn-signout {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #fff; color: var(--slate); border: 1px solid var(--line);
+    padding: 8px 16px; border-radius: 9px; font-weight: 600; font-size: 13px;
+    cursor: pointer; text-decoration: none; transition: border-color .12s, background .12s;
+    font-family: inherit;
+}
+.btn-signout:hover { border-color: var(--teal); background: var(--bg-soft); }
+
+.hidden { display: none !important; }
+
+/* ---------- Layout ---------- */
+.layout {
+    display: grid; grid-template-columns: 320px 1fr;
+    gap: 24px; padding: 24px 32px 40px; align-items: start;
+}
+
+/* ---------- Panels / Sidebar ---------- */
+.panel {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    margin-bottom: 20px; overflow: hidden;
+}
+.panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+}
+.panel-head h2 { margin: 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--slate); }
+.search-box {
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+    font-size: 13px; width: 130px; outline: none; font-family: inherit;
+}
+.search-box:focus { border-color: var(--teal); }
+
+/* Locked "Your account" card */
+.account {
+    display: flex; align-items: center; gap: 12px; padding: 16px;
+}
+.account .acc-badge {
+    width: 40px; height: 40px; border-radius: 11px; background: #e9f9fc; border: 1px solid #cdeef5;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
+}
+.account .acc-name { font-size: 15px; font-weight: 800; letter-spacing: -.01em; }
+.account .acc-sub { font-size: 12px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 5px; }
+.lock { font-size: 11px; }
+
+/* Meeting list */
+.meeting-list { list-style: none; margin: 0; padding: 8px; max-height: 620px; overflow-y: auto; }
+.meeting-item {
+    padding: 11px 12px; border-radius: 9px; cursor: pointer;
+    border: 1px solid transparent; transition: background .12s, border-color .12s;
+}
+.meeting-item:hover { background: var(--bg-soft); }
+.meeting-item.active { background: #e9f9fc; border-color: #cdeef5; }
+.meeting-item .m-title { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+.meeting-item .m-date { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.meeting-empty { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ---------- Main detail ---------- */
+.main { min-width: 0; }
+.detail-loading { padding: 40px; text-align: center; color: var(--muted); }
+.meeting-detail {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 28px 30px;
+}
+.badge {
+    display: inline-block; background: var(--teal); color: #fff;
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px;
+}
+#detailTitle { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.02em; line-height: 1.25; }
+.detail-meta { margin-top: 12px; font-size: 15px; font-weight: 600; color: var(--slate); display: flex; gap: 16px; flex-wrap: wrap; }
+.detail-meta span { display: inline-flex; align-items: center; gap: 5px; }
+
+.detail-section { margin-top: 28px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.section-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.pill { background: var(--bg-soft); color: var(--slate); font-size: 12px; font-weight: 600; padding: 3px 11px; border-radius: 20px; }
+
+/* Overview */
+.view-toggle { display: inline-flex; background: var(--bg-soft); border-radius: 9px; padding: 3px; }
+.vt { border: none; background: none; padding: 6px 14px; border-radius: 7px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; font-family: inherit; }
+.vt.active { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+.overview { font-size: 14.5px; line-height: 1.65; color: #33383a; }
+.overview h1, .overview h2 { font-size: 16px; font-weight: 700; margin: 22px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.overview h2:first-child, .overview h1:first-child { margin-top: 0; }
+.overview h3, .overview h4 { font-size: 14.5px; font-weight: 700; margin: 16px 0 6px; }
+.overview ul { padding-left: 20px; margin: 8px 0; }
+.overview li { margin: 5px 0; }
+.overview strong { color: var(--ink); }
+.overview p { margin: 8px 0; }
+
+/* Action items */
+.action-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.action-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: 11px;
+    background: var(--bg-soft); transition: border-color .12s;
+}
+.action-item:hover { border-color: #cdeef5; }
+.action-item.done .action-text { text-decoration: line-through; color: var(--muted); }
+.action-body { flex: 1; min-width: 0; }
+.action-text { font-size: 14px; line-height: 1.45; }
+.action-assignee {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 7px;
+    font-size: 12px; font-weight: 600; color: var(--slate);
+}
+.avatar {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--teal);
+    color: #fff; font-size: 10px; font-weight: 700; display: inline-flex;
+    align-items: center; justify-content: center; flex-shrink: 0;
+}
+.no-actions { color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+/* ---------- Footer ---------- */
+.footer { padding: 18px 32px 30px; text-align: center; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); }
+.ro-badge { background: #eafaf0; color: var(--green); font-weight: 700; padding: 2px 9px; border-radius: 20px; font-size: 11px; }
+
+/* ---------- Status / errors ---------- */
+.status { color: var(--muted); padding: 8px 0; }
+.status.error { color: #b3261e; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 960px) {
+    .layout { grid-template-columns: 1fr; }
+    .topbar { padding: 16px 20px; }
+    .layout { padding-left: 20px; padding-right: 20px; }
+    .meeting-list { max-height: 320px; }
+}

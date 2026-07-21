@@ -1,5 +1,5 @@
 #!/bin/bash
-# ---- Abacus Work Package Tracker launcher (macOS) ----
+# ---- Abacus Full System (Test) launcher (macOS) ----
 # Most reliable way to run: open Terminal, type "bash " (with a space),
 # drag this file into the window, and press Return. See SETUP-MAC.txt.
 # To make it double-clickable instead: right-click -> Open once
@@ -20,8 +20,8 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 
-echo "Starting Abacus Work Package Tracker..."
-echo "Your browser will open automatically at http://127.0.0.1:5010"
+echo "Starting Abacus Full System (Test)..."
+echo "Your browser will open automatically at http://127.0.0.1:5070"
 echo "(Close this window or press Ctrl+C to stop)"
 
 # Install dependencies (quiet; first run may take a moment)

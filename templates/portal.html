@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting notes · Insider Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='portal.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='ip-logo.svg') }}">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <h1>Meeting Notes</h1>
+        </div>
+        <div class="topbar-right">
+            <a class="btn-signout" href="{{ url_for('logout') }}">Sign out</a>
+            <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" class="logo">
+        </div>
+    </header>
+
+    <div class="layout">
+        <!-- Sidebar: locked account + meetings -->
+        <aside class="sidebar">
+            <div class="panel">
+                <div class="panel-head"><h2>Your account</h2></div>
+                <div class="account">
+                    <span class="acc-badge">🏢</span>
+                    <div>
+                        <div class="acc-name">{{ customer_name }}</div>
+                        <div class="acc-sub"><span class="lock">🔒</span>
+                            {% if jamie_tag %}{{ jamie_tag }} meetings{% else %}Access locked to your account{% endif %}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>Meetings</h2>
+                    <input id="searchBox" type="search" placeholder="Search…" class="search-box">
+                </div>
+                <ul id="meetingList" class="meeting-list">
+                    <li class="meeting-empty">Loading…</li>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Main: selected meeting -->
+        <main class="main">
+            <div id="status" class="status hidden"></div>
+            <div id="detailLoading" class="detail-loading hidden">Loading meeting…</div>
+
+            <article id="meetingDetail" class="meeting-detail hidden">
+                <div class="detail-header">
+                    <span id="detailBadge" class="badge">Latest meeting</span>
+                    <h2 id="detailTitle"></h2>
+                    <div id="detailMeta" class="detail-meta"></div>
+                </div>
+
+                <!-- Overview -->
+                <section class="detail-section">
+                    <div class="section-head">
+                        <div class="view-toggle">
+                            <button data-view="summary" class="vt active">Summary</button>
+                            <button data-view="full" class="vt">Full notes</button>
+                        </div>
+                    </div>
+                    <div id="overview" class="overview"></div>
+                </section>
+
+                <!-- Action items -->
+                <section class="detail-section">
+                    <div class="section-head">
+                        <h3>Key action items</h3>
+                        <span id="actionCount" class="pill"></span>
+                    </div>
+                    <ul id="actionItems" class="action-items"></ul>
+                </section>
+            </article>
+        </main>
+    </div>
+
+    <footer class="footer">
+        <span class="ro-badge">Read-only</span> · Your meetings with Insider Pro
+    </footer>
+
+    <script src="{{ url_for('static', filename='portal.js') }}"></script>
+</body>
+</html>

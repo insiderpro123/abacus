@@ -16,24 +16,28 @@
     p.sub { margin: 0 0 20px; font-size: 12px; color: var(--muted); }
     label { display: block; text-align: left; font-size: 11px; font-weight: 700; color: var(--accent);
             text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
-    input[type=password] { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid var(--line);
-            border-radius: 6px; outline: none; font-family: inherit; }
-    input[type=password]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(18,125,148,.18); }
-    button { width: 100%; margin-top: 14px; padding: 11px; font-size: 14px; font-weight: 700; color: #fff;
+    input { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid var(--line);
+            border-radius: 6px; outline: none; font-family: inherit; margin-bottom: 14px; }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(18,125,148,.18); }
+    button { width: 100%; margin-top: 4px; padding: 11px; font-size: 14px; font-weight: 700; color: #fff;
              background: var(--accent); border: none; border-radius: 6px; cursor: pointer; font-family: inherit; }
     button:hover { background: #0d5c6e; }
     .err { margin-top: 12px; font-size: 12.5px; color: #b3362a; }
+    .hint { margin-top: 16px; font-size: 11px; color: var(--muted); line-height: 1.5; }
   </style>
 </head>
 <body>
   <form class="card" method="POST" action="{{ url_for('login') }}">
     <img class="logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
-    <h1>Work Package Tracker</h1>
-    <p class="sub">Enter the team password to continue</p>
+    <h1>Full System (Test)</h1>
+    <p class="sub">Sign in to continue</p>
+    <label for="email">Email <span style="font-weight:400;text-transform:none;color:var(--muted)">(customers)</span></label>
+    <input type="email" id="email" name="email" autocomplete="username" placeholder="you@company.com" />
     <label for="password">Password</label>
-    <input type="password" id="password" name="password" autofocus autocomplete="current-password" />
+    <input type="password" id="password" name="password" autocomplete="current-password" />
     <button type="submit">Sign in</button>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="hint">Customers: sign in with your email and password.<br>Team: leave email blank and enter the team password.</div>
   </form>
 </body>
 </html>

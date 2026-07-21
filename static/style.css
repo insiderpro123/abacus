@@ -37,6 +37,7 @@ body {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 14px;
   padding: 4px 0 10px;
   margin-bottom: 12px;
 }
@@ -63,7 +64,12 @@ main { padding: 16px 32px 60px; max-width: none; margin: 0; }
   display: flex; justify-content: space-between; align-items: center;
   flex-wrap: wrap; gap: 12px 20px; margin-bottom: 16px;
 }
-.controls-right { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; }
+.controls-right { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 12px; }
+/* header buttons: same height, aligned to the right of the page */
+.controls-right .btn, .controls-right .linkbtn {
+  height: 34px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 14px; font-size: 13px; line-height: 1;
+}
 .filters { display: flex; gap: 8px; }
 .chip {
   background: var(--panel); color: var(--muted);
@@ -75,6 +81,8 @@ main { padding: 16px 32px 60px; max-width: none; margin: 0; }
 .chip.active[data-filter="Inactive"] { background: var(--todo); color: #fff; border-color: var(--todo); }
 
 .legend { display: flex; gap: 16px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+/* colour key sits on its own line, below the buttons (Refresh / Customer logins / Sign out) */
+.controls-right .legend { flex-basis: 100%; justify-content: flex-end; margin-top: 8px; }
 .legend span { display: flex; align-items: center; gap: 6px; }
 .sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
 .sw.done { background: var(--done); }
@@ -517,9 +525,260 @@ textarea.text-input { resize: vertical; min-height: 44px; line-height: 1.4; }
 /* --------------------------------------------------------------------- */
 /* Mobile / small screens                                                */
 /* The matrix stays a spreadsheet-style horizontal scroll (project name  */
+/* --------------------------------------------------------------------- */
+/* Full-system additions: task board, per-WP links, header Jamie link.   */
+/* --------------------------------------------------------------------- */
+
+/* Task count badge on the matrix rows (sits next to the Jira badge) */
+.task-badge {
+  display: inline-block; font-size: 10px; font-weight: 700; line-height: 1;
+  padding: 3px 7px; border-radius: 10px; white-space: nowrap;
+  color: var(--progress); background: var(--progress-bg); border: 1px solid #e2c48a;
+}
+.task-badge.all-done { color: var(--done); background: var(--done-bg); border-color: #a9d3ab; }
+.wp-text .task-badge { margin-top: 3px; align-self: flex-start; }
+
+/* Link buttons row on the detail panel + the header Jamie link */
+.panel-links { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.linkbtn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--panel); color: var(--accent); border: 1px solid var(--accent);
+  padding: 5px 11px; border-radius: 4px; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  text-decoration: none; transition: .15s;
+}
+.linkbtn:hover { background: var(--accent); color: #fff; }
+
+/* A whole phase marked "Not required": shown like a not-started cell but with a
+   small × instead of a dash (it is excluded, so it is not counted as 100%). */
+.cell-pill.nr span { font-weight: 700; }
+.tl-phase.nr .tl-num, .tl-phase.nr .tl-pct, .tl-phase.nr .tl-title { color: var(--nr); }
+.tl-phase.nr .tl-pct { font-weight: 800; }
+.tl-dot.nr { background: var(--nr); }
+.seg.nr { background: var(--nr-bg); border-color: var(--nr); }
+.grow.nr .gtitle { text-decoration: line-through; color: var(--nr); }
+.grow.nr .gpct { color: var(--nr); font-weight: 800; }
+
+/* Sub-work-packages folder (nested 12-step mini-trackers) */
+.subwp-folder { padding: 12px 16px 14px; }
+.subwp { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; overflow: hidden; background: #fff; }
+.subwp-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; }
+.subwp-head:hover { background: var(--panel-2); }
+.subwp.open .subwp-head { background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.subwp-caret { color: var(--muted); font-size: 10px; transition: transform .15s; flex: none; }
+.subwp.open .subwp-caret { transform: rotate(90deg); }
+.subwp-num { flex: none; font-family: "Consolas", "Courier New", monospace; font-size: 11px; font-weight: 700;
+  color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; }
+.subwp-name { font-weight: 700; font-size: 13px; width: 130px; min-width: 130px; flex: none; line-height: 1.25; }
+
+/* the 12-step colour bars on the collapsed row (same style as the matrix pills) */
+.subwp-cells { display: flex; gap: 3px; flex: 1; min-width: 0; }
+.subwp-cells .cell-pill { flex: 1; min-width: 20px; height: 26px; font-size: 10.5px; }
+
+/* expanded toolbar: status, % complete, and the moved Edit / Delete actions */
+.subwp-bodybar { display: flex; align-items: center; gap: 12px; padding: 10px 10px 2px; }
+.subwp-overall { font-size: 12px; font-weight: 700; color: var(--muted); }
+.subwp-body-actions { margin-left: auto; display: flex; gap: 6px; }
+.subwp-body-actions button {
+  background: #fff; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; font-weight: 600;
+  padding: 5px 12px; cursor: pointer; color: var(--muted); font-family: inherit;
+}
+.subwp-body-actions .subwp-edit:hover { border-color: var(--accent); color: var(--accent); }
+.subwp-body-actions .subwp-del:hover { border-color: var(--todo); color: var(--todo); }
+.subwp-body { padding: 4px 4px 10px; }
+
+@media (max-width: 640px) {
+  .subwp-name { width: 96px; min-width: 96px; }
+  .subwp-cells .cell-pill { min-width: 14px; height: 22px; font-size: 9px; }
+}
+.subwp-empty { color: var(--muted); font-size: 12.5px; font-style: italic; padding: 6px 2px 12px; }
+.subwp-add {
+  width: 100%; background: #fff; border: 1.5px dashed var(--line); border-radius: 8px;
+  padding: 10px; font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer;
+  font-family: inherit; transition: .12s;
+}
+.subwp-add:hover { border-color: var(--accent); color: var(--accent); background: #f6f9fe; }
+
+/* Collapsible sections inside an expanded work-package panel (Tasks / 12 steps) */
+.psec { border-top: 1px solid var(--line); }
+.psec:first-of-type { border-top: none; }
+.psec-head {
+  display: flex; align-items: center; gap: 9px; padding: 11px 20px;
+  cursor: pointer; user-select: none; background: var(--panel-2);
+}
+.psec-head:hover { background: #eef1f5; }
+.psec-caret { display: inline-block; font-size: 11px; color: var(--muted); transition: transform .15s; }
+.psec:not(.collapsed) .psec-caret { transform: rotate(90deg); }
+.psec-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+.psec.collapsed .psec-body { display: none; }
+.psec-body .taskboard-section { border-bottom: none; }
+
+/* Stacked modes (Actions only / Meeting notes): hide the 12-step Abacus matrix;
+   show only the per-package panels, stacked full-width as a simple vertical list. */
+table.matrix.stacked { display: block; table-layout: auto; border-spacing: 0; }
+.matrix.stacked thead { display: none; }
+.matrix.stacked tbody,
+.matrix.stacked tr,
+.matrix.stacked td { display: block; width: 100%; }
+.matrix.stacked .panel-row > td { padding: 0 0 16px; border-bottom: none; }
+.matrix.stacked .panel { position: static; left: auto; width: 100% !important; }
+/* no redundant caret line in stacked modes - the header ✕ collapses/expands */
+.matrix.stacked .psec-head { display: none; }
+.matrix.stacked .psec { border-top: none; }
+.matrix.stacked .section-row td { padding: 10px 2px 4px; background: var(--bg); }
+.matrix.stacked .add-row td { padding: 4px 0 8px; }
+
+/* Meeting notes embedded in a work-package panel (Jamie overview + action items) */
+.wp-notes { padding: 4px; }
+.notes-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+.notes-list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; max-height: 420px; overflow-y: auto; }
+.note-item { padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.note-item:last-child { border-bottom: none; }
+.note-item:hover { background: var(--panel-2); }
+.note-item.active { background: #e9f6f9; }
+.note-item .ni-title { font-size: 13px; font-weight: 700; line-height: 1.3; }
+.note-item .ni-date { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.notes-detail { min-width: 0; }
+.note-badge { display: inline-block; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+  padding: 3px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: .04em; }
+.note-title { margin: 8px 0 4px; font-size: 18px; font-weight: 800; color: var(--text); line-height: 1.25; }
+.note-meta { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 12px; }
+.note-toggle { display: inline-flex; background: var(--panel-2); border-radius: 8px; padding: 3px; margin-bottom: 10px; }
+.ntg { border: none; background: none; padding: 5px 13px; border-radius: 6px; font-size: 12.5px; font-weight: 600;
+  color: var(--muted); cursor: pointer; font-family: inherit; }
+.ntg.active { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.note-overview { font-size: 13.5px; line-height: 1.6; color: #33383a; }
+.note-overview h1, .note-overview h2 { font-size: 15px; font-weight: 700; margin: 16px 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line); color: var(--accent); }
+.note-overview h2:first-child, .note-overview h1:first-child { margin-top: 0; }
+.note-overview h3, .note-overview h4 { font-size: 13.5px; font-weight: 700; margin: 12px 0 5px; }
+.note-overview ul { padding-left: 20px; margin: 6px 0; }
+.note-overview li { margin: 4px 0; }
+.note-actions-head { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px; font-size: 15px; font-weight: 700; }
+.note-actions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.note-action { display: flex; flex-direction: column; gap: 6px; padding: 11px 13px; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--panel-2); }
+.note-action.done .na-text { text-decoration: line-through; color: var(--muted); }
+.na-text { font-size: 13.5px; line-height: 1.4; }
+.note-assignee { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.note-assignee .avatar { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff;
+  font-size: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.notes-empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 14px 4px; }
+.notes-loading { color: var(--muted); font-size: 13px; padding: 14px 4px; }
+@media (max-width: 760px) { .notes-layout { grid-template-columns: 1fr; } .notes-list { max-height: 220px; } }
+
+/* "Actions only" toggle at the top */
+.actions-toggle {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 10px;
+  font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; user-select: none;
+}
+.actions-toggle:hover { color: var(--text); }
+.actions-toggle input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+
+/* inactive placeholder buttons (not linked yet) */
+.linkbtn:disabled, .linkbtn.disabled {
+  color: var(--muted); border-color: var(--line); background: var(--panel-2);
+  cursor: not-allowed; opacity: .85;
+}
+.linkbtn:disabled:hover, .linkbtn.disabled:hover { background: var(--panel-2); color: var(--muted); }
+
+/* Task board - embedded in the work-package panel */
+.taskboard-section { padding: 14px 20px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+
+/* "+ Add task" button lives inside the Working box */
+.tb-add-btn {
+  width: 100%; margin-top: 10px; background: #fff; border: 1.5px dashed var(--line);
+  border-radius: 6px; padding: 9px; font-size: 12.5px; font-weight: 700; color: var(--muted);
+  cursor: pointer; font-family: inherit; transition: .12s;
+}
+.tb-add-btn:hover { border-color: var(--accent); color: var(--accent); background: #f6f9fe; }
+
+/* per-task sub-workpackage link dropdown (stays with the task into Complete) */
+.task-subwp {
+  flex: none; font-family: "Consolas", "Courier New", monospace; font-size: 11px; font-weight: 700;
+  color: var(--accent); border: 1px solid var(--line); border-radius: 4px; padding: 4px 5px;
+  background: #fff; cursor: pointer; outline: none;
+}
+.task-subwp:hover { border-color: var(--accent); }
+
+/* story-points dropdown on each card (modified Fibonacci) */
+.task-points {
+  flex: none; font-family: inherit; font-size: 11px; font-weight: 700; color: var(--accent);
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 5px; background: #fff;
+  cursor: pointer; outline: none;
+}
+.task-points:hover { border-color: var(--accent); }
+.tb-total { margin-left: auto; font-size: 11px; font-weight: 800; color: var(--muted); }
+.task-box.complete .tb-total { color: var(--done); }
+
+/* Add-task pop-out: title + points chips */
+.addtask-modal { width: 440px; }
+.point-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.point-chip {
+  min-width: 40px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 6px;
+  background: #fff; color: var(--text); font-family: inherit; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: .12s;
+}
+.point-chip:hover { border-color: var(--accent); }
+.point-chip.sel { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.taskboard { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.task-box {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px; min-height: 220px;
+}
+.task-box.complete { background: #f2f8f2; border-color: #cfe4cf; }
+.task-box-head {
+  font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text); margin-bottom: 10px; display: flex; align-items: baseline; gap: 8px;
+}
+.task-box.complete .task-box-head { color: var(--done); }
+.tb-hint { font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--muted); }
+.task-list { display: flex; flex-direction: column; gap: 8px; }
+
+.task-card {
+  display: flex; align-items: center; gap: 9px;
+  background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--na);
+  border-radius: 6px; padding: 9px 10px; cursor: pointer; transition: .12s;
+  box-shadow: var(--shadow);
+}
+.task-card:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+.task-card[draggable="true"] { cursor: grab; }
+.task-card.dragging { opacity: .45; cursor: grabbing; }
+/* satisfying drop target highlight while dragging a card over a box */
+.task-box.drop-hover { outline: 2px dashed var(--accent); outline-offset: -3px; }
+.task-box.complete.drop-hover { outline-color: var(--done); background: #eaf6ec; }
+.task-box.working.drop-hover { background: #eef6f9; }
+.task-card .task-status-dot { width: 10px; height: 10px; min-width: 10px; border-radius: 50%; }
+.task-card .task-title { flex: 1; font-size: 13px; line-height: 1.35; word-break: break-word; }
+.task-card .task-title.renamable { cursor: text; }
+.task-rename {
+  flex: 1; font-family: inherit; font-size: 13px; padding: 3px 6px;
+  border: 1px solid var(--accent); border-radius: 4px; outline: none;
+  box-shadow: 0 0 0 2px rgba(18,125,148,.15);
+}
+.task-card .task-del {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px; opacity: .55;
+}
+.task-card .task-del:hover { color: var(--todo); background: var(--todo-bg); opacity: 1; }
+
+.task-card.todo { border-left-color: var(--todo); background: var(--todo-bg); }
+.task-card.todo .task-status-dot { background: var(--todo); }
+.task-card.progress { border-left-color: var(--progress); background: var(--progress-bg); }
+.task-card.progress .task-status-dot { background: var(--progress); }
+.task-card.done { border-left-color: var(--done); background: var(--done-bg); }
+.task-card.done .task-status-dot { background: var(--done); }
+.task-card.done .task-title { text-decoration: line-through; color: var(--muted); }
+
+.task-empty { font-size: 12px; color: var(--muted); padding: 8px 4px; font-style: italic; }
+
+/* --------------------------------------------------------------------- */
 /* column pinned left); everything else reflows to fit a narrow screen.  */
 /* --------------------------------------------------------------------- */
 @media (max-width: 640px) {
+  .taskboard { grid-template-columns: 1fr; }
+  .taskboard-section { padding: 12px 12px 14px; }
+  .addtask-modal { width: 100%; }
   body { font-size: 13px; -webkit-text-size-adjust: 100%; }
   main { padding: 10px 12px 48px; }
 
