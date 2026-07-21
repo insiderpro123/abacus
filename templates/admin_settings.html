@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings · Insider Pro</title>
+  <link rel="icon" href="{{ url_for('static', filename='ip-logo.svg') }}" />
+  <style>
+    :root { --accent:#127d94; --accent-bright:#4cc6df; --text:#1f2933; --muted:#6b7480;
+            --line:#e0e0dc; --panel-2:#f4f6f8; --todo:#b3362a; --done:#2e7d32; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Arial, "Segoe UI", Helvetica, sans-serif; background:#fff;
+           color:var(--text); font-size:14px; }
+    .topbar { display:flex; align-items:center; gap:16px; padding:14px 28px; border-bottom:1px solid var(--line); position:sticky; top:0; background:#fff; z-index:10; }
+    .topbar .logo { height:30px; }
+    .topbar .title { font-size:15px; font-weight:800; color:var(--accent); }
+    .topbar .sp { margin-left:auto; }
+    .topbar .saved { font-size:12px; color:var(--done); font-weight:700; margin-right:6px; min-width:70px; text-align:right; }
+    .topbar .saved.err { color:var(--todo); }
+    .topbar a, .topbar button.act { font-size:12.5px; font-weight:700; color:var(--accent); text-decoration:none; cursor:pointer;
+                border:1px solid var(--accent); border-radius:5px; padding:7px 12px; margin-left:8px; background:#fff; font-family:inherit; }
+    .topbar a:hover, .topbar button.act:hover { background:var(--accent); color:#fff; }
+    main { max-width: 900px; margin:0 auto; padding:22px 20px 60px; }
+    .intro { color:var(--muted); font-size:13px; margin:0 0 18px; }
+    h2.page { font-size:16px; color:var(--accent); margin:6px 0 4px; }
+
+    .proc { border:1px solid var(--line); border-radius:8px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
+    .proc-head { display:flex; align-items:center; gap:10px; padding:12px 14px; background:var(--panel-2); border-bottom:1px solid var(--line); border-radius:8px 8px 0 0; }
+    .pnum { width:26px; height:26px; min-width:26px; border-radius:5px; background:var(--accent-bright); color:#06333d;
+            font-weight:800; display:inline-flex; align-items:center; justify-content:center; }
+    .title-input { flex:1; font-size:14px; font-weight:700; color:var(--text); border:1px solid transparent; border-radius:5px;
+            padding:6px 8px; font-family:inherit; background:transparent; }
+    .title-input:hover { border-color:var(--line); background:#fff; }
+    .title-input:focus { border-color:var(--accent); background:#fff; outline:none; box-shadow:0 0 0 2px rgba(18,125,148,.15); }
+
+    .sub { padding:10px 14px; border-bottom:1px solid var(--line); }
+    .sub:last-child { border-bottom:none; }
+    .sub-top { display:flex; gap:10px; align-items:flex-start; }
+    .scode { font-family:"Consolas","Courier New",monospace; font-size:12px; font-weight:700; color:var(--accent);
+             background:#e9f6f9; border:1px solid var(--accent-bright); border-radius:4px; padding:3px 7px; margin-top:4px; }
+    .flabel { font-size:10.5px; font-weight:800; color:var(--accent); text-transform:uppercase; letter-spacing:.04em; margin:8px 0 4px; }
+    textarea.fld, input.fld { width:100%; font-family:inherit; font-size:13px; border:1px solid var(--line); border-radius:6px;
+            padding:8px 10px; outline:none; resize:vertical; }
+    textarea.fld:focus, input.fld:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(18,125,148,.15); }
+    details.more { margin-top:8px; }
+    details.more > summary { cursor:pointer; font-size:12px; font-weight:700; color:var(--muted); list-style:none; padding:4px 0; }
+    details.more > summary:hover { color:var(--accent); }
+    details.more[open] > summary { color:var(--accent); }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
+    @media (max-width:640px) { .grid2 { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <img class="logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
+    <span class="title">Settings</span>
+    <span class="sp"></span>
+    <span id="saved" class="saved"></span>
+    <button class="act" id="refresh-jira">↻ Refresh from Jira</button>
+    <a href="{{ url_for('admin_customers') }}">👥 Customer logins</a>
+    <a href="{{ url_for('index') }}">← Dashboard</a>
+    <a href="{{ url_for('logout') }}">Sign out</a>
+  </header>
+  <main>
+    <h2 class="page">Edit the 12 steps &amp; sub-processes</h2>
+    <p class="intro">Rename a step, or edit a sub-process's outcome/guidance. Changes save automatically and
+      apply to every work package. (The step count and codes are fixed.)</p>
+
+    {% for p in processes %}
+    <div class="proc">
+      <div class="proc-head">
+        <span class="pnum">{{ p.num }}</span>
+        <input class="title-input fld" data-kind="process" data-num="{{ p.num }}" data-field="title"
+               value="{{ p.title }}" />
+      </div>
+      {% for s in p.subs %}
+      <div class="sub">
+        <div class="sub-top">
+          <span class="scode">{{ s.code }}</span>
+          <div style="flex:1">
+            <div class="flabel">Outcome (shown as the sub-process label)</div>
+            <textarea class="fld" rows="2" data-kind="subprocess" data-code="{{ s.code }}" data-field="outcomes">{{ s.outcomes }}</textarea>
+            <details class="more">
+              <summary>Question &amp; guidance</summary>
+              <div class="flabel">Question</div>
+              <textarea class="fld" rows="2" data-kind="subprocess" data-code="{{ s.code }}" data-field="question">{{ s.question }}</textarea>
+              <div class="grid2">
+                <div><div class="flabel">Operational relevant</div>
+                  <textarea class="fld" rows="2" data-kind="subprocess" data-code="{{ s.code }}" data-field="operational">{{ s.operational }}</textarea></div>
+                <div><div class="flabel">Abacus top level</div>
+                  <textarea class="fld" rows="2" data-kind="subprocess" data-code="{{ s.code }}" data-field="top_level">{{ s.top_level }}</textarea></div>
+                <div><div class="flabel">Existing assets</div>
+                  <textarea class="fld" rows="2" data-kind="subprocess" data-code="{{ s.code }}" data-field="assets">{{ s.assets }}</textarea></div>
+                <div><div class="flabel">Comment</div>
+                  <textarea class="fld" rows="2" data-kind="subprocess" data-code="{{ s.code }}" data-field="comment">{{ s.comment }}</textarea></div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </main>
+
+  <script>
+    const savedEl = document.getElementById("saved");
+    let savedTimer = null;
+    function flash(ok, msg) {
+      savedEl.className = "saved" + (ok ? "" : " err");
+      savedEl.textContent = ok ? "Saved ✓" : (msg || "Save failed");
+      if (savedTimer) clearTimeout(savedTimer);
+      if (ok) savedTimer = setTimeout(() => { savedEl.textContent = ""; }, 2000);
+    }
+    async function post(url, body) {
+      const res = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      return json;
+    }
+    // auto-save each field on blur, only when it actually changed
+    document.querySelectorAll(".fld").forEach((el) => {
+      el.dataset.orig = el.value;
+      el.addEventListener("blur", async () => {
+        if (el.value === el.dataset.orig) return;
+        const field = el.dataset.field;
+        try {
+          if (el.dataset.kind === "process") {
+            await post("/api/admin/process/update", { num: el.dataset.num, title: el.value });
+          } else {
+            await post("/api/admin/subprocess/update", { code: el.dataset.code, [field]: el.value });
+          }
+          el.dataset.orig = el.value;
+          flash(true);
+        } catch (e) {
+          flash(false, e.message);
+          el.value = el.dataset.orig;   // revert on error
+        }
+      });
+    });
+    // Refresh from Jira
+    document.getElementById("refresh-jira").addEventListener("click", async () => {
+      const btn = document.getElementById("refresh-jira");
+      const orig = btn.textContent; btn.disabled = true; btn.textContent = "Refreshing…";
+      try {
+        const j = await post("/api/jira/refresh", {});
+        const failed = (j.errors || []).length;
+        flash(true); savedEl.textContent = `Jira: updated ${j.updated}${failed ? ", " + failed + " failed" : ""}`;
+      } catch (e) { flash(false, e.message); }
+      finally { btn.disabled = false; btn.textContent = orig; }
+    });
+  </script>
+</body>
+</html>

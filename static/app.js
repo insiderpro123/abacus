@@ -1581,32 +1581,7 @@ $("#meeting-notes").addEventListener("change", (e) => {
   render();
 });
 
-// One Refresh: re-pull Jira story points (if configured) and reload the data,
-// which also re-fetches the Jamie meeting notes for any open work packages.
-$("#refresh-btn").addEventListener("click", async () => {
-  const btn = $("#refresh-btn");
-  const sync = $("#sync");
-  const orig = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "Refreshing…";
-  let jiraMsg = "";
-  try {
-    if (DATA && DATA.jira_configured) {
-      const res = await fetch("/api/jira/refresh", { method: "POST" });
-      const json = await res.json();
-      if (json.error) throw new Error(json.error);
-      const failed = (json.errors || []).length;
-      jiraMsg = `Jira ${json.updated}${failed ? `, ${failed} failed` : ""} · `;
-    }
-    await load();   // reloads the matrix + re-fetches Jamie notes for open panels
-    if (sync) { sync.className = "sync ok"; sync.textContent = jiraMsg + "Refreshed"; }
-  } catch (e) {
-    if (sync) { sync.className = "sync error"; sync.textContent = "Refresh failed: " + e.message; }
-  } finally {
-    btn.disabled = false;
-    btn.textContent = orig;
-  }
-});
+// (Refresh moved to the Settings page: /admin/settings)
 
 window.addEventListener("resize", sizePanels);
 

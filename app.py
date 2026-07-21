@@ -120,22 +120,8 @@ def _backfill_task_points():
 
 
 _backfill_task_points()
-
-
-def _patch_outcomes():
-    """Apply the reviewed outcome wording for sub-points 1.3/4.1/4.2 (see
-    patch_outcomes.py). Idempotent: only writes when the text differs, so it runs
-    harmlessly on every startup and updates the live DB on deploy."""
-    from patch_outcomes import OUTCOMES
-    from models import Subprocess as _Sub
-    with SessionLocal.begin() as s:
-        for code, text in OUTCOMES.items():
-            sp = s.get(_Sub, code)
-            if sp and (sp.outcomes or "").strip() != text:
-                sp.outcomes = text
-
-
-_patch_outcomes()
+# (Outcome wording is now edited via /admin/settings; the one-off patch_outcomes.py
+#  remains as a manual tool. No startup force here - it would overwrite edits.)
 
 # --------------------------------------------------------------------------- #
 # Status helpers (unchanged meaning from the Excel version)
@@ -555,6 +541,67 @@ def api_wp_meeting(wp_id, meeting_id):
     if tag.lower() not in tag_names:
         return jsonify({"error": "This meeting is not tagged for this project."}), 403
     return jsonify(_shape_meeting_detail(detail))
+
+
+# --------------------------------------------------------------------------- #
+# Staff admin: Settings - edit the 12 process steps + sub-processes
+# --------------------------------------------------------------------------- #
+@app.route("/admin/settings")
+def admin_settings():
+    with SessionLocal() as s:
+        procs = s.query(Process).order_by(Process.num).all()
+        subs = s.query(Subprocess).order_by(Subprocess.process_num, Subprocess.seq).all()
+        by_proc = {}
+        for sp in subs:
+            by_proc.setdefault(sp.process_num, []).append({
+                "code": sp.code, "question": sp.question or "", "outcomes": sp.outcomes or "",
+                "operational": sp.operational or "", "top_level": sp.top_level or "",
+                "assets": sp.assets or "", "comment": sp.comment or "",
+            })
+        processes = [{"num": p.num, "title": p.title or "", "subs": by_proc.get(p.num, [])}
+                     for p in procs]
+    return render_template("admin_settings.html", processes=processes,
+                           jira_configured=jira_client.is_configured())
+
+
+@app.route("/api/admin/process/update", methods=["POST"])
+def api_admin_process_update():
+    body = request.get_json(force=True, silent=True) or {}
+    num = _clean(body.get("num"))
+    title = _clean(body.get("title"))
+    if not num.isdigit():
+        return jsonify({"error": "invalid step number"}), 400
+    if not title:
+        return jsonify({"error": "Step title is required."}), 400
+    if len(title) > 255:
+        return jsonify({"error": "Step title is too long (max 255 characters)."}), 400
+    with SessionLocal.begin() as s:
+        p = s.get(Process, int(num))
+        if not p:
+            return jsonify({"error": "step not found"}), 404
+        p.title = title
+    _mark_saved()
+    return jsonify({"ok": True})
+
+
+SUBPROC_FIELDS = ("outcomes", "question", "operational", "top_level", "assets", "comment")
+
+
+@app.route("/api/admin/subprocess/update", methods=["POST"])
+def api_admin_subprocess_update():
+    body = request.get_json(force=True, silent=True) or {}
+    code = _clean(body.get("code"))
+    if not re.fullmatch(r"\d+\.\d+", code):
+        return jsonify({"error": "invalid code"}), 400
+    with SessionLocal.begin() as s:
+        sp = s.get(Subprocess, code)
+        if not sp:
+            return jsonify({"error": "sub-process not found"}), 404
+        for f in SUBPROC_FIELDS:
+            if f in body:
+                setattr(sp, f, "" if body[f] is None else str(body[f]).strip())
+    _mark_saved()
+    return jsonify({"ok": True})
 
 
 # --------------------------------------------------------------------------- #
