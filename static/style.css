@@ -64,7 +64,7 @@ main { padding: 16px 32px 60px; max-width: none; margin: 0; }
   display: flex; justify-content: space-between; align-items: center;
   flex-wrap: wrap; gap: 12px 20px; margin-bottom: 16px;
 }
-.controls-right { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 12px; }
+.controls-right { flex: 1; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 12px; }
 /* header buttons: same height, aligned to the right of the page */
 .controls-right .btn, .controls-right .linkbtn {
   height: 34px; display: inline-flex; align-items: center; gap: 6px;
