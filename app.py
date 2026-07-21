@@ -64,6 +64,18 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD", "abacus")
 # Link to the Jamie meeting dashboard (a separate local Flask app, default port 5057)
 JAMIE_URL = os.environ.get("JAMIE_URL", "http://127.0.0.1:5057")
 
+
+@app.template_global()
+def static_v(filename):
+    """Static URL with a cache-busting ?v=<mtime> so browsers always fetch the
+    current file (busts on every change/deploy)."""
+    try:
+        ver = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+    except OSError:
+        ver = 0
+    return url_for("static", filename=filename) + f"?v={ver}"
+
+
 init_db()  # create tables if missing (safe to call every start)
 
 
