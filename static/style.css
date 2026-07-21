@@ -64,7 +64,9 @@ main { padding: 16px 32px 60px; max-width: none; margin: 0; }
   display: flex; justify-content: space-between; align-items: center;
   flex-wrap: wrap; gap: 12px 20px; margin-bottom: 16px;
 }
-.controls-right { flex: 1; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 12px; }
+/* push the whole right-hand block to the far right; stack buttons over legend */
+.controls-right { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.control-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px 12px; }
 /* header buttons: same height, aligned to the right of the page */
 .controls-right .btn, .controls-right .linkbtn {
   height: 34px; display: inline-flex; align-items: center; gap: 6px;
@@ -82,7 +84,7 @@ main { padding: 16px 32px 60px; max-width: none; margin: 0; }
 
 .legend { display: flex; gap: 16px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 /* colour key sits on its own line, below the buttons (Refresh / Customer logins / Sign out) */
-.controls-right .legend { flex-basis: 100%; justify-content: flex-end; margin-top: 8px; }
+.controls-right .legend { justify-content: flex-end; }
 .legend span { display: flex; align-items: center; gap: 6px; }
 .sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
 .sw.done { background: var(--done); }
@@ -787,7 +789,7 @@ table.matrix.stacked { display: block; table-layout: auto; border-spacing: 0; }
 
   /* controls stack and align left */
   .controls { justify-content: flex-start; gap: 8px 12px; margin-bottom: 10px; }
-  .controls-right { width: 100%; justify-content: space-between; gap: 8px 12px; }
+  .controls-right { width: 100%; align-items: flex-start; margin-left: 0; gap: 8px 12px; }
   .legend { gap: 6px 12px; font-size: 11px; }
 
   /* matrix scrolls sideways; keep a usable minimum width */
