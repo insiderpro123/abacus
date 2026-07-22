@@ -49,7 +49,7 @@ _load_local_env()
 
 from models import (
     init_db, SessionLocal,
-    Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask, Customer,
+    Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask, Customer, StaffUser,
 )
 import jira_client
 import jamie_client
@@ -218,17 +218,29 @@ def _dup_exists(s, client, name, exclude_id=None, parent_id=None):
 
 
 # --------------------------------------------------------------------------- #
-# Authentication
-#   Two roles behind one login page:
-#     * staff    - blank email + shared APP_PASSWORD (full internal access)
-#     * customer - email + per-customer password (read-only Jamie portal only)
+# Authentication - three roles behind one login page:
+#   * admin    - blank email + shared APP_PASSWORD; full access incl. "full settings"
+#                (editing the 12 steps and managing ISP/customer logins)
+#   * staff    - ISP staff email + password; everything operational EXCEPT the
+#                admin-only settings below
+#   * customer - email + per-customer password; read-only Jamie portal only
+# Both admin and ISP staff have session["authed"]; an admin is an authed session
+# WITHOUT a staff_id (shared password), so old admin sessions stay admin.
 # --------------------------------------------------------------------------- #
 def _is_staff():
     return bool(session.get("authed"))
 
 
+def _is_admin():
+    return bool(session.get("authed")) and not session.get("staff_id")
+
+
 def _is_customer():
     return session.get("role") == "customer"
+
+
+# Endpoints only a full admin may call (ISP staff are blocked with 403)
+ADMIN_ONLY_PREFIXES = ("/api/admin/process/", "/api/admin/subprocess/", "/api/admin/staff/")
 
 
 @app.before_request
@@ -237,7 +249,9 @@ def _require_login():
     if p == "/login" or p == "/logout" or p.startswith("/static/"):
         return
     if _is_staff():
-        return                                  # staff: full access
+        if not _is_admin() and any(p.startswith(pref) for pref in ADMIN_ONLY_PREFIXES):
+            return jsonify({"error": "Admin only."}), 403
+        return                                  # staff: full operational access
     if _is_customer():
         # customers may reach only their portal and its read-only API
         if p == "/portal" or p.startswith("/api/portal/"):
@@ -257,10 +271,18 @@ def login():
         email = _clean(request.form.get("email"))
         password = request.form.get("password", "")
         if email:
-            # customer login
             with SessionLocal() as s:
-                cust = (s.query(Customer)
-                        .filter(Customer.email.ilike(email)).first())
+                # ISP staff login (email + password) - operational access, not admin
+                staff = s.query(StaffUser).filter(StaffUser.email.ilike(email)).first()
+                if staff and check_password_hash(staff.password_hash, password):
+                    session.clear()
+                    session["authed"] = True
+                    session["role"] = "staff"
+                    session["staff_id"] = staff.id
+                    session.permanent = True
+                    return redirect(url_for("index"))
+                # customer login (email + password) - read-only portal
+                cust = s.query(Customer).filter(Customer.email.ilike(email)).first()
                 if cust and check_password_hash(cust.password_hash, password):
                     session.clear()
                     session["role"] = "customer"
@@ -268,11 +290,11 @@ def login():
                     session.permanent = True
                     return redirect(url_for("portal"))
             return render_template("login.html", error="Incorrect email or password"), 401
-        # staff login (shared password, no email)
+        # admin login (shared team password, no email) - full access
         if hmac.compare_digest(password, APP_PASSWORD):
             session.clear()
             session["authed"] = True
-            session["role"] = "staff"
+            session["role"] = "admin"
             session.permanent = True
             return redirect(url_for("index"))
         return render_template("login.html", error="Incorrect password"), 401
@@ -560,8 +582,10 @@ def admin_settings():
             })
         processes = [{"num": p.num, "title": p.title or "", "subs": by_proc.get(p.num, [])}
                      for p in procs]
-    return render_template("admin_settings.html", processes=processes,
-                           jira_configured=jira_client.is_configured())
+        staff = [{"id": u.id, "email": u.email, "name": u.name or ""}
+                 for u in s.query(StaffUser).order_by(StaffUser.email).all()]
+    return render_template("admin_settings.html", processes=processes, staff=staff,
+                           is_admin=_is_admin(), jira_configured=jira_client.is_configured())
 
 
 @app.route("/api/admin/process/update", methods=["POST"])
@@ -601,6 +625,120 @@ def api_admin_subprocess_update():
             if f in body:
                 setattr(sp, f, "" if body[f] is None else str(body[f]).strip())
     _mark_saved()
+    return jsonify({"ok": True})
+
+
+def _next_sub_code(s, process_num):
+    """Next free sub-process code + seq for a step, e.g. '6.5'. Uses max existing
+    number after the dot + 1 so codes stay unique even with gaps."""
+    subs = s.query(Subprocess).filter_by(process_num=process_num).all()
+    maxn = maxseq = 0
+    for sp in subs:
+        try:
+            maxn = max(maxn, int(sp.code.split(".")[1]))
+        except (IndexError, ValueError):
+            pass
+        maxseq = max(maxseq, sp.seq or 0)
+    return f"{process_num}.{maxn + 1}", maxseq + 1
+
+
+@app.route("/api/admin/subprocess/add", methods=["POST"])
+def api_admin_subprocess_add():
+    body = request.get_json(force=True, silent=True) or {}
+    num = _clean(body.get("process_num"))
+    if not num.isdigit():
+        return jsonify({"error": "invalid step number"}), 400
+    with SessionLocal.begin() as s:
+        if not s.get(Process, int(num)):
+            return jsonify({"error": "step not found"}), 404
+        code, seq = _next_sub_code(s, int(num))
+        s.add(Subprocess(code=code, process_num=int(num), seq=seq, question="",
+                         outcomes="", operational="", top_level="", assets="", comment=""))
+    _mark_saved()
+    return jsonify({"ok": True, "code": code})
+
+
+@app.route("/api/admin/subprocess/duplicate", methods=["POST"])
+def api_admin_subprocess_duplicate():
+    body = request.get_json(force=True, silent=True) or {}
+    code = _clean(body.get("code"))
+    if not re.fullmatch(r"\d+\.\d+", code):
+        return jsonify({"error": "invalid code"}), 400
+    with SessionLocal.begin() as s:
+        src = s.get(Subprocess, code)
+        if not src:
+            return jsonify({"error": "sub-process not found"}), 404
+        newcode, seq = _next_sub_code(s, src.process_num)
+        s.add(Subprocess(code=newcode, process_num=src.process_num, seq=seq,
+                         question=src.question or "", outcomes=src.outcomes or "",
+                         operational=src.operational or "", top_level=src.top_level or "",
+                         assets=src.assets or "", comment=src.comment or ""))
+    _mark_saved()
+    return jsonify({"ok": True, "code": newcode})
+
+
+@app.route("/api/admin/subprocess/delete", methods=["POST"])
+def api_admin_subprocess_delete():
+    body = request.get_json(force=True, silent=True) or {}
+    code = _clean(body.get("code"))
+    if not re.fullmatch(r"\d+\.\d+", code):
+        return jsonify({"error": "invalid code"}), 400
+    with SessionLocal.begin() as s:
+        sp = s.get(Subprocess, code)
+        if not sp:
+            return jsonify({"error": "sub-process not found"}), 404
+        # remove this point's RAG value on every work package first (FK on wp_status.code)
+        s.query(WpStatus).filter_by(code=code).delete()
+        s.delete(sp)
+    _mark_saved()
+    return jsonify({"ok": True})
+
+
+# --------------------------------------------------------------------------- #
+# Admin: manage ISP staff logins (admin-only; gated by ADMIN_ONLY_PREFIXES)
+# --------------------------------------------------------------------------- #
+@app.route("/api/admin/staff/add", methods=["POST"])
+def api_admin_staff_add():
+    body = request.get_json(force=True, silent=True) or {}
+    email = _clean(body.get("email")).lower()
+    password = body.get("password", "")
+    name = _clean(body.get("name"))
+    if "@" not in email or "." not in email:
+        return jsonify({"error": "A valid email is required."}), 400
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters."}), 400
+    with SessionLocal.begin() as s:
+        if s.query(StaffUser).filter(StaffUser.email.ilike(email)).first():
+            return jsonify({"error": f"A staff login for {email} already exists."}), 409
+        s.add(StaffUser(email=email, password_hash=generate_password_hash(password), name=name))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/staff/reset_password", methods=["POST"])
+def api_admin_staff_reset():
+    body = request.get_json(force=True, silent=True) or {}
+    sid = _clean(body.get("id"))
+    password = body.get("password", "")
+    if not sid.isdigit() or len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters."}), 400
+    with SessionLocal.begin() as s:
+        u = s.get(StaffUser, int(sid))
+        if not u:
+            return jsonify({"error": "staff login not found"}), 404
+        u.password_hash = generate_password_hash(password)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/staff/delete", methods=["POST"])
+def api_admin_staff_delete():
+    body = request.get_json(force=True, silent=True) or {}
+    sid = _clean(body.get("id"))
+    if not sid.isdigit():
+        return jsonify({"error": "invalid id"}), 400
+    with SessionLocal.begin() as s:
+        u = s.get(StaffUser, int(sid))
+        if u:
+            s.delete(u)
     return jsonify({"ok": True})
 
 

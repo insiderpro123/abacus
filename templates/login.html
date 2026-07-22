@@ -31,13 +31,13 @@
     <img class="logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
     <h1>Full System (Test)</h1>
     <p class="sub">Sign in to continue</p>
-    <label for="email">Email <span style="font-weight:400;text-transform:none;color:var(--muted)">(customers)</span></label>
+    <label for="email">Email <span style="font-weight:400;text-transform:none;color:var(--muted)">(staff or customers)</span></label>
     <input type="email" id="email" name="email" autocomplete="username" placeholder="you@company.com" />
     <label for="password">Password</label>
     <input type="password" id="password" name="password" autocomplete="current-password" />
     <button type="submit">Sign in</button>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
-    <div class="hint">Customers: sign in with your email and password.<br>Team: leave email blank and enter the team password.</div>
+    <div class="hint">Staff &amp; customers: sign in with your email and password.<br>Admin: leave email blank and enter the team password.</div>
   </form>
 </body>
 </html>

@@ -135,6 +135,17 @@ class Customer(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class StaffUser(Base):
+    """An ISP staff login (email + hashed password). Full operational access, but
+    not the admin-only 'full settings' (editing the 12 steps / managing logins)."""
+    __tablename__ = "staff_user"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    name = Column(String(255), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 def _ensure_columns():
     """Lightweight migration: add columns that were introduced after the table
     was first created (so an existing SQLite/Postgres DB gains them without a wipe)."""
