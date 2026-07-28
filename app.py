@@ -1402,6 +1402,22 @@ def _resolve_dropbox(stored):
     return (full, None, None)
 
 
+def _dropbox_web_url(stored):
+    """Best-effort dropbox.com web URL for a stored value. Used on the hosted site,
+    where there is no local folder to open: a pasted dropbox.com link is used as-is,
+    and a plain relative folder is re-rooted under the team Dropbox 'Clients' space
+    (matching the /work/Clients/... links users paste)."""
+    from urllib.parse import quote, unquote
+    v = (stored or "").strip()
+    if not v:
+        return None
+    raw = v.replace("\\", "/")
+    if raw.lower().startswith(("http://", "https://")):
+        return v
+    rel = unquote(raw).strip("/")
+    return "https://www.dropbox.com/work/Clients/" + quote(rel)
+
+
 @app.route("/api/open_dropbox", methods=["POST"])
 def api_open_dropbox():
     """Open a project's Dropbox folder in the local File Explorer (works because the app
@@ -1420,8 +1436,11 @@ def api_open_dropbox():
         return jsonify({"url": url})
     if err:
         return jsonify({"error": err}), 400
-    if not hasattr(os, "startfile"):            # e.g. the Render/Linux deployment
-        return jsonify({"error": "Opening a local folder only works in the desktop app on your own machine."}), 400
+    if not hasattr(os, "startfile"):            # hosted (Render/Linux): no desktop folder to open
+        web = _dropbox_web_url(stored)          # fall back to opening the Dropbox web folder in a tab
+        if web:
+            return jsonify({"url": web})
+        return jsonify({"error": "No Dropbox folder set for this project (add one via Edit)."}), 400
     if not os.path.isdir(full):
         return jsonify({"error": f"Folder not found on this machine: {full}"}), 404
     try:
