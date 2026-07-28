@@ -50,9 +50,11 @@ _load_local_env()
 from models import (
     init_db, SessionLocal,
     Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask, Customer, StaffUser,
+    Sprint, SprintHistory,
 )
 import jira_client
 import jamie_client
+import jira_sync
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -60,6 +62,12 @@ app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # Shared team password (set APP_PASSWORD in production; default is for local dev only)
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "abacus")
+
+# Local Dropbox "Clients" root. The app lives at <Clients>/ISP Project Management
+# Documents/full system test server, so the Clients root is two levels up - derived
+# automatically so it resolves on any colleague's machine (override with DROPBOX_ROOT).
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DROPBOX_ROOT = os.environ.get("DROPBOX_ROOT") or os.path.dirname(os.path.dirname(_APP_DIR))
 
 # Link to the Jamie meeting dashboard (a separate local Flask app, default port 5057)
 JAMIE_URL = os.environ.get("JAMIE_URL", "http://127.0.0.1:5057")
@@ -128,6 +136,9 @@ _backfill_task_points()
 # --------------------------------------------------------------------------- #
 SCORE = {"done": 1.0, "progress": 0.5, "todo": 0.0}
 ALLOWED_STATUSES = ("Active", "Inactive", "Removed", "Complete", "On hold")
+# Top-level project category. 'Customer' keeps the full 12-step Abacus tracker;
+# 'Marketing'/'Process and Ops' have no Abacus link (sub-WPs + tasks only).
+ALLOWED_CATEGORIES = ("Customer", "Marketing", "Process and Ops")
 GUIDANCE_FIELDS = ("operational", "top_level", "assets", "comment")
 
 _last_saved = {"when": None, "ok": None, "message": ""}
@@ -190,7 +201,7 @@ def _project_errors(client, name, icon, description, require_icon=True):
     """Return an error string for the add/edit project form, or '' if valid.
     Sub-work-packages don't carry an icon, so require_icon is False for them."""
     if not client or not name:
-        return "Client and project name are required."
+        return "Customer and project name are required."
     if len(name) > MAX_NAME_LEN:
         return f"Project name is too long (max {MAX_NAME_LEN} characters)."
     if require_icon and not _valid_icon(icon):
@@ -354,11 +365,32 @@ def get_data():
         for f in finished:
             fin.setdefault(f.wp_id, set()).add(f.process_num)
         task_counts = {}   # wp_id -> {"total": n, "done": n}
+        task_assignees = {}   # wp_id -> set(assignee names)
         for t in tasks:
             tc = task_counts.setdefault(t.wp_id, {"total": 0, "done": 0})
             tc["total"] += 1
             if t.status == "done":
                 tc["done"] += 1
+            if (t.assignee or "").strip():
+                task_assignees.setdefault(t.wp_id, set()).add(t.assignee.strip())
+
+        # live counters for the ACTIVE sprint, per category (for the summary strip)
+        active_sprint = s.query(Sprint).filter_by(status="active").first()
+        active_sprint_id = active_sprint.id if active_sprint else None
+        cat_by_wp = {wp.id: (wp.category or "Customer") for wp in wps}
+        sprint_summary = {c: {"todo": 0, "progress": 0, "done": 0, "planned": 0, "done_pts": 0}
+                          for c in ("Customer", "Marketing", "Process and Ops")}
+        for t in tasks:
+            if t.sprint_id not in (active_sprint_id, None):
+                continue                       # only tasks in the active sprint
+            b = sprint_summary.get(cat_by_wp.get(t.wp_id, "Customer"))
+            if not b:
+                continue
+            if t.status in ("todo", "progress", "done"):
+                b[t.status] += 1
+            b["planned"] += (t.points or 0)
+            if t.status == "done":
+                b["done_pts"] += (t.points or 0)
 
         process_headers = [{"num": p.num, "title": p.title} for p in processes]
 
@@ -409,11 +441,17 @@ def get_data():
                 phases.append({"num": p.num, "title": p.title, "pct": pct,
                                "status": pstatus, "finished": is_fin, "subs": subs_out})
 
-            overall = round(sum(group_pcts) / len(group_pcts)) if group_pcts else 0
             tc = task_counts.get(wp.id, {"total": 0, "done": 0})
+            overall = round(sum(group_pcts) / len(group_pcts)) if group_pcts else 0
+            # Non-Customer work packages have no 12-step data; base their overall on
+            # task completion instead. (Top-level non-Customer projects hold no tasks
+            # of their own - their overall is rolled up from children below.)
+            if (wp.category or "Customer") != "Customer":
+                overall = round(tc["done"] / tc["total"] * 100) if tc["total"] else 0
             work_packages.append({
                 "wp_id": str(wp.id), "client": wp.client, "name": wp.name,
                 "description": wp.description or "",
+                "category": wp.category or "Customer",
                 "status": wp.status or "Unknown", "points": wp.points or "",
                 "icon": wp.icon or "", "overall": overall, "phases": phases,
                 "jira_project_key": wp.jira_project_key or "",
@@ -425,6 +463,7 @@ def get_data():
                 "sub_num": wp.sub_num or None,
                 "children": [],
                 "task_total": tc["total"], "task_done": tc["done"],
+                "assignees": sorted(task_assignees.get(wp.id, set())),
             })
 
     # Nest sub-work-packages under their parent; return only top-level projects.
@@ -434,10 +473,32 @@ def get_data():
         parent = by_id.get(w["parent_id"]) if w["parent_id"] else None
         (parent["children"] if parent else top_level).append(w)
 
+    # Non-Customer projects hold their tasks on the sub-work-packages, not on the
+    # project itself. Roll those child task counts up so the project's task chip
+    # and overall % are meaningful.
+    for w in top_level:
+        if (w.get("category") or "Customer") != "Customer" and w["children"]:
+            total = sum(c["task_total"] for c in w["children"])
+            done = sum(c["task_done"] for c in w["children"])
+            w["task_total"], w["task_done"] = total, done
+            w["overall"] = round(done / total * 100) if total else 0
+        # a project's assignees = its own tasks' + all its sub-work-packages' (any category),
+        # so the top-level "who's on this" chips and the name filter see everyone involved
+        if w["children"]:
+            merged = set(w["assignees"])
+            for c in w["children"]:
+                merged.update(c["assignees"])
+            w["assignees"] = sorted(merged)
+
+    assignees_all = sorted({a for w in work_packages for a in w["assignees"]})
+
     return {
         "generated": datetime.now().strftime("%d %b %Y, %H:%M"),
         "processes": process_headers,
         "work_packages": top_level,
+        "assignees_all": assignees_all,
+        "sprint_summary": sprint_summary,
+        "active_sprint_id": (str(active_sprint_id) if active_sprint_id else None),
         "reference": reference,
         "pending": 0,
         "last_flush": dict(_last_saved),
@@ -834,7 +895,10 @@ TASK_POINTS = (1, 2, 3, 5, 8, 13, 21)
 
 def _task_dict(t):
     return {"id": t.id, "wp_id": t.wp_id, "title": t.title, "status": t.status,
-            "points": t.points or 0, "sub_wp_id": t.sub_wp_id or None, "seq": t.seq}
+            "points": t.points or 0, "assignee": t.assignee or "",
+            "priority": t.priority or 3, "blocker": bool(t.blocker),
+            "jira_key": t.jira_key or "",
+            "sub_wp_id": t.sub_wp_id or None, "sprint_id": t.sprint_id or None, "seq": t.seq}
 
 
 @app.route("/api/tasks/<int:wp_id>")
@@ -850,6 +914,7 @@ def api_tasks_add():
     body = request.get_json(force=True, silent=True) or {}
     wp_id = _clean(body.get("wp_id"))
     title = _clean(body.get("title"))[:MAX_TASK_LEN]
+    assignee = _clean(body.get("assignee"))[:128]
     try:
         points = int(body.get("points", 1))
     except (TypeError, ValueError):
@@ -867,7 +932,8 @@ def api_tasks_add():
         max_seq = (s.query(WpTask.seq).filter_by(wp_id=int(wp_id))
                    .order_by(WpTask.seq.desc()).first())
         seq = ((max_seq[0] or 0) + 1) if max_seq else 1
-        t = WpTask(wp_id=int(wp_id), title=title, status="todo", points=points, seq=seq)
+        t = WpTask(wp_id=int(wp_id), title=title, status="todo", points=points,
+                   assignee=assignee, seq=seq)
         s.add(t)
         s.flush()
         row = _task_dict(t)
@@ -946,6 +1012,83 @@ def api_tasks_set_points():
         if not t:
             return jsonify({"error": "task not found"}), 404
         t.points = points
+    _mark_saved()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/tasks/set_assignee", methods=["POST"])
+def api_tasks_set_assignee():
+    body = request.get_json(force=True, silent=True) or {}
+    task_id = _clean(body.get("task_id"))
+    assignee = _clean(body.get("assignee"))[:128]
+    if not task_id.isdigit():
+        return jsonify({"error": "invalid task_id"}), 400
+    with SessionLocal.begin() as s:
+        t = s.get(WpTask, int(task_id))
+        if not t:
+            return jsonify({"error": "task not found"}), 404
+        t.assignee = assignee
+    _mark_saved()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/tasks/set_priority", methods=["POST"])
+def api_tasks_set_priority():
+    body = request.get_json(force=True, silent=True) or {}
+    task_id = _clean(body.get("task_id"))
+    try:
+        priority = int(body.get("priority"))
+    except (TypeError, ValueError):
+        priority = 0
+    if not task_id.isdigit() or priority not in (1, 2, 3, 4, 5):
+        return jsonify({"error": "invalid task_id or priority"}), 400
+    with SessionLocal.begin() as s:
+        t = s.get(WpTask, int(task_id))
+        if not t:
+            return jsonify({"error": "task not found"}), 404
+        t.priority = priority
+    _mark_saved()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/tasks/defer", methods=["POST"])
+def api_tasks_defer():
+    """Move a task to the upcoming sprint (app-local), or pull it back to the active one."""
+    body = request.get_json(force=True, silent=True) or {}
+    task_id = _clean(body.get("task_id"))
+    to_upcoming = bool(body.get("upcoming", True))
+    if not task_id.isdigit():
+        return jsonify({"error": "invalid task_id"}), 400
+    with SessionLocal.begin() as s:
+        t = s.get(WpTask, int(task_id))
+        if not t:
+            return jsonify({"error": "task not found"}), 404
+        active = s.query(Sprint).filter_by(status="active").first()
+        if to_upcoming:
+            upcoming = s.query(Sprint).filter_by(status="upcoming").first()
+            if not upcoming:
+                upcoming = Sprint(name="Upcoming sprint", status="upcoming")
+                s.add(upcoming)
+                s.flush()
+            t.sprint_id = upcoming.id
+        else:
+            t.sprint_id = active.id if active else None
+    _mark_saved()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/tasks/set_blocker", methods=["POST"])
+def api_tasks_set_blocker():
+    body = request.get_json(force=True, silent=True) or {}
+    task_id = _clean(body.get("task_id"))
+    blocker = 1 if body.get("blocker") else 0
+    if not task_id.isdigit():
+        return jsonify({"error": "invalid task_id"}), 400
+    with SessionLocal.begin() as s:
+        t = s.get(WpTask, int(task_id))
+        if not t:
+            return jsonify({"error": "task not found"}), 404
+        t.blocker = blocker
     _mark_saved()
     return jsonify({"ok": True})
 
@@ -1057,24 +1200,25 @@ def api_add_project():
     description = _clean(body.get("description"))
     jira_key = _clean(body.get("jira_project_key")).upper()
     confluence_url = _norm_url(body.get("confluence_url"))
-    dropbox_url = _norm_url(body.get("dropbox_url"))
+    dropbox_url = _clean(body.get("dropbox_url"))   # a local folder path (relative to Clients), not a URL
     jamie_tag = _clean(body.get("jamie_tag"))
     parent_raw = _clean(body.get("parent_id"))
     parent_id = int(parent_raw) if parent_raw.isdigit() else None
     nr_codes = [c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)]
-    # a sub-work-package inherits its parent's client when none is given
-    if parent_id is not None and not client:
+    category = _clean(body.get("category")) or "Customer"
+    if category not in ALLOWED_CATEGORIES:
+        category = "Customer"
+    # a sub-work-package inherits its parent's client (when none is given) and category
+    if parent_id is not None:
         with SessionLocal() as s0:
             p = s0.get(WorkPackage, parent_id)
             if p:
-                client = p.client or ""
+                if not client:
+                    client = p.client or ""
+                category = p.category or "Customer"
     err = _project_errors(client, name, icon, description, require_icon=(parent_id is None))
     if err:
         return jsonify({"error": err}), 400
-    # sensible Dropbox default from the client name if none was supplied
-    if not dropbox_url and client:
-        from urllib.parse import quote
-        dropbox_url = "https://www.dropbox.com/work/Clients/" + quote(client)
     with SessionLocal.begin() as s:
         if parent_id is not None and not s.get(WorkPackage, parent_id):
             return jsonify({"error": "parent work package not found"}), 404
@@ -1084,11 +1228,14 @@ def api_add_project():
         new_id = (max_id[0] if max_id else 0) + 1
         sub_num = _next_sub_num(s, parent_id) if parent_id is not None else None
         s.add(WorkPackage(id=new_id, client=client, name=name, description=description,
-                          status="Active", icon=icon, jira_project_key=jira_key,
+                          status="Active", category=category, icon=icon,
+                          jira_project_key=jira_key,
                           confluence_url=confluence_url, dropbox_url=dropbox_url,
                           jamie_tag=jamie_tag, parent_id=parent_id, sub_num=sub_num))
-        for code in nr_codes:
-            s.add(WpStatus(wp_id=new_id, code=code, value="N/R"))
+        # only Customer work packages carry the 12-step (Not-required) configuration
+        if category == "Customer":
+            for code in nr_codes:
+                s.add(WpStatus(wp_id=new_id, code=code, value="N/R"))
     _mark_saved()
     return jsonify({"ok": True, "wp_id": str(new_id)})
 
@@ -1134,6 +1281,177 @@ def api_jira_refresh():
     return jsonify({"ok": True, "updated": len(results), "errors": errors})
 
 
+@app.route("/api/jira/sync", methods=["POST"])
+def api_jira_sync():
+    """Manual 'Sync from Jira': refresh the active sprint's task cards and backfill
+    recent per-week history. The app stays the source of truth; this just pulls."""
+    try:
+        result = jira_sync.run_sync()
+    except jira_client.JiraError as e:
+        return jsonify({"error": str(e)}), 502
+    if result.get("error"):
+        return jsonify(result), 400
+    _mark_saved()
+    return jsonify(result)
+
+
+@app.route("/api/sprint/jira_status")
+def api_sprint_jira_status():
+    """What Jira currently considers its active sprint(s) - to check the app is aligned."""
+    try:
+        return jsonify(jira_sync.active_sprint_status())
+    except jira_client.JiraError as e:
+        return jsonify({"error": str(e)}), 502
+
+
+@app.route("/api/history")
+def api_history():
+    """Per-week, per-category points history for the history view (newest week first)."""
+    with SessionLocal() as s:
+        rows = (s.query(SprintHistory)
+                .order_by(SprintHistory.week_start.desc(), SprintHistory.category).all())
+    out = [{
+        "week_start": r.week_start, "week_end": r.week_end, "label": r.label,
+        "category": r.category, "points_planned": r.points_planned, "points_done": r.points_done,
+        "tasks_total": r.tasks_total, "tasks_todo": r.tasks_todo,
+        "tasks_progress": r.tasks_progress, "tasks_done": r.tasks_done, "source": r.source,
+    } for r in rows]
+    return jsonify({"history": out, "categories": ["Customer", "Marketing", "Process and Ops"]})
+
+
+@app.route("/api/sprint/rollover", methods=["POST"])
+def api_sprint_rollover():
+    """Start a new sprint: snapshot the active sprint's per-category points into history,
+    close it, promote the upcoming sprint to active (or create a fresh one), and carry any
+    not-done tasks forward. Done tasks stay with the closed sprint (archived)."""
+    from datetime import date, timedelta
+    with SessionLocal.begin() as s:
+        active = s.query(Sprint).filter_by(status="active").first()
+        active_id = active.id if active else None
+        tasks = s.query(WpTask).all()
+        cat_by_wp = {wp.id: (wp.category or "Customer") for wp in s.query(WorkPackage).all()}
+
+        agg = {}
+        for t in tasks:
+            if t.sprint_id not in (active_id, None):
+                continue
+            cat = cat_by_wp.get(t.wp_id, "Customer")
+            a = agg.setdefault(cat, {"todo": 0, "progress": 0, "done": 0, "total": 0, "planned": 0, "done_pts": 0})
+            if t.status in ("todo", "progress", "done"):
+                a[t.status] += 1
+            a["total"] += 1
+            a["planned"] += (t.points or 0)
+            if t.status == "done":
+                a["done_pts"] += (t.points or 0)
+
+        today = date.today()
+        mon = today - timedelta(days=today.weekday())
+        fri = mon + timedelta(days=4)
+        wk, label = mon.isoformat(), f"{mon.day}-{fri.day} {fri.strftime('%b %y')}"
+        # replace this week's app-sourced snapshot (idempotent if rolled over twice)
+        s.query(SprintHistory).filter_by(week_start=wk, source="app").delete(synchronize_session=False)
+        for cat, a in agg.items():
+            s.add(SprintHistory(week_start=wk, week_end=fri.isoformat(), label=label, category=cat,
+                                points_planned=a["planned"], points_done=a["done_pts"], tasks_total=a["total"],
+                                tasks_todo=a["todo"], tasks_progress=a["progress"], tasks_done=a["done"], source="app"))
+
+        if active:
+            active.status = "closed"
+            active.week_start, active.week_end = wk, fri.isoformat()
+            if not active.name or active.name == "Current sprint":
+                active.name = label
+        upcoming = s.query(Sprint).filter_by(status="upcoming").first()
+        if upcoming:
+            upcoming.status = "active"
+            new_active = upcoming
+        else:
+            new_active = Sprint(name="Current sprint", status="active")
+            s.add(new_active)
+            s.flush()
+        # carry not-done tasks into the new sprint; done tasks archive with the closed one
+        for t in tasks:
+            if t.sprint_id in (active_id, None):
+                t.sprint_id = active_id if t.status == "done" else new_active.id
+    _mark_saved()
+    return jsonify({"ok": True, "closed": label, "snapshot": agg})
+
+
+def _resolve_dropbox(stored):
+    """Turn a work package's stored Dropbox value into a LOCAL folder under DROPBOX_ROOT.
+    Accepts a plain relative folder ("Bridgepoint"), a pasted absolute path, or a legacy
+    dropbox.com URL - all get re-rooted under this machine's Clients folder, so nothing is
+    tied to one person's account. Returns (local_path, web_url, error): exactly one is set."""
+    from urllib.parse import unquote
+    v = (stored or "").strip()
+    if not v:
+        return (None, None, "No Dropbox folder set for this project (add one via Edit).")
+    raw = v.replace("\\", "/")
+    low = raw.lower()
+    rel = None
+    if "clients/" in low:                       # web URL or full path that includes .../Clients/...
+        rel = unquote(raw[low.rindex("clients/") + len("clients/"):]).strip("/")
+    elif low.startswith(("http://", "https://")):
+        return (None, v, None)                  # some other web link - just open it in the browser
+    else:
+        rel = unquote(raw).strip("/")           # a plain relative folder path
+    full = os.path.normpath(os.path.join(DROPBOX_ROOT, rel))
+    # containment guard: never open anything outside the Clients root
+    if os.path.normcase(full) != os.path.normcase(DROPBOX_ROOT) and \
+       not os.path.normcase(full).startswith(os.path.normcase(DROPBOX_ROOT) + os.sep):
+        return (None, None, "That folder is outside the Dropbox Clients area.")
+    return (full, None, None)
+
+
+@app.route("/api/open_dropbox", methods=["POST"])
+def api_open_dropbox():
+    """Open a project's Dropbox folder in the local File Explorer (works because the app
+    runs on the user's own machine). Falls back to returning a web URL to open in a tab."""
+    body = request.get_json(force=True, silent=True) or {}
+    wp_id = _clean(body.get("wp_id"))
+    if not wp_id.isdigit():
+        return jsonify({"error": "invalid wp_id"}), 400
+    with SessionLocal() as s:
+        wp = s.get(WorkPackage, int(wp_id))
+        if not wp:
+            return jsonify({"error": "work package not found"}), 404
+        stored = wp.dropbox_url
+    full, url, err = _resolve_dropbox(stored)
+    if url:
+        return jsonify({"url": url})
+    if err:
+        return jsonify({"error": err}), 400
+    if not hasattr(os, "startfile"):            # e.g. the Render/Linux deployment
+        return jsonify({"error": "Opening a local folder only works in the desktop app on your own machine."}), 400
+    if not os.path.isdir(full):
+        return jsonify({"error": f"Folder not found on this machine: {full}"}), 404
+    try:
+        os.startfile(full)                      # noqa: S606 - opens Windows Explorer at the folder
+    except OSError as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True, "path": full})
+
+
+@app.route("/api/dropbox/folders")
+def api_dropbox_folders():
+    """List the immediate sub-folders of a folder under the local Dropbox Clients root,
+    for the folder picker. `path` is relative to Clients ("" = the Clients root itself)."""
+    rel = _clean(request.args.get("path")).replace("\\", "/").strip("/")
+    full = os.path.normpath(os.path.join(DROPBOX_ROOT, rel))
+    nc = os.path.normcase
+    if nc(full) != nc(DROPBOX_ROOT) and not nc(full).startswith(nc(DROPBOX_ROOT) + os.sep):
+        return jsonify({"error": "That location is outside the Dropbox Clients area."}), 400
+    if not os.path.isdir(full):
+        return jsonify({"error": f"Folder not found on this machine: {full}"}), 404
+    try:
+        folders = sorted(
+            (e.name for e in os.scandir(full) if e.is_dir() and not e.name.startswith((".", "~", "$"))),
+            key=str.lower)
+    except OSError as e:
+        return jsonify({"error": str(e)}), 500
+    parent = None if not rel else "/".join(rel.split("/")[:-1])
+    return jsonify({"path": rel, "parent": parent, "folders": folders})
+
+
 @app.route("/api/edit_project", methods=["POST"])
 def api_edit_project():
     body = request.get_json(force=True, silent=True) or {}
@@ -1144,7 +1462,7 @@ def api_edit_project():
     description = _clean(body.get("description"))
     jira_key = _clean(body.get("jira_project_key")).upper()
     confluence_url = _norm_url(body.get("confluence_url"))
-    dropbox_url = _norm_url(body.get("dropbox_url"))
+    dropbox_url = _clean(body.get("dropbox_url"))   # a local folder path (relative to Clients), not a URL
     jamie_tag = _clean(body.get("jamie_tag"))
     desired = {c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)}
     if not wp_id:
@@ -1169,14 +1487,17 @@ def api_edit_project():
             # epic link changed -> clear stale totals until the next refresh
             wp.jira_project_key = jira_key
             wp.jira_done, wp.jira_total, wp.jira_synced_at = 0, 0, None
-        current = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
-        all_codes = [row[0] for row in s.query(Subprocess.code).all()]
-        for code in all_codes:
-            is_nr = current.get(code) == "N/R"
-            if code in desired and not is_nr:
-                _set_point(s, wp.id, code, "N/R")
-            elif code not in desired and is_nr:
-                _set_point(s, wp.id, code, "")
+        # Category is set once at creation and locked on edit. Only Customer work
+        # packages have a 12-step (Not-required) configuration to reconcile.
+        if (wp.category or "Customer") == "Customer":
+            current = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
+            all_codes = [row[0] for row in s.query(Subprocess.code).all()]
+            for code in all_codes:
+                is_nr = current.get(code) == "N/R"
+                if code in desired and not is_nr:
+                    _set_point(s, wp.id, code, "N/R")
+                elif code not in desired and is_nr:
+                    _set_point(s, wp.id, code, "")
     _mark_saved()
     return jsonify({"ok": True, "pending": 0})
 
@@ -1207,11 +1528,13 @@ def api_duplicate_project():
         sub_num = _next_sub_num(s, src.parent_id) if src.parent_id is not None else None
         s.add(WorkPackage(id=new_id, client=src.client, name=new_name,
                           description=src.description or "",
-                          status="Active", icon=src.icon or "",
+                          status="Active", category=src.category or "Customer",
+                          icon=src.icon or "",
                           parent_id=src.parent_id, sub_num=sub_num))
-        # copy only the Not-required configuration (fresh progress)
-        for st in s.query(WpStatus).filter_by(wp_id=src.id, value="N/R").all():
-            s.add(WpStatus(wp_id=new_id, code=st.code, value="N/R"))
+        # copy only the Not-required configuration (fresh progress); Customer only
+        if (src.category or "Customer") == "Customer":
+            for st in s.query(WpStatus).filter_by(wp_id=src.id, value="N/R").all():
+                s.add(WpStatus(wp_id=new_id, code=st.code, value="N/R"))
     _mark_saved()
     return jsonify({"ok": True, "wp_id": str(new_id)})
 
@@ -1256,13 +1579,57 @@ def _find_free_port(preferred):
         return sk.getsockname()[1]
 
 
+def _install_terminal_close_handler():
+    """Close the terminal window -> stop the server (no orphaned process holding the port).
+    On Windows we catch the console CTRL_CLOSE/LOGOFF/SHUTDOWN events; elsewhere SIGHUP
+    (sent when the controlling terminal goes away) is enough."""
+    if os.environ.get("NO_TERMINAL_WATCH") == "1":
+        return                                  # opt-out (e.g. background/automated runs)
+    if os.name == "nt":
+        import ctypes
+        import threading
+        k32 = ctypes.windll.kernel32
+        # (a) console window close / logoff / shutdown events
+        try:
+            handler = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_uint)(
+                lambda evt: (os._exit(0) if evt in (2, 5, 6) else False))
+            k32.SetConsoleCtrlHandler(handler, True)
+            globals()["_CONSOLE_CTRL_HANDLER"] = handler   # keep a ref so it isn't GC'd
+        except Exception:
+            pass
+        # (b) the parent terminal/shell exiting (covers editor & tabbed terminals that
+        #     close the shell without sending a console event) -> stop the server too
+        try:
+            k32.OpenProcess.restype = ctypes.c_void_p
+            k32.OpenProcess.argtypes = [ctypes.c_uint, ctypes.c_bool, ctypes.c_uint]
+            k32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+            parent = k32.OpenProcess(0x00100000, False, os.getppid())   # SYNCHRONIZE
+            if parent:
+                def _watch_parent():
+                    k32.WaitForSingleObject(parent, 0xFFFFFFFF)         # blocks until parent exits
+                    os._exit(0)
+                threading.Thread(target=_watch_parent, daemon=True).start()
+        except Exception:
+            pass
+    else:
+        try:
+            import signal
+            signal.signal(signal.SIGHUP, lambda *_: os._exit(0))
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     import threading
     import webbrowser
     port = _find_free_port(int(os.environ.get("PORT", 5070)))
     url = f"http://127.0.0.1:{port}/"
     if os.environ.get("NO_BROWSER") != "1":
-        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+        t = threading.Timer(1.2, lambda: webbrowser.open(url))
+        t.daemon = True
+        t.start()
+    _install_terminal_close_handler()
     print(f"Abacus Work Package Tracker running at {url}")
     print(f"(Log in with the shared password. Local default: '{APP_PASSWORD}')")
+    print("(Close this terminal window to stop the server.)")
     app.run(host="127.0.0.1", port=port, debug=False)

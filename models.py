@@ -70,6 +70,10 @@ class WorkPackage(Base):
     description = Column(Text, default="")           # optional longer description (<=35 words)
     year = Column(String(16), default="")            # e.g. "2026" or "2025/26"
     status = Column(String(32), nullable=False, default="Active")
+    # Top-level project category: 'Customer' (full 12-step Abacus tracker),
+    # 'Marketing' or 'Process and Ops' (no Abacus - just sub-WPs + tasks).
+    # Sub-work-packages store their parent's category.
+    category = Column(String(32), nullable=False, default="Customer")
     points = Column(String(32), default="")          # legacy 'Jira points', not edited
     icon = Column(String(16), default="")            # emoji shown on the card
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -118,9 +122,45 @@ class WpTask(Base):
     title = Column(Text, nullable=False, default="")
     status = Column(String(16), nullable=False, default="todo")   # todo | progress | done
     points = Column(Integer, default=0)   # modified Fibonacci story points (0 = unset)
+    assignee = Column(String(128), default="")   # who the task is assigned to (from Jira / free text)
+    priority = Column(Integer, default=3)        # 1 = highest … 5 = lowest (3 = medium/default)
+    blocker = Column(Integer, default=0)         # 1 = blocked/blocker (shown with ⛔)
+    jira_key = Column(String(32), default="")    # source Jira issue key; merge key for re-sync
     sub_wp_id = Column(Integer, nullable=True)   # optional link to one of the WP's sub-work-packages
+    sprint_id = Column(Integer, nullable=True)   # which Sprint this task belongs to (NULL = active)
     seq = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Sprint(Base):
+    """A weekly (Mon-Fri) sprint. One row is 'active', at most one 'upcoming'; the rest
+    are 'closed'. Tasks link to a sprint via WpTask.sprint_id (NULL means the active one)."""
+    __tablename__ = "sprint"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(128), default="")             # e.g. "20-24 Jul 26"
+    week_start = Column(String(10), default="")        # ISO date "YYYY-MM-DD" (Monday)
+    week_end = Column(String(10), default="")          # ISO date "YYYY-MM-DD" (Friday)
+    status = Column(String(16), nullable=False, default="active")   # active | upcoming | closed
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SprintHistory(Base):
+    """Per-week, per-category points snapshot. Backfilled from Jira closed sprints
+    (source='jira') and written by the app itself when a sprint closes (source='app')."""
+    __tablename__ = "sprint_history"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start = Column(String(10), default="")        # ISO Monday - the history key
+    week_end = Column(String(10), default="")
+    label = Column(String(128), default="")            # human label for the week
+    category = Column(String(32), default="Customer")
+    points_planned = Column(Integer, default=0)
+    points_done = Column(Integer, default=0)
+    tasks_total = Column(Integer, default=0)
+    tasks_todo = Column(Integer, default=0)
+    tasks_progress = Column(Integer, default=0)
+    tasks_done = Column(Integer, default=0)
+    source = Column(String(8), default="jira")         # jira | app
+    captured_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Customer(Base):
@@ -173,6 +213,8 @@ def _ensure_columns():
         to_add.append("ALTER TABLE work_package ADD COLUMN dropbox_url TEXT DEFAULT ''")
     if "jamie_tag" not in existing:
         to_add.append("ALTER TABLE work_package ADD COLUMN jamie_tag VARCHAR(128) DEFAULT ''")
+    if "category" not in existing:
+        to_add.append("ALTER TABLE work_package ADD COLUMN category VARCHAR(32) DEFAULT 'Customer'")
     if "parent_id" not in existing:
         to_add.append("ALTER TABLE work_package ADD COLUMN parent_id INTEGER")
     if "sub_num" not in existing:
@@ -184,13 +226,39 @@ def _ensure_columns():
             to_add.append("ALTER TABLE wp_task ADD COLUMN points INTEGER DEFAULT 0")
         if "sub_wp_id" not in task_cols:
             to_add.append("ALTER TABLE wp_task ADD COLUMN sub_wp_id INTEGER")
+        if "assignee" not in task_cols:
+            to_add.append("ALTER TABLE wp_task ADD COLUMN assignee VARCHAR(128) DEFAULT ''")
+        if "priority" not in task_cols:
+            to_add.append("ALTER TABLE wp_task ADD COLUMN priority INTEGER DEFAULT 3")
+        if "blocker" not in task_cols:
+            to_add.append("ALTER TABLE wp_task ADD COLUMN blocker INTEGER DEFAULT 0")
+        if "jira_key" not in task_cols:
+            to_add.append("ALTER TABLE wp_task ADD COLUMN jira_key VARCHAR(32) DEFAULT ''")
+        if "sprint_id" not in task_cols:
+            to_add.append("ALTER TABLE wp_task ADD COLUMN sprint_id INTEGER")
     if to_add:
         with engine.begin() as conn:
             for stmt in to_add:
                 conn.execute(text(stmt))
 
 
+def _ensure_active_sprint():
+    """Guarantee exactly one 'active' Sprint exists, and back-fill any tasks that have
+    no sprint_id onto it (so legacy rows belong to the current sprint)."""
+    from sqlalchemy.orm import Session
+    with Session(engine) as s:
+        active = s.query(Sprint).filter_by(status="active").first()
+        if not active:
+            active = Sprint(name="Current sprint", status="active")
+            s.add(active)
+            s.flush()
+        s.query(WpTask).filter(WpTask.sprint_id.is_(None)).update(
+            {WpTask.sprint_id: active.id}, synchronize_session=False)
+        s.commit()
+
+
 def init_db():
     """Create any missing tables, then add any newly-introduced columns."""
     Base.metadata.create_all(engine)
     _ensure_columns()
+    _ensure_active_sprint()

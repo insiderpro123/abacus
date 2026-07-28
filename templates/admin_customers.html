@@ -57,7 +57,7 @@
       <div class="row">
         <div class="field"><label>Email</label><input id="c-email" type="email" placeholder="you@company.com" /></div>
         <div class="field"><label>Password</label><input id="c-pass" type="text" placeholder="min 6 characters" /></div>
-        <div class="field"><label>Client</label><input id="c-client" list="clients" placeholder="linked client" /></div>
+        <div class="field"><label>Customer</label><input id="c-client" list="clients" placeholder="linked customer" /></div>
         <div class="field"><label>Jamie tag</label><input id="c-tag" list="tags" placeholder="e.g. DMU" /></div>
         <button class="primary" id="c-add">+ Add login</button>
       </div>
@@ -70,7 +70,7 @@
       <h2>Existing customer logins</h2>
       {% if customers %}
       <table>
-        <thead><tr><th>Email</th><th>Client</th><th>Jamie tag</th><th></th></tr></thead>
+        <thead><tr><th>Email</th><th>Customer</th><th>Jamie tag</th><th></th></tr></thead>
         <tbody>
           {% for c in customers %}
           <tr data-id="{{ c.id }}">

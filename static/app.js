@@ -1,11 +1,22 @@
 let DATA = null;
 let filter = "Active";
+let nameFilter = "";       // assignee filter: "" = everyone
 let actionsOnly = false;   // "Actions only" mode: open WPs showing just the task boards
 let meetingNotes = false;  // "Meeting notes" mode: open WPs showing their Jamie notes
 const openWPs = new Set();
 const openPhases = new Set(); // key: wpId + ":" + phaseNum
 const collapsedSecs = new Set(); // collapsed panel sections, key: wpId + ":tasks" | ":steps"
 let syncPoll = null;
+
+// The three project categories shown as collapsible groups on the main page.
+// Customer keeps the full 12-step Abacus tracker; the other two are sub-WPs + tasks only.
+const CATEGORIES = ["Customer", "Marketing", "Process and Ops"];
+// A work package with no category (e.g. older API payloads) defaults to Customer,
+// mirroring the backend default - so it keeps the full 12-step + tasks view.
+const isCustomerCat = (w) => !w.category || w.category === "Customer";
+// Collapsed category groups, persisted across reloads. Key: status + ":" + category.
+const collapsedCats = new Set(JSON.parse(localStorage.getItem("collapsedCats") || "[]"));
+const saveCats = () => localStorage.setItem("collapsedCats", JSON.stringify([...collapsedCats]));
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, html) => {
@@ -45,13 +56,57 @@ async function load() {
 }
 
 function visibleWPs() {
-  return DATA.work_packages.filter((w) =>
-    filter === "all" ? true : (w.status || "").toLowerCase() === filter.toLowerCase()
-  );
+  // Customer-only: the main page shows just Customer work packages.
+  return DATA.work_packages.filter((w) => {
+    const statusOk = filter === "all" || (w.status || "").toLowerCase() === filter.toLowerCase();
+    return statusOk && isCustomerCat(w);
+  });
+}
+
+// Keep the assignee dropdown's options in sync with the data (preserve selection).
+function syncNameFilter() {
+  const sel = $("#name-filter");
+  if (!sel) return;
+  const names = (DATA && DATA.assignees_all) || [];
+  if (nameFilter && !names.includes(nameFilter)) nameFilter = "";  // person no longer present
+  sel.innerHTML = `<option value="">Everyone</option>` +
+    names.map((n) => `<option value="${esc(n)}"${n === nameFilter ? " selected" : ""}>${esc(n)}</option>`).join("");
+  sel.value = nameFilter;
 }
 
 function render() {
   renderMatrix();
+}
+
+// Live counters for the active sprint: one tile per category (To-Do / In-Progress / Done + points).
+function renderSprintSummary() {
+  const box = $("#sprint-summary");
+  if (!box) return;
+  // only show the live counters in "Actions only" mode; hide on the normal main screen
+  if (!actionsOnly) { box.innerHTML = ""; return; }
+  const sum = (DATA && DATA.sprint_summary) || {};
+  const cats = ["Customer", "Marketing", "Process and Ops"];
+  const total = { todo: 0, progress: 0, done: 0, planned: 0, done_pts: 0 };
+  const tiles = cats.map((c) => {
+    const b = sum[c] || { todo: 0, progress: 0, done: 0, planned: 0, done_pts: 0 };
+    ["todo", "progress", "done", "planned", "done_pts"].forEach((k) => (total[k] += b[k] || 0));
+    return summaryTile(c, b);
+  }).join("");
+  box.innerHTML = `<div class="sum-title">This sprint</div>
+    <div class="sum-tiles">${summaryTile("All", total, true)}${tiles}</div>`;
+}
+function summaryTile(label, b, isTotal) {
+  const pct = b.planned ? Math.round(b.done_pts / b.planned * 100) : 0;
+  return `<div class="sum-tile${isTotal ? " total" : ""}">
+      <div class="sum-cat">${esc(label)}</div>
+      <div class="sum-stats">
+        <span class="sum-stat todo"><b>${b.todo}</b> To&nbsp;Do</span>
+        <span class="sum-stat progress"><b>${b.progress}</b> In&nbsp;Progress</span>
+        <span class="sum-stat done"><b>${b.done}</b> Done</span>
+      </div>
+      <div class="sum-pts"><span class="sum-pts-bar"><span class="sum-pts-fill" style="width:${pct}%"></span></span>
+        <span class="sum-pts-txt">${b.done_pts}/${b.planned} pts</span></div>
+    </div>`;
 }
 
 function renderMatrix() {
@@ -87,7 +142,7 @@ function renderMatrix() {
     return;
   }
 
-  // Group into sections by status (Active first, then Inactive, then the rest)
+  // Customer-only: a flat list per status (the Active/Inactive chips pick the set).
   const order = ["Active", "Inactive"];
   const groups = {};
   wps.forEach((w) => { (groups[w.status] = groups[w.status] || []).push(w); });
@@ -95,38 +150,45 @@ function renderMatrix() {
     (a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99) || a.localeCompare(b)
   );
 
-  let addBtnPlaced = false;
   statuses.forEach((status) => {
-    const secTr = el("tr", "section-row");
-    const secTd = el("td");
-    secTd.colSpan = nCols;
-    secTd.innerHTML = `<div class="section-head">${esc(status)}
-      <span class="section-count">${groups[status].length}</span></div>`;
-    secTr.appendChild(secTd);
-    tbody.appendChild(secTr);
-
+    if (stacked) {                       // meeting-notes mode: rowless panels only
+      groups[status].forEach((w) => appendPanel(tbody, w));
+      return;
+    }
     groups[status].forEach((w) => {
-      if (!stacked) tbody.appendChild(renderWpRow(w));   // no 12-step row in stacked modes
+      tbody.appendChild(renderWpRow(w));
       appendPanel(tbody, w);
     });
-
-    // "+ Add project" button directly below the Active projects
-    if (status === "Active") {
-      tbody.appendChild(addProjectRow(nCols));
-      addBtnPlaced = true;
-    }
+    if (status === "Active") tbody.appendChild(addProjectRow(nCols, "Customer"));
   });
-  if (!addBtnPlaced) tbody.appendChild(addProjectRow(nCols));
 
   sizePanels();
 }
 
-function addProjectRow(nCols) {
+// A collapsible category sub-header inside a status section.
+function catHeaderRow(status, cat, count, nCols) {
+  const key = status + ":" + cat;
+  const collapsed = collapsedCats.has(key);
+  const tr = el("tr", "section-row cat-row" + (collapsed ? " collapsed" : ""));
+  const td = el("td");
+  td.colSpan = nCols;
+  td.innerHTML = `<div class="section-head cat-head"><span class="cat-caret">▸</span>${esc(cat)}
+    <span class="section-count">${count}</span></div>`;
+  td.querySelector(".cat-head").addEventListener("click", () => {
+    if (collapsedCats.has(key)) collapsedCats.delete(key); else collapsedCats.add(key);
+    saveCats();
+    render();
+  });
+  tr.appendChild(td);
+  return tr;
+}
+
+function addProjectRow(nCols, category) {
   const tr = el("tr", "add-row");
   const td = el("td");
   td.colSpan = nCols;
   td.innerHTML = `<button class="add-project-btn">+ Add project</button>`;
-  td.querySelector("button").addEventListener("click", openAddProject);
+  td.querySelector("button").addEventListener("click", () => openProjectForm("add", null, category || "Customer"));
   tr.appendChild(td);
   return tr;
 }
@@ -161,11 +223,20 @@ function renderWpRow(w) {
     </div>`;
   tr.appendChild(nameTd);
 
-  w.phases.forEach((ph) => {
-    const td = el("td");
-    td.appendChild(phasePill(ph));
+  if (isCustomerCat(w)) {
+    // the 12 Abacus phase pills
+    w.phases.forEach((ph) => {
+      const td = el("td");
+      td.appendChild(phasePill(ph));
+      tr.appendChild(td);
+    });
+  } else {
+    // non-Customer projects have no 12-step data - leave the process columns blank
+    // (the task chip already renders next to the name)
+    const td = el("td", "wp-nosteps");
+    td.colSpan = DATA.processes.length;
     tr.appendChild(td);
-  });
+  }
 
   tr.addEventListener("click", () => toggleWP(w.wp_id));
   return tr;
@@ -186,6 +257,7 @@ function initials(name) {
   return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "•";
 }
 
+
 // Keep inline panels sized to the visible table area so they don't
 // disappear when the matrix is scrolled horizontally.
 function sizePanels() {
@@ -203,6 +275,9 @@ function toggleWP(id) {
     openWPs.add(id);
     // start with the three sections collapsed each time a work package is opened
     ["steps", "subwps", "tasks"].forEach((k) => collapsedSecs.add(id + ":" + k));
+    // ...but Marketing / Process-and-Ops WPs (tasks only) open with their tasks showing
+    const w = (DATA?.work_packages || []).find((x) => x.wp_id === id);
+    if (w && !isCustomerCat(w)) collapsedSecs.delete(id + ":tasks");
   }
   render();
   if (openWPs.has(id)) {
@@ -249,8 +324,12 @@ function buildPanel(w) {
         ${isActive ? "" : `<span class="badge ${esc(w.status)}">${esc(w.status)}</span>`}
         <span class="panel-overall" title="Overall progress">${w.overall}% complete</span>
         <span class="panel-links">
-          <button class="linkbtn disabled" disabled title="Coming soon - not linked yet">📁 Dropbox files</button>
-          <button class="linkbtn disabled" disabled title="Coming soon - not linked yet">📄 Confluence data</button>
+          ${w.dropbox_url
+            ? `<button class="linkbtn dropbox-btn" title="Open this project's folder in File Explorer">📁 Dropbox files</button>`
+            : `<button class="linkbtn disabled" disabled title="Set a Dropbox folder in Edit to enable">📁 Dropbox files</button>`}
+          ${w.confluence_url
+            ? `<a class="linkbtn" href="${esc(w.confluence_url)}" target="_blank" rel="noopener" title="Open the Confluence page">📄 Confluence data</a>`
+            : `<button class="linkbtn disabled" disabled title="Set a Confluence link in Edit to enable">📄 Confluence data</button>`}
         </span>
         ${w.jira_total > 0 ? `<span class="jira-badge" title="Story points from Jira epic ${esc(w.jira_project_key)}${w.jira_synced_at ? " · synced " + esc(w.jira_synced_at) : ""}">Jira ${w.jira_done}/${w.jira_total} pts</span>` : ""}
         ${locked ? '<span class="lock-note">🔒 Locked - make active to edit</span>' : ""}
@@ -267,6 +346,8 @@ function buildPanel(w) {
     e.stopPropagation();
     duplicateProject(w);
   });
+  const dropBtn = head.querySelector(".dropbox-btn");
+  if (dropBtn) dropBtn.addEventListener("click", (e) => { e.stopPropagation(); openDropbox(w); });
   if (locked) {
     head.querySelector(".delete-wp").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -298,22 +379,19 @@ function buildPanel(w) {
   });
   panel.appendChild(head);
 
-  if (actionsOnly || meetingNotes) {
-    // Stacked modes: one collapsible section (task board OR meeting notes). There
-    // is no matrix row to reopen from, so ✕ collapses in place rather than vanish.
-    const body = meetingNotes ? buildMeetingNotes(w) : buildTaskBoard(w);
-    panel.appendChild(collapsibleSection(
-      w.wp_id, meetingNotes ? "notes" : "tasks",
-      meetingNotes ? "Meeting notes" : "Tasks", body));
+  if (meetingNotes) {
+    // Meeting-notes mode: one collapsible section showing the Jamie notes. There is no
+    // matrix row to reopen from, so ✕ collapses in place rather than vanish.
+    panel.appendChild(collapsibleSection(w.wp_id, "notes", "Meeting notes", buildMeetingNotes(w)));
     return panel;
   }
 
-  // Normal mode: collapsible sections in order - 12 steps, sub-workpackages, then tasks
+  // Normal mode: the 12 Abacus steps + sub-workpackages. (Task boards were removed;
+  // Jira points are tracked centrally in the Jira Points Dashboard.)
   panel.appendChild(collapsibleSection(w.wp_id, "steps", "Abacus - 12 steps", buildGantt(w)));
   panel.appendChild(collapsibleSection(w.wp_id, "subwps",
     "Sub-workpackages" + (w.children && w.children.length ? " (" + w.children.length + ")" : ""),
     buildSubWpFolder(w)));
-  panel.appendChild(collapsibleSection(w.wp_id, "tasks", "Tasks", buildTaskBoard(w)));
   return panel;
 }
 
@@ -433,16 +511,26 @@ function subWpItem(c) {
   const open = openWPs.has(c.wp_id);
   const wrap = el("div", "subwp" + (open ? " open" : ""));
 
-  // Collapsed row: caret + number + name + the 12-step colour bars (like the matrix row)
+  const isCustomer = isCustomerCat(c);
+
+  // Collapsed row: caret + number + name + (Customer) the 12-step colour bars, or
+  // (non-Customer) a task chip - since non-Customer sub-WPs hold tasks, not steps.
   const head = el("div", "subwp-head");
   head.appendChild(el("span", "subwp-caret", "▶"));
   if (c.sub_num) head.appendChild(el("span", "subwp-num", String(c.sub_num).padStart(4, "0")));
   head.appendChild(el("span", "subwp-name", esc(c.name)));
-  head.appendChild(miniCells(c));
+  if (isCustomer) {
+    head.appendChild(miniCells(c));
+  } else if (c.task_total > 0) {
+    head.appendChild(el("span",
+      "task-badge" + (c.task_done === c.task_total ? " all-done" : ""),
+      `✓ ${c.task_done}/${c.task_total} tasks`));
+  }
   head.addEventListener("click", () => toggleWP(c.wp_id));
   wrap.appendChild(head);
 
-  // Expanded: a toolbar (status, %, Duplicate / Edit / Delete) + the full 12-step editor
+  // Expanded: a toolbar (status, %, Duplicate / Edit / Delete) + the 12-step editor
+  // (Customer) or the sub-WP's own task board (non-Customer).
   if (open) {
     const body = el("div", "subwp-body");
     const bar = el("div", "subwp-bodybar");
@@ -457,7 +545,7 @@ function subWpItem(c) {
     bar.querySelector(".subwp-edit").addEventListener("click", (e) => { e.stopPropagation(); openSubWpForm(null, c); });
     bar.querySelector(".subwp-del").addEventListener("click", (e) => { e.stopPropagation(); deleteProject(c); });
     body.appendChild(bar);
-    body.appendChild(buildGantt(c));
+    body.appendChild(isCustomer ? buildGantt(c) : buildTaskBoard(c));
     wrap.appendChild(body);
   }
   return wrap;
@@ -468,6 +556,8 @@ function subWpItem(c) {
 function openSubWpForm(parent, child) {
   closeEditor();
   const isEdit = !!child;
+  // Non-Customer sub-WPs have no 12-step picker - just a name (tasks live on them).
+  const isCustomer = ((isEdit ? child.category : (parent && parent.category)) || "Customer") === "Customer";
   const template = ((isEdit ? child : parent) || {}).phases || (DATA.work_packages[0] || {}).phases || [];
   const curNr = new Set();
   if (isEdit) child.phases.forEach((ph) => ph.subs.forEach((s) => { if (s.status === "nr") curNr.add(s.code); }));
@@ -504,10 +594,10 @@ function openSubWpForm(parent, child) {
       <div class="field-label">Name <span class="field-hint">short title, max 40 characters</span></div>
       <input class="text-input" id="sw-name" placeholder="e.g. Phase 1 - Discovery" autocomplete="off" maxlength="40"
         value="${isEdit ? esc(child.name) : ""}" />
-      <div class="field-label">Which of the 12 steps apply?
+      ${isCustomer ? `<div class="field-label">Which of the 12 steps apply?
         <span class="field-hint">leave ticked = applies · <b>untick</b> anything not required</span>
       </div>
-      <div class="nr-picker">${groupsHtml}</div>
+      <div class="nr-picker">${groupsHtml}</div>` : ""}
     </div>
     <div class="modal-foot">
       <span class="modal-note">${isEdit ? "Changes are saved automatically." : "Added as an <b>Active</b> sub-workpackage."}</span>
@@ -651,6 +741,71 @@ async function setStatus(w, status) {
   }
 }
 
+// Open this project's Dropbox folder in the local File Explorer (server-side os.startfile).
+// If it's a legacy web URL, or the app is running remotely, fall back to opening the link.
+async function openDropbox(w) {
+  const status = $("#status");
+  try {
+    const res = await fetch("/api/open_dropbox", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wp_id: w.wp_id }),
+    });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    if (json.url) { window.open(json.url, "_blank", "noopener"); return; }
+    status.className = "status";
+    status.textContent = `Opened folder: ${json.path || ""}`;
+    setTimeout(() => { if (status.textContent.startsWith("Opened folder")) status.textContent = ""; }, 4000);
+  } catch (e) {
+    status.className = "status error";
+    status.textContent = "Could not open Dropbox folder: " + e.message;
+  }
+}
+
+// Browse the local synced Dropbox "Clients" folders and pick one (writes a relative
+// path into the given input). No Dropbox API - just lists the folders on disk.
+function openDropboxPicker(inputEl) {
+  const overlay = el("div", "modal-overlay");
+  overlay.id = "dropbox-picker";
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  const modal = el("div", "modal dropbox-picker-box");
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  async function show(path) {
+    modal.innerHTML = `
+      <div class="modal-head">
+        <div><div class="modal-code">Dropbox</div><h3>Choose a folder</h3></div>
+        <span class="close" title="Close">✕</span>
+      </div>
+      <div class="modal-body"><div class="dp-crumb" id="dp-crumb"></div><div id="dp-body"><div class="task-empty">Loading…</div></div></div>
+      <div class="modal-foot">
+        <span class="modal-note">Opens in File Explorer when you click 📁 Dropbox files.</span>
+        <div><button class="btn" id="dp-cancel">Cancel</button>
+             <button class="btn btn-primary" id="dp-use">Use this folder</button></div>
+      </div>`;
+    modal.querySelector(".close").addEventListener("click", () => overlay.remove());
+    modal.querySelector("#dp-cancel").addEventListener("click", () => overlay.remove());
+    modal.querySelector("#dp-use").addEventListener("click", () => { inputEl.value = path; overlay.remove(); });
+    modal.querySelector("#dp-crumb").textContent = "📂 Clients" + (path ? " / " + path : "");
+    const body = modal.querySelector("#dp-body");
+    try {
+      const d = await fetch("/api/dropbox/folders?path=" + encodeURIComponent(path)).then((r) => r.json());
+      if (d.error) throw new Error(d.error);
+      const up = d.parent !== null ? `<button class="dp-row dp-up" data-path="${esc(d.parent)}">⬆ up one level</button>` : "";
+      const rows = d.folders.length
+        ? d.folders.map((f) => `<button class="dp-row" data-path="${esc((d.path ? d.path + "/" : "") + f)}">📁 ${esc(f)}</button>`).join("")
+        : `<div class="task-empty">No sub-folders here — use “Use this folder”.</div>`;
+      body.innerHTML = `<div class="dp-list">${up}${rows}</div>`;
+      body.querySelectorAll(".dp-row").forEach((b) => b.addEventListener("click", () => show(b.dataset.path)));
+    } catch (e) {
+      body.innerHTML = `<div class="status error">${esc(e.message)}</div>`;
+    }
+  }
+  const start = (inputEl.value || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  show(start);
+}
+
 async function deleteProject(w) {
   if (!confirm(`Permanently delete "${w.client} - ${w.name}"?\n\nThis removes the project and all of its progress. This cannot be undone.`)) return;
   try {
@@ -709,7 +864,7 @@ const EMOJI_CHOICES = ["🏥","💊","🧪","🦷","🩺","🍽️","🧹","🚚
 
 function openAddProject() { openProjectForm("add"); }
 
-function openProjectForm(mode, wp) {
+function openProjectForm(mode, wp, presetCategory) {
   closeEditor();
   const isEdit = mode === "edit";
   // sub-point structure is shared by all WPs; borrow it from the given wp or the first one
@@ -718,6 +873,9 @@ function openProjectForm(mode, wp) {
   if (isEdit && wp) wp.phases.forEach((ph) => ph.subs.forEach((s) => { if (s.status === "nr") curNr.add(s.code); }));
   const curIcon = isEdit && wp ? (wp.icon || "") : "";
   const curJira = isEdit && wp ? (wp.jira_project_key || "") : "";
+  // category is chosen at creation and locked on edit
+  const curCategory = (isEdit && wp) ? (wp.category || "Customer")
+    : (CATEGORIES.includes(presetCategory) ? presetCategory : "Customer");
 
   const overlay = el("div", "modal-overlay");
   overlay.id = "editor";
@@ -754,7 +912,12 @@ function openProjectForm(mode, wp) {
       <span class="close" title="Close">✕</span>
     </div>
     <div class="modal-body">
-      <div class="field-label">Client</div>
+      <div class="field-label">Category ${isEdit ? '<span class="field-hint">set at creation · cannot be changed</span>' : ""}</div>
+      <div class="cat-picker" id="ap-cat">
+        ${CATEGORIES.map((c) => `<button type="button" class="cat-opt${c === curCategory ? " sel" : ""}"
+          data-cat="${esc(c)}"${isEdit ? " disabled" : ""}>${esc(c)}</button>`).join("")}
+      </div>
+      <div class="field-label">Customer</div>
       <input class="text-input" id="ap-client" placeholder="e.g. Bridgepoint" autocomplete="off"
         value="${isEdit ? esc(wp.client) : ""}" />
       <div class="field-label">Project name <span class="field-hint">short title, max 40 characters</span></div>
@@ -768,9 +931,12 @@ function openProjectForm(mode, wp) {
       <div class="field-label">Confluence link <span class="field-hint">optional · paste the page URL</span></div>
       <input class="text-input" id="ap-confluence" placeholder="https://insiderpro.atlassian.net/wiki/spaces/PRAC/pages/…" autocomplete="off"
         value="${isEdit ? esc(wp.confluence_url || "") : ""}" />
-      <div class="field-label">Dropbox link <span class="field-hint">optional · leave blank to auto-fill from the client name</span></div>
-      <input class="text-input" id="ap-dropbox" placeholder="https://www.dropbox.com/work/Clients/…" autocomplete="off"
-        value="${isEdit ? esc(wp.dropbox_url || "") : ""}" />
+      <div class="field-label">Dropbox folder <span class="field-hint">optional · folder inside your Dropbox “Clients” (opens in File Explorer)</span></div>
+      <div class="dropbox-field">
+        <input class="text-input" id="ap-dropbox" placeholder="e.g. Bridgepoint  or  Bridgepoint/Cost Base Review" autocomplete="off"
+          value="${isEdit ? esc(wp.dropbox_url || "") : ""}" />
+        <button type="button" class="btn" id="ap-dropbox-browse">Browse…</button>
+      </div>
       <div class="field-label">Jamie tag <span class="field-hint">optional · links this project's meeting notes</span></div>
       <select class="text-input" id="ap-jamie">
         <option value="">none</option>
@@ -789,10 +955,12 @@ function openProjectForm(mode, wp) {
       <select class="text-input" id="ap-jira" style="display:none">
         <option value="">none</option>
       </select>
-      <div class="field-label">Which points apply?
-        <span class="field-hint">leave ticked = required · <b>untick</b> anything that is Not required</span>
+      <div id="ap-nr-wrap">
+        <div class="field-label">Which points apply?
+          <span class="field-hint">leave ticked = required · <b>untick</b> anything that is Not required</span>
+        </div>
+        <div class="nr-picker">${groupsHtml}</div>
       </div>
-      <div class="nr-picker">${groupsHtml}</div>
     </div>
     <div class="modal-foot">
       <span class="modal-note">${isEdit ? "Changes are saved automatically." : "Added as an <b>Active</b> project."}</span>
@@ -823,6 +991,22 @@ function openProjectForm(mode, wp) {
     syncEmojiButtons();
   });
   syncEmojiButtons();
+
+  // Category selector (locked on edit). Non-Customer projects have no 12-step
+  // picker, so hide the "Which points apply?" section for them.
+  let chosenCategory = curCategory;
+  const nrWrap = modal.querySelector("#ap-nr-wrap");
+  const syncCategory = () => {
+    modal.querySelectorAll(".cat-opt").forEach((b) =>
+      b.classList.toggle("sel", b.dataset.cat === chosenCategory));
+    nrWrap.style.display = chosenCategory === "Customer" ? "" : "none";
+  };
+  if (!isEdit) {
+    modal.querySelectorAll(".cat-opt").forEach((b) => {
+      b.addEventListener("click", () => { chosenCategory = b.dataset.cat; syncCategory(); });
+    });
+  }
+  syncCategory();
 
   // Jira epic dropdown - shown only when the server has Jira configured.
   // Epics are grouped by their Jira project via <optgroup>.
@@ -911,6 +1095,8 @@ function openProjectForm(mode, wp) {
     });
   });
 
+  modal.querySelector("#ap-dropbox-browse").addEventListener("click", () =>
+    openDropboxPicker(modal.querySelector("#ap-dropbox")));
   modal.querySelector(".close").addEventListener("click", closeEditor);
   modal.querySelector("#ap-cancel").addEventListener("click", closeEditor);
   modal.querySelector("#ap-save").addEventListener("click", async () => {
@@ -919,12 +1105,14 @@ function openProjectForm(mode, wp) {
     const description = descEl.value.trim();
     const icon = chosenEmoji.trim();
     // validation
-    if (!client || !name) { alert("Please enter both a client and a project name."); return; }
+    if (!client || !name) { alert("Please enter both a customer and a project name."); return; }
     if (!icon) { alert("Please choose an emoji icon."); return; }
     if (/^[\x00-\x7F]+$/.test(icon)) { alert("The icon must be an emoji (a picture), not text."); return; }
     if (wordCount(description) > 60) { alert("The description is too long: please keep it to 60 words or fewer."); return; }
-    // unticked = Not required
-    const nr_codes = [...modal.querySelectorAll('input[type="checkbox"]:not(:checked)')].map((x) => x.dataset.code);
+    // unticked = Not required (only Customer projects have a 12-step picker)
+    const nr_codes = chosenCategory === "Customer"
+      ? [...modal.querySelectorAll('input[type="checkbox"]:not(:checked)')].map((x) => x.dataset.code)
+      : [];
     const jira_project_key = jiraSel ? jiraSel.value : "";
     const confluence_url = modal.querySelector("#ap-confluence").value.trim();
     const dropbox_url = modal.querySelector("#ap-dropbox").value.trim();
@@ -936,7 +1124,7 @@ function openProjectForm(mode, wp) {
       const url = isEdit ? "/api/edit_project" : "/api/add_project";
       const payload = isEdit
         ? { wp_id: wp.wp_id, client, name, description, icon, nr_codes, jira_project_key, confluence_url, dropbox_url, jamie_tag }
-        : { client, name, description, icon, nr_codes, jira_project_key, confluence_url, dropbox_url, jamie_tag };
+        : { client, name, description, category: chosenCategory, icon, nr_codes, jira_project_key, confluence_url, dropbox_url, jamie_tag };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1109,11 +1297,24 @@ const TASK_LABEL = { todo: "To Do", progress: "In Progress", done: "Complete" };
 const POINT_CHOICES = [1, 2, 3, 5, 8, 13, 21];   // modified Fibonacci; minimum + default 1
 
 function pointsSelectHtml(cls, current) {
-  const cur = POINT_CHOICES.includes(current) ? current : 1;   // never blank/"-": default 1
-  const opts = POINT_CHOICES.map((p) =>
+  // show whatever the task actually has (e.g. story points pulled from Jira), even if it
+  // isn't a standard Fibonacci value - keep it as its own option so it displays faithfully
+  const choices = POINT_CHOICES.includes(current) || !current
+    ? POINT_CHOICES : [current, ...POINT_CHOICES];
+  const cur = current || 1;
+  const opts = choices.map((p) =>
     `<option value="${p}"${p === cur ? " selected" : ""}>${p} pts</option>`
   ).join("");
-  return `<select class="${cls}" title="Story points (modified Fibonacci)">${opts}</select>`;
+  return `<select class="${cls}" title="Story points">${opts}</select>`;
+}
+
+// Priority 1 (highest) … 5 (lowest); 3 = default. Small colour-coded select on each card.
+const PRIORITIES = [1, 2, 3, 4, 5];
+const PRIO_LABEL = { 1: "P1", 2: "P2", 3: "P3", 4: "P4", 5: "P5" };
+function prioSelectHtml(current) {
+  const cur = PRIORITIES.includes(current) ? current : 3;
+  const opts = PRIORITIES.map((p) => `<option value="${p}"${p === cur ? " selected" : ""}>${PRIO_LABEL[p]}</option>`).join("");
+  return `<select class="task-prio prio-${cur}" title="Priority (P1 = highest)">${opts}</select>`;
 }
 
 // Build the embedded task board element for a work package (open by default).
@@ -1131,12 +1332,19 @@ function buildTaskBoard(w) {
         <div class="task-box-head">Complete ✓ <span class="tb-total complete-total"></span></div>
         <div class="task-list tb-complete"></div>
       </div>
+    </div>
+    <div class="tb-upcoming-wrap" style="display:none">
+      <div class="tb-upcoming-head">⏭ Upcoming sprint <span class="tb-total upcoming-total"></span></div>
+      <div class="task-list tb-upcoming"></div>
     </div>`;
 
   const working = section.querySelector(".tb-working");
   const complete = section.querySelector(".tb-complete");
+  const upcoming = section.querySelector(".tb-upcoming");
+  const upcomingWrap = section.querySelector(".tb-upcoming-wrap");
   const workingTotal = section.querySelector(".working-total");
   const completeTotal = section.querySelector(".complete-total");
+  const upcomingTotal = section.querySelector(".upcoming-total");
   let tasksCache = [];
 
   // sub-work-packages this work package has, for the per-task link dropdown
@@ -1146,6 +1354,17 @@ function buildTaskBoard(w) {
     subs.forEach((c) => {
       const num = c.sub_num ? String(c.sub_num).padStart(4, "0") : "?";
       opts.push(`<option value="${c.wp_id}"${String(current) === String(c.wp_id) ? " selected" : ""}>${num}</option>`);
+    });
+    return opts.join("");
+  };
+
+  // assignee dropdown: everyone seen in the data + a blank, plus the current value
+  const assigneeOptions = (current) => {
+    const names = new Set((DATA && DATA.assignees_all) || []);
+    if (current) names.add(current);
+    const opts = [`<option value=""${current ? "" : " selected"}>(unassigned)</option>`];
+    [...names].sort().forEach((n) => {
+      opts.push(`<option value="${esc(n)}"${n === current ? " selected" : ""}>${esc(n)}</option>`);
     });
     return opts.join("");
   };
@@ -1160,17 +1379,28 @@ function buildTaskBoard(w) {
       card.classList.add("dragging");
     });
     card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    if (t.blocker) card.classList.add("blocked");
+    const inUpcoming = t.sprint_id != null && String(t.sprint_id) !== String(DATA.active_sprint_id);
     card.innerHTML = `
       <span class="task-status-dot" title="${TASK_LABEL[t.status]}"></span>
+      ${t.blocker ? `<span class="task-blocker-mark" title="Blocker">⛔</span>` : ""}
       <span class="task-title">${esc(t.title)}</span>
+      <button class="task-edit" title="Edit / rename this task">🖍</button>
+      <button class="task-block" title="${t.blocker ? "Remove blocker" : "Mark as blocker"}">⛔</button>
+      <span class="task-assignee-wrap">
+        <span class="task-assignee-chip${t.assignee ? "" : " empty"}" title="${esc(t.assignee || "Unassigned")}">${t.assignee ? esc(initials(t.assignee)) : "＋"}</span>
+        <select class="task-assignee" title="Assigned to: ${esc(t.assignee || "unassigned")}">${assigneeOptions(t.assignee || "")}</select>
+      </span>
       ${subs.length ? `<select class="task-subwp" title="Link to a sub-workpackage">${subWpOptions(t.sub_wp_id)}</select>` : ""}
+      ${prioSelectHtml(t.priority || 3)}
       ${pointsSelectHtml("task-points", t.points || 0)}
+      <button class="task-defer" title="${inUpcoming ? "Pull back to the current sprint" : "Push to the next sprint"}">${inUpcoming ? "⏮" : "⏭"}</button>
       <button class="task-del" title="Delete task">✕</button>`;
-    card.title = "Click to advance · double-click to rename";
+    card.title = "Click to advance · 🖍 to rename";
     if (t.status !== "done") card.querySelector(".task-title").classList.add("renamable");
     // single click advances the status (To Do -> In Progress amber -> Complete);
     // double click edits the wording. A short timer disambiguates the two.
-    const isControl = (e) => e.target.closest(".task-del") || e.target.closest(".task-points") || e.target.closest(".task-subwp");
+    const isControl = (e) => e.target.closest(".task-del") || e.target.closest(".task-points") || e.target.closest(".task-subwp") || e.target.closest(".task-assignee") || e.target.closest(".task-edit") || e.target.closest(".task-block") || e.target.closest(".task-prio") || e.target.closest(".task-defer");
     let clickTimer = null;
     card.addEventListener("click", (e) => {
       if (isControl(e) || clickTimer) return;
@@ -1189,6 +1419,27 @@ function buildTaskBoard(w) {
       subSel.addEventListener("click", (e) => e.stopPropagation());
       subSel.addEventListener("change", (e) => { e.stopPropagation(); setTaskSubWp(t, subSel.value); });
     }
+    const aSel = card.querySelector(".task-assignee");
+    aSel.addEventListener("click", (e) => e.stopPropagation());
+    aSel.addEventListener("change", (e) => { e.stopPropagation(); setTaskAssignee(t, aSel.value); });
+    // 🖍 edit/rename -> inline rename (saved via set_title)
+    card.querySelector(".task-edit").addEventListener("click", (e) => {
+      e.stopPropagation();
+      startRename(t, card.querySelector(".task-title"));
+    });
+    // ⛔ toggle blocker
+    card.querySelector(".task-block").addEventListener("click", (e) => {
+      e.stopPropagation();
+      setTaskBlocker(t, !t.blocker);
+    });
+    const pSel = card.querySelector(".task-prio");
+    pSel.addEventListener("click", (e) => e.stopPropagation());
+    pSel.addEventListener("change", (e) => { e.stopPropagation(); setTaskPriority(t, parseInt(pSel.value, 10)); });
+    // ⏭ push to next sprint / ⏮ pull back
+    card.querySelector(".task-defer").addEventListener("click", (e) => {
+      e.stopPropagation();
+      deferTask(t, !inUpcoming);
+    });
     card.querySelector(".task-del").addEventListener("click", (e) => {
       e.stopPropagation();
       deleteTask(t);
@@ -1198,19 +1449,34 @@ function buildTaskBoard(w) {
 
   function paint(tasks) {
     tasksCache = tasks;
+    const activeId = String(DATA.active_sprint_id);
+    const isUpcoming = (t) => t.sprint_id != null && String(t.sprint_id) !== activeId;
+    // when the top "Assignee" filter is on, show only that person's cards
+    let shown = nameFilter ? tasks.filter((t) => (t.assignee || "") === nameFilter) : tasks;
+    // order: blockers first, then by priority (P1 first), then original sequence
+    const rank = (t) => [t.blocker ? 0 : 1, t.priority || 3, t.seq || 0];
+    shown = [...shown].sort((a, b) => {
+      const ra = rank(a), rb = rank(b);
+      return ra[0] - rb[0] || ra[1] - rb[1] || ra[2] - rb[2];
+    });
     working.innerHTML = "";
     complete.innerHTML = "";
-    let wp = 0, cp = 0;
-    tasks.forEach((t) => {
+    upcoming.innerHTML = "";
+    let wp = 0, cp = 0, up = 0;
+    shown.forEach((t) => {
+      if (isUpcoming(t)) { upcoming.appendChild(cardEl(t)); up += (t.points || 0); return; }
       (t.status === "done" ? complete : working).appendChild(cardEl(t));
       if (t.status === "done") cp += (t.points || 0); else wp += (t.points || 0);
     });
-    if (!working.children.length) working.innerHTML = '<div class="task-empty">No tasks yet - add one above.</div>';
+    const emptyNote = nameFilter ? `No ${esc(nameFilter)} tasks here.` : "No tasks yet - add one above.";
+    if (!working.children.length) working.innerHTML = `<div class="task-empty">${emptyNote}</div>`;
     if (!complete.children.length) complete.innerHTML = '<div class="task-empty">Nothing complete yet.</div>';
     workingTotal.textContent = wp ? wp + " pts" : "";
     completeTotal.textContent = cp ? cp + " pts" : "";
-    // keep the matrix row badge in sync without a full reload
-    updateRowTaskBadge(w.wp_id, tasks);
+    upcomingWrap.style.display = upcoming.children.length ? "" : "none";
+    upcomingTotal.textContent = up ? up + " pts" : "";
+    // keep the matrix row badge in sync without a full reload (active-sprint tasks only)
+    updateRowTaskBadge(w.wp_id, tasks.filter((t) => !isUpcoming(t)));
   }
 
   async function refresh() {
@@ -1235,16 +1501,35 @@ function buildTaskBoard(w) {
   }
 
   async function setTaskStatus(t, status) {
-    try { await post("/api/tasks/set_status", { task_id: t.id, status }); await refresh(); }
+    // full reload so the live sprint counters (To-Do / In-Progress / Done) update too
+    try { await post("/api/tasks/set_status", { task_id: t.id, status }); await load(); }
     catch (e) { alert("Could not update task: " + e.message); }
   }
   async function setTaskPoints(t, points) {
-    try { await post("/api/tasks/set_points", { task_id: t.id, points }); await refresh(); }
+    try { await post("/api/tasks/set_points", { task_id: t.id, points }); await load(); }
     catch (e) { alert("Could not set points: " + e.message); }
   }
   async function setTaskSubWp(t, subWpId) {
     try { await post("/api/tasks/set_sub_wp", { task_id: t.id, sub_wp_id: subWpId || "" }); await refresh(); }
     catch (e) { alert("Could not link task: " + e.message); }
+  }
+  async function setTaskAssignee(t, assignee) {
+    // full reload so the row chips, WP-level assignees and the top filter all update
+    try { await post("/api/tasks/set_assignee", { task_id: t.id, assignee: assignee || "" }); await load(); }
+    catch (e) { alert("Could not set assignee: " + e.message); }
+  }
+  async function setTaskBlocker(t, blocker) {
+    try { await post("/api/tasks/set_blocker", { task_id: t.id, blocker: blocker ? 1 : 0 }); await refresh(); }
+    catch (e) { alert("Could not update blocker: " + e.message); }
+  }
+  async function setTaskPriority(t, priority) {
+    try { await post("/api/tasks/set_priority", { task_id: t.id, priority }); await refresh(); }
+    catch (e) { alert("Could not set priority: " + e.message); }
+  }
+  async function deferTask(t, toUpcoming) {
+    // moves between current/upcoming sprint; reload so counters + board both update
+    try { await post("/api/tasks/defer", { task_id: t.id, upcoming: toUpcoming }); await load(); }
+    catch (e) { alert("Could not move task: " + e.message); }
   }
   async function setTaskTitle(t, title) {
     try { await post("/api/tasks/set_title", { task_id: t.id, title }); await refresh(); }
@@ -1278,12 +1563,16 @@ function buildTaskBoard(w) {
     input.addEventListener("blur", () => commit(true));
   }
   async function deleteTask(t) {
-    try { await post("/api/tasks/delete", { task_id: t.id }); await refresh(); }
+    // reload so the live sprint counters update too
+    try { await post("/api/tasks/delete", { task_id: t.id }); await load(); }
     catch (e) { alert("Could not delete task: " + e.message); }
   }
-  async function addTask(title, points) {
-    try { await post("/api/tasks/add", { wp_id: w.wp_id, title, points }); await refresh(); }
-    catch (e) { alert("Could not add task: " + e.message); }
+  async function addTask(title, points, assignee) {
+    // reload so counters, row chips and the top filter all pick it up
+    try {
+      await post("/api/tasks/add", { wp_id: w.wp_id, title, points, assignee: assignee || "" });
+      await load();
+    } catch (e) { alert("Could not add task: " + e.message); }
   }
 
   // Small pop-out: type the task + pick points, then Add.
@@ -1307,6 +1596,9 @@ function buildTaskBoard(w) {
         <input class="text-input" id="nt-title" placeholder="What needs doing?" autocomplete="off" maxlength="200" />
         <div class="field-label">Points <span class="field-hint">optional · modified Fibonacci</span></div>
         <div class="point-chips">${chips}</div>
+        <div class="field-label">Assignee <span class="field-hint">optional</span></div>
+        <input class="text-input" id="nt-assignee" list="nt-people" placeholder="who's doing this?" autocomplete="off" maxlength="128" />
+        <datalist id="nt-people">${((DATA && DATA.assignees_all) || []).map((n) => `<option value="${esc(n)}"></option>`).join("")}</datalist>
       </div>
       <div class="modal-foot">
         <span class="modal-note">Added to <b>Working</b> as To&nbsp;Do.</span>
@@ -1323,8 +1615,9 @@ function buildTaskBoard(w) {
     const submit = async () => {
       const title = titleEl.value.trim();
       if (!title) { titleEl.focus(); return; }
+      const assignee = (modal.querySelector("#nt-assignee").value || "").trim();
       closeEditor();
-      await addTask(title, chosen);
+      await addTask(title, chosen, assignee);
     };
     modal.querySelector(".close").addEventListener("click", closeEditor);
     modal.querySelector("#nt-cancel").addEventListener("click", closeEditor);
@@ -1545,6 +1838,137 @@ function startSyncPoll() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Sprint points history (per category) - modal with bar charts + table */
+/* ------------------------------------------------------------------ */
+let HIST_SHOW_ALL = false;
+// ISO week number (1-53) for a "YYYY-MM-DD" date string
+function isoWeek(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d)) return "?";
+  const t = new Date(d);
+  t.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));   // nearest Thursday
+  const week1 = new Date(t.getFullYear(), 0, 4);
+  return 1 + Math.round(((t - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+}
+function openHistory() {
+  HIST_SHOW_ALL = false;   // always open showing the last 12 weeks; tick to show all
+  const overlay = el("div", "modal-overlay");
+  overlay.id = "history-modal";
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  const modal = el("div", "modal history-box");
+  modal.innerHTML = `
+    <div class="modal-head">
+      <div><div class="modal-code">Jira Points Dashboard</div><h3>Points completed by week · last 12 weeks</h3></div>
+      <span class="head-actions">
+        <button class="linkbtn" id="dash-sync" title="Pull the latest Jira points">⟳ Sync from Jira</button>
+        <span class="close" title="Close">✕</span>
+      </span>
+    </div>
+    <div class="modal-body" id="hist-body"><div class="task-empty">Loading…</div></div>`;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  const bodyEl = modal.querySelector("#hist-body");
+  modal.querySelector(".close").addEventListener("click", () => overlay.remove());
+
+  async function loadData() {
+    bodyEl.innerHTML = `<div class="task-empty">Loading…</div>`;
+    try {
+      const data = await fetch("/api/history").then((r) => r.json());
+      renderHistory(bodyEl, data);
+    } catch (e) {
+      bodyEl.innerHTML = `<div class="status error">Could not load: ${esc(e.message)}</div>`;
+    }
+  }
+  modal.querySelector("#dash-sync").addEventListener("click", async () => {
+    const b = modal.querySelector("#dash-sync"), orig = b.textContent;
+    b.disabled = true; b.textContent = "⟳ Syncing…";
+    try {
+      const res = await fetch("/api/jira/sync", { method: "POST" }).then((r) => r.json());
+      if (res.error) throw new Error(res.error);
+      await loadData();     // refresh the dashboard
+      load();               // refresh the main page's epic badges in the background
+    } catch (e) {
+      alert("Sync failed: " + e.message);
+    } finally {
+      b.disabled = false; b.textContent = orig;
+    }
+  });
+  loadData();
+}
+
+function kpiTile(label, val, sub) {
+  return `<div class="kpi-tile"><div class="kpi-label">${esc(label)}</div>
+    <div class="kpi-val">${esc(val)}</div><div class="kpi-sub">${esc(sub)}</div></div>`;
+}
+
+function renderHistory(body, data) {
+  const cats = ["Customer", "Marketing", "Process and Ops"];
+  const CAT_VAR = { "Customer": "var(--cat-customer)", "Marketing": "var(--cat-marketing)", "Process and Ops": "var(--cat-ops)" };
+  const rows = data.history || [];
+  if (!rows.length) {
+    body.innerHTML = `<div class="task-empty">No points yet — click “⟳ Sync from Jira” to pull the last 12 weeks.</div>`;
+    return;
+  }
+  const weeksMap = {};
+  rows.forEach((r) => {
+    const w = (weeksMap[r.week_start] = weeksMap[r.week_start] || { start: r.week_start, label: r.label, byCat: {} });
+    w.byCat[r.category] = { done: r.points_done || 0, planned: r.points_planned || 0, tdone: r.tasks_done || 0, ttot: r.tasks_total || 0 };
+  });
+  const weeks = Object.values(weeksMap).sort((a, b) => a.start.localeCompare(b.start));
+  const shown = HIST_SHOW_ALL ? weeks : weeks.slice(-12);
+  const done = (w, c) => (w.byCat[c] || {}).done || 0;
+  const total = (w) => cats.reduce((n, c) => n + done(w, c), 0);
+
+  body.innerHTML = "";
+  const legend = cats.map((c) => `<span class="hist-leg"><i class="hist-swatch" style="background:${CAT_VAR[c]}"></i>${esc(c)}</span>`).join("");
+  const toolbar = el("div", "hist-toolbar",
+    `<label><input type="checkbox" id="hist-all"${HIST_SHOW_ALL ? " checked" : ""}/> Show all weeks (${weeks.length})</label>
+     <span class="hist-legend">${legend}</span>`);
+  body.appendChild(toolbar);
+  toolbar.querySelector("#hist-all").addEventListener("change", (e) => { HIST_SHOW_ALL = e.target.checked; renderHistory(body, data); });
+
+  // ---- KPI tiles: completed points per category + the grand total ----
+  const catTotal = (c) => shown.reduce((n, w) => n + done(w, c), 0);
+  const grand = cats.reduce((n, c) => n + catTotal(c), 0);
+  body.appendChild(el("div", "kpi-row",
+    cats.map((c) => `<div class="kpi-tile"><div class="kpi-label" style="color:${CAT_VAR[c]}">${esc(c)}</div>
+       <div class="kpi-val">${catTotal(c)}</div><div class="kpi-sub">pts completed</div></div>`).join("") +
+    kpiTile("Total", grand, `pts · ${shown.length} wks`)));
+
+  // ---- stacked bar chart: one bar per week, the 3 categories stacked ----
+  const CHART_H = 200;
+  const maxTotal = Math.max(1, ...shown.map(total));
+  const cols = shown.map((w) => {
+    const segs = cats.map((c) => {
+      const v = done(w, c);
+      if (v <= 0) return "";
+      return `<div class="hist-seg" style="height:${(v / maxTotal * CHART_H).toFixed(1)}px;background:${CAT_VAR[c]}"
+        title="${esc(c)}: ${v} pts · week ${isoWeek(w.start)}"></div>`;
+    }).join("");
+    return `<div class="hist-col" title="Week ${isoWeek(w.start)} (${esc(w.label)}) · ${total(w)} pts total">
+      <div class="hist-stack" style="height:${CHART_H}px">${segs}</div>
+      <div class="hist-xlabel">${isoWeek(w.start)}/52</div>
+    </div>`;
+  }).join("");
+  body.appendChild(el("div", "hist-chart",
+    `<div class="hist-ymax">Points completed per week · peak ${maxTotal}</div>
+     <div class="hist-plot">${cols}</div>
+     <div class="hist-xaxis-title">week of year</div>`));
+
+  // ---- table (newest first, per category) ----
+  const trs = [];
+  [...shown].reverse().forEach((w) => cats.forEach((c) => {
+    const r = w.byCat[c];
+    if (!r) return;
+    trs.push(`<tr><td>wk ${isoWeek(w.start)}</td><td>${esc(c)}</td>
+      <td class="num">${r.done}/${r.planned}</td><td class="num">${r.tdone}/${r.ttot}</td></tr>`);
+  }));
+  body.appendChild(el("div", "hist-table-wrap",
+    `<table class="hist-table"><thead><tr><th>Week</th><th>Category</th><th>Points done/planned</th><th>Tasks done/total</th></tr></thead>
+     <tbody>${trs.join("")}</tbody></table>`));
+}
+
+/* ------------------------------------------------------------------ */
 // filter chips
 $("#filters").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
@@ -1555,25 +1979,13 @@ $("#filters").addEventListener("click", (e) => {
   render();
 });
 
-// "Actions only": open every visible work package showing just its task board
-$("#actions-only").addEventListener("change", (e) => {
-  actionsOnly = e.target.checked;
-  if (actionsOnly) {
-    meetingNotes = false;
-    const mn = document.getElementById("meeting-notes"); if (mn) mn.checked = false;
-    visibleWPs().forEach((w) => { openWPs.add(w.wp_id); collapsedSecs.delete(w.wp_id + ":tasks"); });
-  } else {
-    openWPs.clear();
-  }
-  render();
-});
+// "Jira Points Dashboard": open the per-category points dashboard (Sync lives inside it)
+$("#view-history").addEventListener("click", openHistory);
 
 // "Meeting notes": open every visible work package showing its Jamie meeting notes
 $("#meeting-notes").addEventListener("change", (e) => {
   meetingNotes = e.target.checked;
   if (meetingNotes) {
-    actionsOnly = false;
-    const ao = document.getElementById("actions-only"); if (ao) ao.checked = false;
     visibleWPs().forEach((w) => { openWPs.add(w.wp_id); collapsedSecs.delete(w.wp_id + ":notes"); });
   } else {
     openWPs.clear();
