@@ -120,7 +120,7 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
   width: 230px; padding-left: 0;
 }
 .matrix thead th.wp-col { background: var(--bg); z-index: 6; padding-left: 4px; }
-.matrix thead th.proc-th { vertical-align: top; }
+.matrix thead th.proc-th { vertical-align: top; padding: 8px 4px 12px; }
 
 /* section header rows */
 .section-row td { padding: 2px 2px 2px; background: var(--bg); }
@@ -171,11 +171,16 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 .wp-conf { font-weight: 400; font-style: italic; font-size: 11px; color: var(--muted); }
 
 .proc-th .pnum {
-  display: inline-block; width: 24px; height: 24px; line-height: 24px;
-  border-radius: 4px; background: var(--accent-bright); color: var(--accent-ink);
-  font-weight: 800; font-size: 13px; margin-bottom: 6px;
+  display: block; width: 22px; height: 22px; line-height: 22px;
+  margin: 0 auto 7px; border-radius: 50%;
+  background: var(--accent-bright); color: var(--accent-ink);
+  font-weight: 800; font-size: 12px;
 }
-.proc-th .ptitle { display: block; font-size: 12px; line-height: 1.25; margin: 0 auto; color: #222a31; font-weight: 400; word-break: break-word; hyphens: auto; }
+.proc-th .ptitle {
+  display: block; margin: 0 auto; min-height: 30px;
+  font-size: 11.5px; line-height: 1.3; font-weight: 600; color: #2b333b;
+  overflow-wrap: break-word; hyphens: auto;
+}
 
 .wp-row { cursor: pointer; transition: background .12s; }
 .wp-row:hover td { background: #f4f6f9; }
