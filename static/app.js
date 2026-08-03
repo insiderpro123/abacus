@@ -444,7 +444,7 @@ function buildGantt(w) {
       });
     }
 
-    const pct = el("div", "gpct", ph.status === "nr" ? "×" : (ph.status === "na" ? "–" : ph.pct + "%"));
+    const pct = el("div", "gpct", ph.status === "nr" ? "×" : ph.pct + "%");
 
     row.appendChild(label);
     row.appendChild(track);
@@ -495,7 +495,8 @@ function phasePill(ph) {
     // fill reflects the actual % for every status; the colour still marks the state
     pill.innerHTML = `<div class="fill ${ph.status}" style="width:${ph.pct}%"></div><span>${ph.pct}%</span>`;
   } else {
-    pill.innerHTML = `<span>–</span>`;
+    // "Not started" phase: still show 0% rather than a dash
+    pill.innerHTML = `<span>${ph.pct}%</span>`;
   }
   return pill;
 }

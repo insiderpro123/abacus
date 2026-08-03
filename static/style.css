@@ -178,7 +178,7 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 }
 .proc-th .ptitle {
   display: block; margin: 0 auto; min-height: 30px;
-  font-size: 11.5px; line-height: 1.3; font-weight: 600; color: #2b333b;
+  font-size: 13px; line-height: 1.3; font-weight: 600; color: #2b333b;
   overflow-wrap: break-word; hyphens: auto;
 }
 
@@ -672,7 +672,8 @@ textarea.text-input { resize: vertical; min-height: 44px; line-height: 1.4; }
 
 /* A whole phase marked "Not required": shown like a not-started cell but with a
    small × instead of a dash (it is excluded, so it is not counted as 100%). */
-.cell-pill.nr span { font-weight: 700; }
+.cell-pill.nr { background: #b3bdc8; }   /* darker grey than a blank cell so the × box stands out */
+.cell-pill.nr span { font-weight: 700; color: #3f4954; }
 .tl-phase.nr .tl-num, .tl-phase.nr .tl-pct, .tl-phase.nr .tl-title { color: var(--nr); }
 .tl-phase.nr .tl-pct { font-weight: 800; }
 .tl-dot.nr { background: var(--nr); }
