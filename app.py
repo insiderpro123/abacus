@@ -1281,6 +1281,98 @@ def api_jira_refresh():
     return jsonify({"ok": True, "updated": len(results), "errors": errors})
 
 
+def _jira_push_plan(wp_id):
+    """Work out what a push would do, WITHOUT writing anything. Shared by the preview
+    and the real push. Returns (plan, error) where exactly one is set. plan is a dict
+    with epic/project/wp/to_create[]/skipped[]/browse_url; error is (message, status)."""
+    if not jira_client.is_configured():
+        return None, ("Jira is not configured on the server.", 400)
+
+    with SessionLocal() as s:
+        wp = s.get(WorkPackage, wp_id)
+        if not wp:
+            return None, ("work package not found", 404)
+        if (wp.category or "Customer") != "Customer":
+            return None, ("Push to Jira is only for Customer work packages "
+                          "(the ones that use the 12-step Abacus checklist).", 400)
+        epic_key = (wp.jira_project_key or "").strip()
+        wp_label = f"{wp.client} - {wp.name}".strip(" -")
+        if not epic_key:
+            return None, ("This work package isn't linked to a Jira epic. "
+                          "Add one via Edit first.", 400)
+        # build the sub-point summaries the same way get_data() labels them
+        subs = s.query(Subprocess).order_by(Subprocess.process_num, Subprocess.seq).all()
+        vals = {st.code: st.value
+                for st in s.query(WpStatus).filter_by(wp_id=wp_id).all()}
+    project_key = epic_key.split("-")[0]
+
+    summaries = []
+    for sp in subs:
+        if status_of(vals.get(sp.code, "")) == "nr":
+            continue                       # skip 'Not required' points
+        label = (sp.outcomes or "").strip() or (sp.question or "").strip()
+        summaries.append(f"{sp.code} {label}".strip())
+
+    # split into 'new' vs 'already under the epic' (idempotent re-push)
+    try:
+        existing = jira_client.epic_child_summaries(epic_key)
+    except jira_client.JiraError as e:
+        return None, (str(e), 502)
+
+    to_create = [sm for sm in summaries if sm not in existing]
+    skipped = [sm for sm in summaries if sm in existing]
+    # where the button should land the user afterwards (the Backlog board)
+    browse_url = (jira_client.project_backlog_url(project_key)
+                  or f"{jira_client.SITE_URL}/browse/{epic_key}")
+    plan = {"epic": epic_key, "project": project_key, "wp": wp_label,
+            "to_create": to_create, "skipped": skipped, "browse_url": browse_url}
+    return plan, None
+
+
+@app.route("/api/jira/push/<int:wp_id>/preview")
+def api_jira_push_preview(wp_id):
+    """Read-only: the list of sub-points a push would create (and how many it would
+    skip). Powers the confirm dialog - nothing is written to Jira."""
+    plan, err = _jira_push_plan(wp_id)
+    if err:
+        return jsonify({"error": err[0]}), err[1]
+    return jsonify({"ok": True, "to_create_count": len(plan["to_create"]),
+                    "skipped_count": len(plan["skipped"]), **plan})
+
+
+@app.route("/api/jira/push/<int:wp_id>", methods=["POST"])
+def api_jira_push(wp_id):
+    """Push this work package's Abacus sub-points into its linked Jira epic's backlog,
+    one issue per sub-point. Skips the 'Not required' points and any whose summary is
+    already under the epic (so it's safe to re-run). The app never reads these back."""
+    plan, err = _jira_push_plan(wp_id)
+    if err:
+        return jsonify({"error": err[0]}), err[1]
+    epic_key, project_key = plan["epic"], plan["project"]
+
+    try:
+        issue_type_id = jira_client.project_creatable_issue_type(project_key)
+    except jira_client.JiraError as e:
+        return jsonify({"error": str(e)}), 502
+
+    created, errors = [], []
+    for summary in plan["to_create"]:
+        try:
+            key = jira_client.create_backlog_issue(project_key, epic_key, summary, issue_type_id)
+            created.append(key)
+        except jira_client.JiraError as e:
+            errors.append({"summary": summary, "error": str(e)})
+            # a 403 (read-only token) will fail every item - stop hammering Jira
+            if "403" in str(e):
+                break
+
+    _mark_saved()
+    return jsonify({"ok": True, "epic": epic_key, "project": project_key, "wp": plan["wp"],
+                    "created": len(created), "created_keys": created,
+                    "skipped": len(plan["skipped"]), "errors": errors,
+                    "browse_url": plan["browse_url"]})
+
+
 @app.route("/api/jira/sync", methods=["POST"])
 def api_jira_sync():
     """Manual 'Sync from Jira': refresh the active sprint's task cards and backfill

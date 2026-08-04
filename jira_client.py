@@ -92,6 +92,33 @@ def _get(path, params=None):
         raise JiraError("Jira returned a non-JSON response.") from e
 
 
+def _post(path, payload):
+    """Authenticated POST (write) through the api.atlassian.com gateway.
+
+    Writing needs a token with the write:jira-work scope; the read-only token the
+    rest of this module uses will get a 403 here, which we surface plainly."""
+    if not is_configured():
+        raise JiraError("Jira is not configured (JIRA_API_TOKEN is not set).")
+    url = f"https://api.atlassian.com/ex/jira/{_cloudid()}{path}"
+    try:
+        r = requests.post(url, json=payload, auth=_auth(),
+                          headers={"Accept": "application/json",
+                                   "Content-Type": "application/json"}, timeout=TIMEOUT)
+    except requests.RequestException as e:
+        raise JiraError(f"Could not reach Jira: {e}") from e
+    if r.status_code == 401:
+        raise JiraError("Jira rejected the credentials (401). Check JIRA_EMAIL + JIRA_API_TOKEN.")
+    if r.status_code == 403:
+        raise JiraError("Jira denied the write (403). The API token is read-only - it needs the "
+                        "'write:jira-work' scope to create issues.")
+    if r.status_code >= 400:
+        raise JiraError(f"Jira returned {r.status_code}: {r.text[:300]}")
+    try:
+        return r.json()
+    except ValueError as e:
+        raise JiraError("Jira returned a non-JSON response.") from e
+
+
 def list_epics():
     """Every epic visible to the token, for the picker:
     [{'key':..., 'project':..., 'summary':...}], ordered by project then key.
@@ -175,3 +202,105 @@ def epic_points(epic_key):
         if data.get("isLast") or not next_token:
             break
     return {"done": int(round(done_pts)), "total": int(round(total_pts))}
+
+
+# --------------------------------------------------------------------------- #
+# Write: push Abacus sub-points into a Jira epic's backlog as separate issues
+# --------------------------------------------------------------------------- #
+
+# creatable issue-type id per project key, discovered once and cached
+_issue_type_cache = {}
+
+# issue types we prefer for pushed sub-points, best first. Story first so pushed
+# sub-points get the green Story marker on the board (matching the backlog).
+_PREFERRED_TYPES = ("story", "task")
+
+
+def project_creatable_issue_type(project_key):
+    """Id of a creatable, non-subtask issue type for the project - preferring Story,
+    then Task, then the first available. Cached per project key."""
+    key = (project_key or "").strip()
+    if not key:
+        raise JiraError("No Jira project key given.")
+    if key in _issue_type_cache:
+        return _issue_type_cache[key]
+    data = _get(f"/rest/api/3/issue/createmeta/{key}/issuetypes")
+    types = [t for t in data.get("issueTypes", []) if not t.get("subtask")]
+    if not types:
+        raise JiraError(f"No creatable issue types found for project {key}.")
+    chosen = None
+    for want in _PREFERRED_TYPES:
+        chosen = next((t for t in types if (t.get("name") or "").strip().lower() == want), None)
+        if chosen:
+            break
+    chosen = chosen or types[0]
+    _issue_type_cache[key] = chosen["id"]
+    return chosen["id"]
+
+
+def epic_child_summaries(epic_key):
+    """Set of the summaries of every issue already under an epic (its children).
+    Used to skip sub-points that have already been pushed (idempotent re-push)."""
+    summaries = set()
+    jql = f'parent = "{epic_key}"'
+    next_token = None
+    while True:
+        params = {"jql": jql, "maxResults": _PAGE, "fields": "summary"}
+        if next_token:
+            params["nextPageToken"] = next_token
+        data = _get("/rest/api/3/search/jql", params=params)
+        for it in data.get("issues", []):
+            summ = ((it.get("fields") or {}).get("summary") or "").strip()
+            if summ:
+                summaries.add(summ)
+        next_token = data.get("nextPageToken")
+        if data.get("isLast") or not next_token:
+            break
+    return summaries
+
+
+_board_url_cache = {}
+
+
+def project_backlog_url(project_key):
+    """Best-effort deep link to the project's Backlog board (the screen the user
+    sees in Jira, e.g. .../projects/ISPOPS2/boards/83/backlog). Returns None if it
+    can't be worked out (the caller falls back to the epic's /browse page)."""
+    key = (project_key or "").strip()
+    if not key:
+        return None
+    if key in _board_url_cache:
+        return _board_url_cache[key]
+    url = None
+    try:
+        data = _get("/rest/agile/1.0/board", params={"projectKeyOrId": key, "maxResults": 50})
+        boards = data.get("values", []) or []
+        # a scrum board has the Backlog screen; otherwise take the first board
+        board = next((b for b in boards if (b.get("type") or "") == "scrum"), boards[0] if boards else None)
+        if board and board.get("id"):
+            # classic (company-managed) boards live under /jira/software/c/…,
+            # team-managed (next-gen) under /jira/software/… (no 'c/')
+            style = ""
+            try:
+                style = (_get(f"/rest/api/3/project/{key}").get("style") or "").lower()
+            except JiraError:
+                pass
+            seg = "" if style == "next-gen" else "c/"
+            url = f"{SITE_URL}/jira/software/{seg}projects/{key}/boards/{board['id']}/backlog"
+    except JiraError:
+        url = None
+    _board_url_cache[key] = url
+    return url
+
+
+def create_backlog_issue(project_key, epic_key, summary, issue_type_id):
+    """Create a single issue under an epic. With no sprint set it lands in the
+    project's backlog. Returns the new issue key (e.g. 'MON-812')."""
+    payload = {"fields": {
+        "project": {"key": project_key},
+        "summary": summary,
+        "issuetype": {"id": issue_type_id},
+        "parent": {"key": epic_key},
+    }}
+    data = _post("/rest/api/3/issue", payload)
+    return data.get("key", "")

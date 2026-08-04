@@ -224,10 +224,14 @@ function renderWpRow(w) {
   tr.appendChild(nameTd);
 
   if (isCustomerCat(w)) {
-    // the 12 Abacus phase pills
+    // the 12 Abacus phase pills - click one to jump straight to that step
     w.phases.forEach((ph) => {
       const td = el("td");
-      td.appendChild(phasePill(ph));
+      const pill = phasePill(ph);
+      pill.classList.add("clickable");
+      pill.title += " (click to open this step)";
+      pill.addEventListener("click", (e) => { e.stopPropagation(); openWpPhase(w, ph.num); });
+      td.appendChild(pill);
       tr.appendChild(td);
     });
   } else {
@@ -273,11 +277,13 @@ function toggleWP(id) {
     openWPs.delete(id);
   } else {
     openWPs.add(id);
-    // start with the three sections collapsed each time a work package is opened
+    // start with the sections collapsed, then open the one that matters for this
+    // category: Customer WPs open straight onto the Abacus 12 steps; Marketing /
+    // Process-and-Ops WPs (tasks only) open with their tasks showing.
     ["steps", "subwps", "tasks"].forEach((k) => collapsedSecs.add(id + ":" + k));
-    // ...but Marketing / Process-and-Ops WPs (tasks only) open with their tasks showing
     const w = (DATA?.work_packages || []).find((x) => x.wp_id === id);
     if (w && !isCustomerCat(w)) collapsedSecs.delete(id + ":tasks");
+    else collapsedSecs.delete(id + ":steps");
   }
   render();
   if (openWPs.has(id)) {
@@ -338,6 +344,9 @@ function buildPanel(w) {
       <span class="panel-head-actions">
         <button class="dup-wp" title="Create a copy of this project">Duplicate</button>
         ${locked ? "" : '<button class="edit-wp">Edit</button>'}
+        ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer")
+            ? `<button class="push-jira" title="Create a Jira backlog issue for every Abacus sub-point under epic ${esc(w.jira_project_key)}">⤴ Push to Jira</button>`
+            : ""}
         <button class="status-toggle">${toggleLabel}</button>
         ${locked ? '<button class="delete-wp" title="Permanently delete this project">Delete</button>' : ""}
         <span class="close" title="Collapse">✕</span>
@@ -346,6 +355,8 @@ function buildPanel(w) {
     e.stopPropagation();
     duplicateProject(w);
   });
+  const pushBtn = head.querySelector(".push-jira");
+  if (pushBtn) pushBtn.addEventListener("click", (e) => { e.stopPropagation(); pushToJira(w, pushBtn); });
   const dropBtn = head.querySelector(".dropbox-btn");
   if (dropBtn) dropBtn.addEventListener("click", (e) => { e.stopPropagation(); openDropbox(w); });
   if (locked) {
@@ -409,6 +420,7 @@ function buildGantt(w) {
     const isOpen = openPhases.has(key);
 
     const row = el("div", "grow" + (isOpen ? " open" : "") + (ph.status === "nr" ? " nr" : ""));
+    row.dataset.phase = ph.num;
     row.addEventListener("click", () => togglePhase(w.wp_id, ph.num));
     const label = el("div", "grow-label");
     label.innerHTML = `<span class="gnum">${ph.num}</span>
@@ -666,6 +678,22 @@ function togglePhase(wpId, num) {
   render();
 }
 
+// Jump straight to one Abacus step: open the work package, show the 12-steps
+// section, expand that phase's sub-points, and scroll it into view. Used when a
+// phase block in the matrix row is clicked.
+function openWpPhase(w, num) {
+  const id = w.wp_id;
+  openWPs.add(id);
+  collapsedSecs.delete(id + ":steps");   // make sure the Abacus steps are showing
+  openPhases.add(id + ":" + num);        // expand this specific step
+  render();
+  setTimeout(() => {
+    const row = document.querySelector(`#panel-${CSS.escape(id)} .grow[data-phase="${num}"]`);
+    (row || document.getElementById("panel-" + id))
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 60);
+}
+
 function statusLabel(s) {
   return { done: "Complete", progress: "In progress", todo: "Outstanding", na: "Not started", nr: "Not required" }[s] || s;
 }
@@ -846,6 +874,109 @@ async function duplicateProject(w) {
   } catch (e) {
     alert("Could not duplicate: " + e.message);
   }
+}
+
+// Push every applicable Abacus sub-point of a work package into its linked Jira
+// epic's backlog, one issue per sub-point. Creating Jira issues is outward-facing,
+// so we show a preview list first and only write on Confirm; re-running is safe
+// (already-present sub-points are skipped).
+async function pushToJira(w, btn) {
+  // Open the Jira backlog tab NOW, on this click, so the browser's popup blocker
+  // lets it through (a tab opened later, after the preview fetch, usually gets
+  // blocked). It starts blank and we point it at the backlog once we know the URL.
+  let jiraTab = window.open("about:blank", "_blank");
+  try { if (jiraTab) jiraTab.opener = null; } catch (_) {}
+
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "⟳ …";
+  let plan;
+  try {
+    const res = await fetch(`/api/jira/push/${w.wp_id}/preview`);
+    plan = await res.json();
+    if (plan.error) throw new Error(plan.error);
+  } catch (e) {
+    if (jiraTab && !jiraTab.closed) jiraTab.close();   // nothing to show - don't leave a blank tab
+    alert("Could not prepare the push: " + e.message);
+    return;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+
+  // point the already-open tab at the epic's backlog
+  const tabOpen = jiraTab && !jiraTab.closed;
+  if (tabOpen && plan.browse_url) jiraTab.location.href = plan.browse_url;
+
+  const toCreate = plan.to_create || [];
+  const skipped = plan.skipped || [];
+  const n = toCreate.length;
+
+  closeEditor();
+  const overlay = el("div", "modal-overlay");
+  overlay.id = "editor";
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeEditor(); });
+  const listHtml = n
+    ? `<ul class="push-list">${toCreate.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>`
+    : `<div class="task-empty">Nothing new to push — every sub-point is already in Jira.</div>`;
+  const modal = el("div", "modal pushjira-modal");
+  modal.innerHTML = `
+    <div class="modal-head">
+      <div><div class="modal-code">Push to Jira</div><h3>${esc(w.client)} - ${esc(w.name)}</h3></div>
+      <span class="close" title="Close">✕</span>
+    </div>
+    <div class="modal-body">
+      <p class="push-intro">These <b>${n}</b> sub-point${n === 1 ? "" : "s"} will be created as Stories in the backlog of epic <b>${esc(plan.epic)}</b>${skipped.length ? `. <b>${skipped.length}</b> already in Jira will be skipped.` : "."}</p>
+      ${listHtml}
+    </div>
+    <div class="modal-foot">
+      <span class="modal-note" id="pj-note">${tabOpen ? "The Jira backlog opened in a new tab — it'll refresh with the new items when you confirm." : "The Jira backlog will open in a new tab when you confirm."}</span>
+      <div>
+        <button class="btn" id="pj-cancel">Cancel</button>
+        <button class="btn btn-primary" id="pj-confirm"${n ? "" : " disabled"}>Confirm &amp; push ${n}</button>
+      </div>
+    </div>`;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  modal.querySelector(".close").addEventListener("click", closeEditor);
+  const cancelBtn = modal.querySelector("#pj-cancel");
+  cancelBtn.addEventListener("click", closeEditor);
+  const confirmBtn = modal.querySelector("#pj-confirm");
+  confirmBtn.addEventListener("click", async () => {
+    // The backlog tab was opened on the first click. If it got blocked (or the user
+    // closed it), open it now inside this click gesture as a fallback.
+    if ((!jiraTab || jiraTab.closed) && plan.browse_url) {
+      jiraTab = window.open(plan.browse_url, "_blank");
+    }
+    confirmBtn.disabled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.textContent = "⟳ Pushing…";
+    try {
+      const res = await fetch(`/api/jira/push/${w.wp_id}`, { method: "POST" });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      const failed = (json.errors && json.errors.length) ? json.errors.length : 0;
+      // reload the Jira tab so the freshly-created items show up
+      if (jiraTab && !jiraTab.closed && plan.browse_url) jiraTab.location.href = plan.browse_url;
+      modal.querySelector("#pj-note").innerHTML =
+        `✅ Created <b>${json.created}</b>, skipped <b>${json.skipped}</b>${failed ? `, <b>${failed}</b> failed` : ""}. See the Jira tab.`;
+      modal.querySelector(".modal-body").innerHTML =
+        `<div class="task-empty">Done — check the Jira backlog tab.</div>`;
+      confirmBtn.remove();
+      cancelBtn.disabled = false;
+      cancelBtn.textContent = "Close";
+      if (failed) {
+        alert("Some items failed:\n"
+          + json.errors.slice(0, 5).map((e) => `• ${e.summary}: ${e.error}`).join("\n")
+          + (failed > 5 ? `\n…and ${failed - 5} more.` : ""));
+      }
+    } catch (e) {
+      alert("Push failed: " + e.message);
+      confirmBtn.disabled = false;
+      cancelBtn.disabled = false;
+      confirmBtn.textContent = `Confirm & push ${n}`;
+    }
+  });
 }
 
 // When a project hits 100%, offer to mark it inactive.
