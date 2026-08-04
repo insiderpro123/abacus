@@ -290,9 +290,15 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 }
 .push-selall { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-weight: 600; }
 .push-count { color: var(--muted); }
-.pj-link { color: #0052cc; font-weight: 700; text-decoration: none; }
-.pj-link:hover { text-decoration: underline; }
-.pj-warn { color: var(--muted); }
+.pj-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel); color: #e83e8c;
+  border: 1.5px solid #e83e8c; border-radius: 6px;
+  padding: 10px 20px; font-size: 15px; font-weight: 700;
+  text-decoration: none; font-family: inherit; line-height: 1;
+}
+.pj-link:hover { background: #e83e8c; color: #fff; text-decoration: none; }
+.pj-warn { color: var(--muted); display: block; margin-top: 6px; }
 .delete-wp {
   background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
   font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer;
