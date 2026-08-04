@@ -262,11 +262,11 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 }
 .edit-wp:hover, .dup-wp:hover { border-color: var(--accent); color: var(--accent); }
 .push-jira {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+  background: var(--panel); border: 1px solid #e83e8c; border-radius: 4px;
   font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer;
-  color: var(--muted); font-family: inherit;
+  color: #e83e8c; font-family: inherit;
 }
-.push-jira:hover { border-color: #0052cc; color: #0052cc; }
+.push-jira:hover { background: #e83e8c; color: #fff; border-color: #e83e8c; }
 .push-jira:disabled { opacity: .6; cursor: default; }
 .pushjira-modal .push-intro { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .push-list {
