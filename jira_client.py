@@ -259,36 +259,46 @@ def epic_child_summaries(epic_key):
     return summaries
 
 
+def resolve_backlog_url(project_key):
+    """Work out the deep link to the project's Backlog board (the screen the user
+    sees in Jira, e.g. .../projects/MON/boards/121/backlog). Returns (url, error):
+    on success (url, None); on failure (None, reason). Finding the board needs a
+    token that can READ JIRA SOFTWARE BOARDS - a plain read/write:jira-work token
+    can't, which is the usual reason this falls back."""
+    key = (project_key or "").strip()
+    if not key:
+        return (None, "no project key on the work package")
+    try:
+        data = _get("/rest/agile/1.0/board", params={"projectKeyOrId": key, "maxResults": 50})
+    except JiraError as e:
+        return (None, f"can't read Jira boards for {key} ({e}). The API token likely "
+                      f"lacks Jira Software (board) read access.")
+    boards = data.get("values", []) or []
+    # a scrum board has the Backlog screen; otherwise take the first board
+    board = next((b for b in boards if (b.get("type") or "") == "scrum"), boards[0] if boards else None)
+    if not board or not board.get("id"):
+        return (None, f"no board is linked to project {key}")
+    # classic (company-managed) boards live under /jira/software/c/…,
+    # team-managed (next-gen) under /jira/software/… (no 'c/')
+    style = ""
+    try:
+        style = (_get(f"/rest/api/3/project/{key}").get("style") or "").lower()
+    except JiraError:
+        pass
+    seg = "" if style == "next-gen" else "c/"
+    return (f"{SITE_URL}/jira/software/{seg}projects/{key}/boards/{board['id']}/backlog", None)
+
+
 _board_url_cache = {}
 
 
 def project_backlog_url(project_key):
-    """Best-effort deep link to the project's Backlog board (the screen the user
-    sees in Jira, e.g. .../projects/ISPOPS2/boards/83/backlog). Returns None if it
-    can't be worked out (the caller falls back to the epic's /browse page)."""
+    """URL-only wrapper around resolve_backlog_url(), cached per project key.
+    Returns None when the board can't be resolved."""
     key = (project_key or "").strip()
-    if not key:
-        return None
     if key in _board_url_cache:
         return _board_url_cache[key]
-    url = None
-    try:
-        data = _get("/rest/agile/1.0/board", params={"projectKeyOrId": key, "maxResults": 50})
-        boards = data.get("values", []) or []
-        # a scrum board has the Backlog screen; otherwise take the first board
-        board = next((b for b in boards if (b.get("type") or "") == "scrum"), boards[0] if boards else None)
-        if board and board.get("id"):
-            # classic (company-managed) boards live under /jira/software/c/…,
-            # team-managed (next-gen) under /jira/software/… (no 'c/')
-            style = ""
-            try:
-                style = (_get(f"/rest/api/3/project/{key}").get("style") or "").lower()
-            except JiraError:
-                pass
-            seg = "" if style == "next-gen" else "c/"
-            url = f"{SITE_URL}/jira/software/{seg}projects/{key}/boards/{board['id']}/backlog"
-    except JiraError:
-        url = None
+    url, _err = resolve_backlog_url(key)
     _board_url_cache[key] = url
     return url
 

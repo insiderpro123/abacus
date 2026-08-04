@@ -935,7 +935,9 @@ async function pushToJira(w, btn) {
       ${listHtml}
     </div>
     <div class="modal-foot">
-      <span class="modal-note" id="pj-note">${tabOpen ? "The Jira backlog opened in a new tab. It'll refresh with the new items when you confirm." : "The Jira backlog will open in a new tab when you confirm."}</span>
+      <span class="modal-note" id="pj-note">${plan.board_error
+        ? "Opened a filtered list of this epic's items in a new tab. (Couldn't open the Backlog board: " + esc(plan.board_error) + ")"
+        : (tabOpen ? "The Jira backlog opened in a new tab. It'll refresh with the new items when you confirm." : "The Jira backlog will open in a new tab when you confirm.")}</span>
       <div>
         <button class="btn" id="pj-cancel">Cancel</button>
         <button class="btn btn-primary" id="pj-confirm"${n ? "" : " disabled"}>Confirm &amp; push ${n}</button>

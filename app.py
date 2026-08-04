@@ -1321,11 +1321,19 @@ def _jira_push_plan(wp_id):
 
     to_create = [sm for sm in summaries if sm not in existing]
     skipped = [sm for sm in summaries if sm in existing]
-    # where the button should land the user afterwards (the Backlog board)
-    browse_url = (jira_client.project_backlog_url(project_key)
-                  or f"{jira_client.SITE_URL}/browse/{epic_key}")
+    # Where the button lands the user afterwards. First choice is the project's
+    # Backlog board; if the token can't read boards, fall back to a filtered issue
+    # list of the epic's items (that only needs read:jira-work), never the epic page.
+    board_url, board_error = jira_client.resolve_backlog_url(project_key)
+    if board_url:
+        browse_url = board_url
+    else:
+        from urllib.parse import quote
+        jql = f'parent = "{epic_key}" ORDER BY created DESC'
+        browse_url = f"{jira_client.SITE_URL}/issues/?jql={quote(jql)}"
     plan = {"epic": epic_key, "project": project_key, "wp": wp_label,
-            "to_create": to_create, "skipped": skipped, "browse_url": browse_url}
+            "to_create": to_create, "skipped": skipped,
+            "browse_url": browse_url, "board_error": board_error}
     return plan, None
 
 
