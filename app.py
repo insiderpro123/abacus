@@ -1350,13 +1350,24 @@ def api_jira_push(wp_id):
         return jsonify({"error": err[0]}), err[1]
     epic_key, project_key = plan["epic"], plan["project"]
 
+    # optional subset: only push the sub-points the user left ticked. We intersect
+    # with the freshly-computed plan so a stale/tampered list can't create anything
+    # unexpected or duplicate what's already in Jira.
+    body = request.get_json(force=True, silent=True) or {}
+    requested = body.get("summaries")
+    if isinstance(requested, list):
+        chosen = set(str(x) for x in requested)
+        targets = [s for s in plan["to_create"] if s in chosen]
+    else:
+        targets = plan["to_create"]
+
     try:
         issue_type_id = jira_client.project_creatable_issue_type(project_key)
     except jira_client.JiraError as e:
         return jsonify({"error": str(e)}), 502
 
     created, errors = [], []
-    for summary in plan["to_create"]:
+    for summary in targets:
         try:
             key = jira_client.create_backlog_issue(project_key, epic_key, summary, issue_type_id)
             created.append(key)

@@ -824,7 +824,7 @@ function openDropboxPicker(inputEl) {
       const up = d.parent !== null ? `<button class="dp-row dp-up" data-path="${esc(d.parent)}">⬆ up one level</button>` : "";
       const rows = d.folders.length
         ? d.folders.map((f) => `<button class="dp-row" data-path="${esc((d.path ? d.path + "/" : "") + f)}">📁 ${esc(f)}</button>`).join("")
-        : `<div class="task-empty">No sub-folders here — use “Use this folder”.</div>`;
+        : `<div class="task-empty">No sub-folders here. Use “Use this folder”.</div>`;
       body.innerHTML = `<div class="dp-list">${up}${rows}</div>`;
       body.querySelectorAll(".dp-row").forEach((b) => b.addEventListener("click", () => show(b.dataset.path)));
     } catch (e) {
@@ -917,8 +917,13 @@ async function pushToJira(w, btn) {
   overlay.id = "editor";
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeEditor(); });
   const listHtml = n
-    ? `<ul class="push-list">${toCreate.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>`
-    : `<div class="task-empty">Nothing new to push — every sub-point is already in Jira.</div>`;
+    ? `<div class="push-selectbar">
+         <label class="push-selall"><input type="checkbox" id="pj-all" checked> Select all</label>
+         <span class="push-count" id="pj-count">${n} selected</span>
+       </div>
+       <ul class="push-list">${toCreate.map((s, i) =>
+         `<li><label class="push-opt"><input type="checkbox" class="pj-check" data-i="${i}" checked><span>${esc(s)}</span></label></li>`).join("")}</ul>`
+    : `<div class="task-empty">Nothing new to push. Every sub-point is already in Jira.</div>`;
   const modal = el("div", "modal pushjira-modal");
   modal.innerHTML = `
     <div class="modal-head">
@@ -930,7 +935,7 @@ async function pushToJira(w, btn) {
       ${listHtml}
     </div>
     <div class="modal-foot">
-      <span class="modal-note" id="pj-note">${tabOpen ? "The Jira backlog opened in a new tab — it'll refresh with the new items when you confirm." : "The Jira backlog will open in a new tab when you confirm."}</span>
+      <span class="modal-note" id="pj-note">${tabOpen ? "The Jira backlog opened in a new tab. It'll refresh with the new items when you confirm." : "The Jira backlog will open in a new tab when you confirm."}</span>
       <div>
         <button class="btn" id="pj-cancel">Cancel</button>
         <button class="btn btn-primary" id="pj-confirm"${n ? "" : " disabled"}>Confirm &amp; push ${n}</button>
@@ -942,7 +947,32 @@ async function pushToJira(w, btn) {
   const cancelBtn = modal.querySelector("#pj-cancel");
   cancelBtn.addEventListener("click", closeEditor);
   const confirmBtn = modal.querySelector("#pj-confirm");
+
+  // Selection: every sub-point starts ticked; untick any to leave it out. The
+  // count and the Confirm button track what's currently selected.
+  const checkboxes = () => [...modal.querySelectorAll(".pj-check")];
+  const selectedSummaries = () => checkboxes().filter((c) => c.checked).map((c) => toCreate[+c.dataset.i]);
+  function updateCount() {
+    const boxes = checkboxes();
+    const sel = boxes.filter((c) => c.checked).length;
+    confirmBtn.disabled = sel === 0;
+    confirmBtn.textContent = `Confirm & push ${sel}`;
+    const cnt = modal.querySelector("#pj-count");
+    if (cnt) cnt.textContent = `${sel} selected`;
+    const all = modal.querySelector("#pj-all");
+    if (all) { all.checked = sel === boxes.length && sel > 0; all.indeterminate = sel > 0 && sel < boxes.length; }
+  }
+  modal.querySelector(".push-list")?.addEventListener("change", (e) => {
+    if (e.target.classList.contains("pj-check")) updateCount();
+  });
+  modal.querySelector("#pj-all")?.addEventListener("change", (e) => {
+    checkboxes().forEach((c) => { c.checked = e.target.checked; });
+    updateCount();
+  });
+
   confirmBtn.addEventListener("click", async () => {
+    const chosen = selectedSummaries();
+    if (!chosen.length) return;
     // The backlog tab was opened on the first click. If it got blocked (or the user
     // closed it), open it now inside this click gesture as a fallback.
     if ((!jiraTab || jiraTab.closed) && plan.browse_url) {
@@ -952,7 +982,11 @@ async function pushToJira(w, btn) {
     cancelBtn.disabled = true;
     confirmBtn.textContent = "⟳ Pushing…";
     try {
-      const res = await fetch(`/api/jira/push/${w.wp_id}`, { method: "POST" });
+      const res = await fetch(`/api/jira/push/${w.wp_id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summaries: chosen }),
+      });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
       const failed = (json.errors && json.errors.length) ? json.errors.length : 0;
@@ -961,7 +995,7 @@ async function pushToJira(w, btn) {
       modal.querySelector("#pj-note").innerHTML =
         `✅ Created <b>${json.created}</b>, skipped <b>${json.skipped}</b>${failed ? `, <b>${failed}</b> failed` : ""}. See the Jira tab.`;
       modal.querySelector(".modal-body").innerHTML =
-        `<div class="task-empty">Done — check the Jira backlog tab.</div>`;
+        `<div class="task-empty">Done. Check the Jira backlog tab.</div>`;
       confirmBtn.remove();
       cancelBtn.disabled = false;
       cancelBtn.textContent = "Close";
@@ -972,9 +1006,8 @@ async function pushToJira(w, btn) {
       }
     } catch (e) {
       alert("Push failed: " + e.message);
-      confirmBtn.disabled = false;
       cancelBtn.disabled = false;
-      confirmBtn.textContent = `Confirm & push ${n}`;
+      updateCount();   // restore the button to the current selection
     }
   });
 }
@@ -2038,7 +2071,7 @@ function renderHistory(body, data) {
   const CAT_VAR = { "Customer": "var(--cat-customer)", "Marketing": "var(--cat-marketing)", "Process and Ops": "var(--cat-ops)" };
   const rows = data.history || [];
   if (!rows.length) {
-    body.innerHTML = `<div class="task-empty">No points yet — click “⟳ Sync from Jira” to pull the last 12 weeks.</div>`;
+    body.innerHTML = `<div class="task-empty">No points yet. Click “⟳ Sync from Jira” to pull the last 12 weeks.</div>`;
     return;
   }
   const weeksMap = {};

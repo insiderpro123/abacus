@@ -274,11 +274,22 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
   max-height: 320px; overflow-y: auto; background: var(--panel);
 }
 .push-list li {
-  padding: 7px 12px; font-size: 13px; border-bottom: 1px solid var(--line);
-  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-bottom: 1px solid var(--line);
 }
 .push-list li:last-child { border-bottom: 0; }
 .push-list li:nth-child(even) { background: rgba(0,0,0,.02); }
+.push-opt {
+  display: flex; align-items: flex-start; gap: 9px; cursor: pointer;
+  padding: 7px 12px; font-size: 13px; color: var(--text);
+}
+.push-opt input { margin: 2px 0 0; flex: 0 0 auto; cursor: pointer; }
+.push-opt span { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.push-selectbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 0 0 8px; font-size: 12.5px;
+}
+.push-selall { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-weight: 600; }
+.push-count { color: var(--muted); }
 .delete-wp {
   background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
   font-size: 12px; font-weight: 600; padding: 5px 12px; cursor: pointer;
