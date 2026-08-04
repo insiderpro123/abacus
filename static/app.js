@@ -329,14 +329,6 @@ function buildPanel(w) {
         <h2>${esc(w.client)} - ${esc(w.name)}</h2>
         ${isActive ? "" : `<span class="badge ${esc(w.status)}">${esc(w.status)}</span>`}
         <span class="panel-overall" title="Overall progress">${w.overall}% complete</span>
-        <span class="panel-links">
-          ${w.dropbox_url
-            ? `<button class="linkbtn dropbox-btn" title="Open this project's folder in File Explorer">📁 Dropbox files</button>`
-            : `<button class="linkbtn disabled" disabled title="Set a Dropbox folder in Edit to enable">📁 Dropbox files</button>`}
-          ${w.confluence_url
-            ? `<a class="linkbtn" href="${esc(w.confluence_url)}" target="_blank" rel="noopener" title="Open the Confluence page">📄 Confluence data</a>`
-            : `<button class="linkbtn disabled" disabled title="Set a Confluence link in Edit to enable">📄 Confluence data</button>`}
-        </span>
         ${w.jira_total > 0 ? `<span class="jira-badge" title="Story points from Jira epic ${esc(w.jira_project_key)}${w.jira_synced_at ? " · synced " + esc(w.jira_synced_at) : ""}">Jira ${w.jira_done}/${w.jira_total} pts</span>` : ""}
         ${locked ? '<span class="lock-note">🔒 Locked - make active to edit</span>' : ""}
         ${w.description ? `<div class="panel-desc">${esc(w.description)}</div>` : ""}
@@ -881,12 +873,6 @@ async function duplicateProject(w) {
 // so we show a preview list first and only write on Confirm; re-running is safe
 // (already-present sub-points are skipped).
 async function pushToJira(w, btn) {
-  // Open the Jira backlog tab NOW, on this click, so the browser's popup blocker
-  // lets it through (a tab opened later, after the preview fetch, usually gets
-  // blocked). It starts blank and we point it at the backlog once we know the URL.
-  let jiraTab = window.open("about:blank", "_blank");
-  try { if (jiraTab) jiraTab.opener = null; } catch (_) {}
-
   const orig = btn.textContent;
   btn.disabled = true;
   btn.textContent = "⟳ …";
@@ -896,17 +882,12 @@ async function pushToJira(w, btn) {
     plan = await res.json();
     if (plan.error) throw new Error(plan.error);
   } catch (e) {
-    if (jiraTab && !jiraTab.closed) jiraTab.close();   // nothing to show - don't leave a blank tab
     alert("Could not prepare the push: " + e.message);
     return;
   } finally {
     btn.disabled = false;
     btn.textContent = orig;
   }
-
-  // point the already-open tab at the epic's backlog
-  const tabOpen = jiraTab && !jiraTab.closed;
-  if (tabOpen && plan.browse_url) jiraTab.location.href = plan.browse_url;
 
   const toCreate = plan.to_create || [];
   const skipped = plan.skipped || [];
@@ -935,9 +916,7 @@ async function pushToJira(w, btn) {
       ${listHtml}
     </div>
     <div class="modal-foot">
-      <span class="modal-note" id="pj-note">${plan.board_error
-        ? "Opened a filtered list of this epic's items in a new tab. (Couldn't open the Backlog board: " + esc(plan.board_error) + ")"
-        : (tabOpen ? "The Jira backlog opened in a new tab. It'll refresh with the new items when you confirm." : "The Jira backlog will open in a new tab when you confirm.")}</span>
+      <span class="modal-note" id="pj-note"><a class="pj-link" href="${esc(plan.browse_url)}" target="_blank" rel="noopener">↗ Open the Jira backlog</a>${plan.board_error ? ` <span class="pj-warn">(couldn't open the board: ${esc(plan.board_error)})</span>` : ""}</span>
       <div>
         <button class="btn" id="pj-cancel">Cancel</button>
         <button class="btn btn-primary" id="pj-confirm"${n ? "" : " disabled"}>Confirm &amp; push ${n}</button>
@@ -975,11 +954,6 @@ async function pushToJira(w, btn) {
   confirmBtn.addEventListener("click", async () => {
     const chosen = selectedSummaries();
     if (!chosen.length) return;
-    // The backlog tab was opened on the first click. If it got blocked (or the user
-    // closed it), open it now inside this click gesture as a fallback.
-    if ((!jiraTab || jiraTab.closed) && plan.browse_url) {
-      jiraTab = window.open(plan.browse_url, "_blank");
-    }
     confirmBtn.disabled = true;
     cancelBtn.disabled = true;
     confirmBtn.textContent = "⟳ Pushing…";
@@ -992,12 +966,11 @@ async function pushToJira(w, btn) {
       const json = await res.json();
       if (json.error) throw new Error(json.error);
       const failed = (json.errors && json.errors.length) ? json.errors.length : 0;
-      // reload the Jira tab so the freshly-created items show up
-      if (jiraTab && !jiraTab.closed && plan.browse_url) jiraTab.location.href = plan.browse_url;
+      const link = `<a class="pj-link" href="${esc(plan.browse_url)}" target="_blank" rel="noopener">↗ Open the Jira backlog</a>`;
       modal.querySelector("#pj-note").innerHTML =
-        `✅ Created <b>${json.created}</b>, skipped <b>${json.skipped}</b>${failed ? `, <b>${failed}</b> failed` : ""}. See the Jira tab.`;
+        `✅ Created <b>${json.created}</b>, skipped <b>${json.skipped}</b>${failed ? `, <b>${failed}</b> failed` : ""}. ${link}`;
       modal.querySelector(".modal-body").innerHTML =
-        `<div class="task-empty">Done. Check the Jira backlog tab.</div>`;
+        `<div class="task-empty">Done. Click the link to view them in Jira.</div>`;
       confirmBtn.remove();
       cancelBtn.disabled = false;
       cancelBtn.textContent = "Close";
