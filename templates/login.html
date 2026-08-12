@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InsiderPro- Abacus · Sign in</title>
+  <title>{% if is_test %}[TEST] {% endif %}InsiderPro- Abacus · Sign in</title>
   <style>
     :root { --accent: #127d94; --accent-bright: #4cc6df; --text: #1f2933; --muted: #6b7480; --line: #e0e0dc; }
     * { box-sizing: border-box; }
@@ -27,6 +27,16 @@
   </style>
 </head>
 <body>
+  {# Fixed variant of the test banner: this page's <body> is a centered grid, so a
+     normal-flow banner would be mis-positioned. Only renders on the local test copy. #}
+  {% if is_test %}
+  <div style="position:fixed;top:0;left:0;right:0;z-index:99999;
+              background:#b45309;color:#fff;text-align:center;font-weight:700;
+              padding:8px 12px;font-size:14px;line-height:20px;letter-spacing:.02em;
+              font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;">
+    &#9888; TEST VERSION - local copy for trying out features. This is NOT the live site.
+  </div>
+  {% endif %}
   <form class="card" method="POST" action="{{ url_for('login') }}">
     <img class="logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
     <h1>InsiderPro- Abacus</h1>

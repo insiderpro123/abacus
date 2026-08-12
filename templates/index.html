@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InsiderPro- Abacus</title>
+  <title>{% if is_test %}[TEST] {% endif %}InsiderPro- Abacus</title>
   <link rel="stylesheet" href="{{ static_v('style.css') }}" />
 </head>
 <body>
+  {% include '_test_banner.html' %}
   <main>
     <header class="pagehead">
       <span id="sync" class="sync"></span>
@@ -37,6 +38,7 @@
     </section>
 
     <div id="status" class="status"></div>
+    <div id="jira-sync-notice" class="sync-notice" hidden></div>
 
     <!-- Summary matrix (expanded detail panels render inline below each row) -->
     <section class="card">

@@ -113,6 +113,9 @@ def _post(path, payload):
                         "'write:jira-work' scope to create issues.")
     if r.status_code >= 400:
         raise JiraError(f"Jira returned {r.status_code}: {r.text[:300]}")
+    # some writes (e.g. transitions) return 204 No Content / an empty body
+    if r.status_code == 204 or not (r.text or "").strip():
+        return {}
     try:
         return r.json()
     except ValueError as e:
@@ -238,25 +241,35 @@ def project_creatable_issue_type(project_key):
     return chosen["id"]
 
 
-def epic_child_summaries(epic_key):
-    """Set of the summaries of every issue already under an epic (its children).
-    Used to skip sub-points that have already been pushed (idempotent re-push)."""
-    summaries = set()
+def epic_children(epic_key):
+    """Every issue under an epic (its children) as
+    [{'key':..., 'summary':..., 'status':<statusCategory.key>}].
+    Single source of truth for 'what's under this epic' - used for push dedup,
+    linking pushed sub-points to their issue key, and reading their status."""
+    out = []
     jql = f'parent = "{epic_key}"'
     next_token = None
     while True:
-        params = {"jql": jql, "maxResults": _PAGE, "fields": "summary"}
+        params = {"jql": jql, "maxResults": _PAGE, "fields": "summary,status"}
         if next_token:
             params["nextPageToken"] = next_token
         data = _get("/rest/api/3/search/jql", params=params)
         for it in data.get("issues", []):
-            summ = ((it.get("fields") or {}).get("summary") or "").strip()
-            if summ:
-                summaries.add(summ)
+            f = it.get("fields", {}) or {}
+            cat = (((f.get("status") or {}).get("statusCategory") or {}).get("key") or "").lower()
+            out.append({"key": it.get("key", ""),
+                        "summary": (f.get("summary") or "").strip(),
+                        "status": cat})
         next_token = data.get("nextPageToken")
         if data.get("isLast") or not next_token:
             break
-    return summaries
+    return out
+
+
+def epic_child_summaries(epic_key):
+    """Set of the summaries of every issue already under an epic (its children).
+    Used to skip sub-points that have already been pushed (idempotent re-push)."""
+    return {c["summary"] for c in epic_children(epic_key) if c["summary"]}
 
 
 def resolve_backlog_url(project_key):
@@ -314,3 +327,35 @@ def create_backlog_issue(project_key, epic_key, summary, issue_type_id):
     }}
     data = _post("/rest/api/3/issue", payload)
     return data.get("key", "")
+
+
+# --------------------------------------------------------------------------- #
+# Write: move an issue's status to a target category (used by the two-way sync)
+# --------------------------------------------------------------------------- #
+
+def issue_status_category(issue_key):
+    """The issue's current statusCategory key ('new' | 'indeterminate' | 'done')."""
+    data = _get(f"/rest/api/3/issue/{issue_key}", params={"fields": "status"})
+    f = data.get("fields", {}) or {}
+    return (((f.get("status") or {}).get("statusCategory") or {}).get("key") or "").lower()
+
+
+def transition_issue_to_category(issue_key, category):
+    """Move an issue into the given statusCategory ('new' | 'indeterminate' | 'done').
+    No-op if it is already there. Picks the first available transition whose target
+    status is in that category. Raises JiraError if the workflow offers no such
+    transition (the caller decides whether to swallow it). Needs write:jira-work."""
+    if issue_status_category(issue_key) == category:
+        return {"ok": True, "changed": False}
+    data = _get(f"/rest/api/3/issue/{issue_key}/transitions")
+    chosen = None
+    for t in data.get("transitions", []) or []:
+        cat = (((t.get("to") or {}).get("statusCategory") or {}).get("key") or "").lower()
+        if cat == category:
+            chosen = t
+            break
+    if not chosen:
+        raise JiraError(f"No transition on {issue_key} reaches a '{category}' status "
+                        f"(the Jira workflow doesn't allow that move from its current status).")
+    _post(f"/rest/api/3/issue/{issue_key}/transitions", {"transition": {"id": chosen["id"]}})
+    return {"ok": True, "changed": True, "transition": chosen.get("name", "")}

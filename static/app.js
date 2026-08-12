@@ -14,6 +14,12 @@ const CATEGORIES = ["Customer", "Marketing", "Process and Ops"];
 // A work package with no category (e.g. older API payloads) defaults to Customer,
 // mirroring the backend default - so it keeps the full 12-step + tasks view.
 const isCustomerCat = (w) => !w.category || w.category === "Customer";
+// True when a work package has at least one Abacus sub-point already pushed to Jira
+// (each such sub carries the Jira issue key). Gates the per-WP "Sync from Jira" button.
+const hasPushedSteps = (w) =>
+  (w.phases || []).some((p) => (p.subs || []).some((s) => s.jira_issue_key));
+// The "sync recommended" banner is a once-per-page nudge; dismissing hides it for the load.
+let jiraNoticeDismissed = false;
 // Collapsed category groups, persisted across reloads. Key: status + ":" + category.
 const collapsedCats = new Set(JSON.parse(localStorage.getItem("collapsedCats") || "[]"));
 const saveCats = () => localStorage.setItem("collapsedCats", JSON.stringify([...collapsedCats]));
@@ -49,6 +55,7 @@ async function load() {
     render();
     updateSyncBadge(json.pending, json.last_flush);
     if (json.pending > 0) startSyncPoll();
+    maybeShowSyncNotice();
   } catch (e) {
     status.className = "status error";
     status.textContent = "Could not load data: " + e.message;
@@ -339,6 +346,9 @@ function buildPanel(w) {
         ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer")
             ? `<button class="push-jira" title="Create a Jira backlog issue for every Abacus sub-point under epic ${esc(w.jira_project_key)}">⤴ Push to Jira</button>`
             : ""}
+        ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer" && hasPushedSteps(w))
+            ? `<button class="sync-jira" title="Review and apply status changes between Jira and this site (pushed steps only)">⟳ Sync from Jira</button>`
+            : ""}
         <button class="status-toggle">${toggleLabel}</button>
         ${locked ? '<button class="delete-wp" title="Permanently delete this project">Delete</button>' : ""}
         <span class="close" title="Collapse">✕</span>
@@ -349,6 +359,8 @@ function buildPanel(w) {
   });
   const pushBtn = head.querySelector(".push-jira");
   if (pushBtn) pushBtn.addEventListener("click", (e) => { e.stopPropagation(); pushToJira(w, pushBtn); });
+  const syncBtn = head.querySelector(".sync-jira");
+  if (syncBtn) syncBtn.addEventListener("click", (e) => { e.stopPropagation(); syncFromJira(w, syncBtn); });
   const dropBtn = head.querySelector(".dropbox-btn");
   if (dropBtn) dropBtn.addEventListener("click", (e) => { e.stopPropagation(); openDropbox(w); });
   if (locked) {
@@ -459,11 +471,19 @@ function buildGantt(w) {
     const subs = el("div", "subs");
     if (isOpen) subs.style.display = "block";
     ph.subs.forEach((s) => {
-      const item = el("div", "sub-item " + s.status);
+      const item = el("div", "sub-item " + s.status + (s.jira_issue_key ? " pushed" : ""));
+      const jiraLink = (s.jira_issue_key && DATA.jira_site_url)
+        ? `<a class="jira-link" href="${esc(DATA.jira_site_url)}/browse/${esc(s.jira_issue_key)}"
+             target="_blank" rel="noopener" title="Open ${esc(s.jira_issue_key)} in Jira">↗</a>`
+        : "";
       item.innerHTML = `<span class="scode">${esc(s.code)}</span>
         <span class="sdot ${s.status}"></span>
         <span class="slabel">${esc(s.label) || "(no description)"}</span>
+        ${jiraLink}
         ${locked ? "" : '<span class="edit-hint">✎ edit</span>'}`;
+      if (s.jira_issue_key) item.title = "Pushed to Jira - kept in sync";
+      const a = item.querySelector(".jira-link");
+      if (a) a.addEventListener("click", (e) => e.stopPropagation());
       if (!locked) item.addEventListener("click", () => openEditor(w, s));
       subs.appendChild(item);
     });
@@ -983,6 +1003,173 @@ async function pushToJira(w, btn) {
       alert("Push failed: " + e.message);
       cancelBtn.disabled = false;
       updateCount();   // restore the button to the current selection
+    }
+  });
+}
+
+// --------------------------------------------------------------------------- #
+// Two-way Jira sync of pushed steps: a "sync recommended" nudge + a review modal
+// where the user accepts or rejects each pending change before anything is written.
+// --------------------------------------------------------------------------- #
+
+// A dismissible, non-blocking banner shown once per page load when Jira is configured
+// and something has been pushed. It never syncs on its own - it just opens the review.
+function maybeShowSyncNotice() {
+  const box = document.getElementById("jira-sync-notice");
+  if (!box) return;
+  const anyPushed = DATA && DATA.jira_configured &&
+    (DATA.work_packages || []).some((w) => hasPushedSteps(w) ||
+      (w.children || []).some((c) => hasPushedSteps(c)));
+  if (!anyPushed || jiraNoticeDismissed) { box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  box.innerHTML = `<span class="sync-notice-txt">🔄 Jira sync recommended - review and apply the latest status changes for pushed steps.</span>
+    <span class="sync-notice-actions">
+      <button class="btn btn-primary" id="sn-review">Review sync</button>
+      <button class="btn" id="sn-dismiss">Dismiss</button>
+    </span>`;
+  box.querySelector("#sn-review").addEventListener("click", (e) =>
+    syncAllFromJira(e.currentTarget));
+  box.querySelector("#sn-dismiss").addEventListener("click", () => {
+    jiraNoticeDismissed = true; box.hidden = true; box.innerHTML = "";
+  });
+}
+
+// Per-work-package sync (from the panel header button).
+function syncFromJira(w, btn) {
+  return runSyncPreview({ wp_id: w.wp_id }, `${w.client} - ${w.name}`, btn);
+}
+// Page-level sync of every linked work package (from the banner).
+function syncAllFromJira(btn) {
+  return runSyncPreview({}, "All work packages", btn);
+}
+
+async function runSyncPreview(body, titleLabel, btn) {
+  const orig = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "⟳ …"; }
+  let plan;
+  try {
+    const res = await fetch("/api/jira/sync_steps/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    plan = await res.json();
+    if (plan.error && plan.configured !== false) throw new Error(plan.error);
+  } catch (e) {
+    alert("Could not check Jira for changes: " + e.message);
+    return;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+  openSyncModal(plan, titleLabel);
+}
+
+function openSyncModal(plan, titleLabel) {
+  const fromJira = plan.from_jira || [];
+  const fromAbacus = plan.from_abacus || [];
+  const conflicts = plan.conflicts || [];
+  const writesOn = !!plan.jira_writes_enabled;
+  const total = fromJira.length + fromAbacus.length + conflicts.length;
+
+  closeEditor();
+  const overlay = el("div", "modal-overlay");
+  overlay.id = "editor";
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeEditor(); });
+
+  const rowJira = (it, i) => `<li><label class="push-opt">
+      <input type="checkbox" class="sy-check" data-dir="jira" data-i="${i}" checked>
+      <span><b>${esc(it.step_label)}</b><span class="sy-move"> ${esc(it.abacus_cur_label)} → ${esc(it.abacus_target_label)}</span></span>
+    </label></li>`;
+  const rowAbacus = (it, i) => `<li><label class="push-opt">
+      <input type="checkbox" class="sy-check" data-dir="abacus" data-i="${i}" checked>
+      <span><b>${esc(it.step_label)}</b><span class="sy-move"> Jira: ${esc(it.jira_cur_label)} → ${esc(it.jira_target_label)}</span></span>
+    </label></li>`;
+  const rowConflict = (it, i) => `<li class="sy-conflict">
+      <div class="sy-conflict-h"><b>${esc(it.step_label)}</b> changed on both sides</div>
+      <div class="sy-choices">
+        <label><input type="radio" name="cf-${i}" value="accept_jira"> Keep Jira (site → ${esc(it.abacus_target_label)})</label>
+        <label><input type="radio" name="cf-${i}" value="accept_site"> Keep this site (Jira → ${esc(it.jira_target_label)})</label>
+        <label><input type="radio" name="cf-${i}" value="skip" checked> Skip for now</label>
+      </div>
+    </li>`;
+
+  const section = (title, sub, html) => html
+    ? `<div class="sy-section"><div class="sy-sec-head">${title}${sub ? ` <span class="sy-sec-sub">${sub}</span>` : ""}</div><ul class="push-list">${html}</ul></div>`
+    : "";
+
+  const bodyHtml = total === 0
+    ? `<div class="task-empty">Everything is already in sync. Nothing to apply.</div>`
+    : section("Coming from Jira → this site", "", fromJira.map(rowJira).join("")) +
+      section("Coming from this site → Jira",
+              writesOn ? "" : "(simulated - not sent to Jira on the test build)",
+              fromAbacus.map(rowAbacus).join("")) +
+      section("Changed on both sides - choose which wins", "", conflicts.map(rowConflict).join(""));
+
+  const modal = el("div", "modal pushjira-modal");
+  modal.innerHTML = `
+    <div class="modal-head">
+      <div><div class="modal-code">Sync with Jira</div><h3>${esc(titleLabel)}</h3></div>
+      <span class="close" title="Close">✕</span>
+    </div>
+    <div class="modal-body">
+      ${plan.configured === false
+        ? `<div class="task-empty">Jira is not configured on the server.</div>`
+        : bodyHtml}
+    </div>
+    <div class="modal-foot">
+      <span class="modal-note" id="sy-note">${total} pending change${total === 1 ? "" : "s"}</span>
+      <div>
+        <button class="btn" id="sy-cancel">${total ? "Cancel" : "Close"}</button>
+        ${total ? `<button class="btn btn-primary" id="sy-apply">Accept &amp; apply</button>` : ""}
+      </div>
+    </div>`;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  modal.querySelector(".close").addEventListener("click", closeEditor);
+  modal.querySelector("#sy-cancel").addEventListener("click", closeEditor);
+
+  const applyBtn = modal.querySelector("#sy-apply");
+  if (!applyBtn) return;
+  applyBtn.addEventListener("click", async () => {
+    const decisions = [];
+    modal.querySelectorAll(".sy-check").forEach((c) => {
+      if (!c.checked) return;
+      const it = (c.dataset.dir === "jira" ? fromJira : fromAbacus)[+c.dataset.i];
+      if (it) decisions.push({ wp_id: it.wp_id, code: it.code, action: "accept" });
+    });
+    conflicts.forEach((it, i) => {
+      const sel = modal.querySelector(`input[name="cf-${i}"]:checked`);
+      const action = sel ? sel.value : "skip";
+      if (action !== "skip") decisions.push({ wp_id: it.wp_id, code: it.code, action });
+    });
+    if (!decisions.length) { closeEditor(); return; }
+
+    applyBtn.disabled = true;
+    modal.querySelector("#sy-cancel").disabled = true;
+    applyBtn.textContent = "⟳ Applying…";
+    try {
+      const res = await fetch("/api/jira/sync_steps/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisions }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      const a = (json.applied || []).length, sim = (json.simulated || []).length, f = (json.failed || []).length;
+      closeEditor();
+      await load();
+      const parts = [`Applied ${a}`];
+      if (sim) parts.push(`simulated ${sim}`);
+      if (f) parts.push(`failed ${f}`);
+      const st = $("#status");
+      if (st) { st.className = "status"; st.textContent = "Jira sync: " + parts.join(" · "); }
+      if (f) alert("Some Jira changes failed:\n" +
+        (json.failed || []).slice(0, 5).map((x) => `• ${x.step_label}: ${x.error}`).join("\n"));
+    } catch (e) {
+      applyBtn.disabled = false;
+      modal.querySelector("#sy-cancel").disabled = false;
+      applyBtn.textContent = "Accept & apply";
+      alert("Sync failed: " + e.message);
     }
   });
 }

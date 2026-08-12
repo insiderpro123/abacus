@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Settings · Insider Pro</title>
+  <title>{% if is_test %}[TEST] {% endif %}Settings · Insider Pro</title>
   <link rel="icon" href="{{ url_for('static', filename='ip-logo.svg') }}" />
   <style>
     :root { --accent:#127d94; --accent-bright:#4cc6df; --text:#1f2933; --muted:#6b7480;
@@ -73,6 +73,7 @@
   </style>
 </head>
 <body>
+  {% include '_test_banner.html' %}
   <header class="topbar">
     <img class="logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
     <span class="title">Settings</span>

@@ -50,7 +50,7 @@ _load_local_env()
 from models import (
     init_db, SessionLocal,
     Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask, Customer, StaffUser,
-    Sprint, SprintHistory,
+    Sprint, SprintHistory, WpJiraLink,
 )
 import jira_client
 import jamie_client
@@ -71,6 +71,30 @@ DROPBOX_ROOT = os.environ.get("DROPBOX_ROOT") or os.path.dirname(os.path.dirname
 
 # Link to the Jamie meeting dashboard (a separate local Flask app, default port 5057)
 JAMIE_URL = os.environ.get("JAMIE_URL", "http://127.0.0.1:5057")
+
+# Live-vs-test signal. Render sets RENDER=... and provides DATABASE_URL on the
+# production host; a local machine has neither, so this is true only when running
+# locally. Drives the on-screen TEST banner (see templates/_test_banner.html) so
+# the same code self-hides the banner when deployed to the live site.
+IS_LIVE = bool(os.environ.get("RENDER") or os.environ.get("DATABASE_URL"))
+IS_TEST = not IS_LIVE
+
+
+def _jira_writes_enabled():
+    """Whether the two-way sync may actually MOVE Jira issues (transitions). Off on the
+    local test build so it never mutates real Jira; on automatically on the live site.
+    Force-on for a controlled test with JIRA_ENABLE_TRANSITIONS=1."""
+    return IS_LIVE or _env_flag("JIRA_ENABLE_TRANSITIONS")
+
+
+def _env_flag(name):
+    return (os.environ.get(name, "") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.context_processor
+def inject_env_flags():
+    """Make the live/test flags available to every template."""
+    return {"is_test": IS_TEST, "is_live": IS_LIVE}
 
 
 @app.template_global()
@@ -167,6 +191,19 @@ def _norm_value(value):
     if v.upper() in ("N/R", "NR"):
         return "N/R"
     return v  # '', '1', '2', '3'
+
+
+# Abacus RAG value <-> Jira statusCategory key, for the two-way sync of pushed steps.
+# '' (not started) and 'N/R' have no Jira category and never transition an issue.
+_CAT_FOR = {"3": "done", "2": "indeterminate", "1": "new"}
+_VAL_FOR = {"done": "3", "indeterminate": "2", "new": "1"}
+
+
+def _code_of(summary):
+    """The Abacus sub-point code that a pushed issue's summary starts with, e.g.
+    '3.2 Map the process' -> '3.2'. Pushed summaries are built as '{code} {label}'."""
+    m = re.match(r"\s*(\d+\.\d+)", summary or "")
+    return m.group(1) if m else ""
 
 
 def _mark_saved():
@@ -344,6 +381,10 @@ def get_data():
         statuses = s.query(WpStatus).all()
         finished = s.query(WpFinished).all()
         tasks = s.query(WpTask).all()
+        jira_links = s.query(WpJiraLink).all()
+
+        # (wp_id, code) -> Jira issue key, so each pushed sub-point can show its link.
+        link_key = {(l.wp_id, l.code): l.jira_issue_key for l in jira_links}
 
         # per-process ordered sub list, and the shared reference map
         subs_by_process, reference = {}, {}
@@ -412,7 +453,8 @@ def get_data():
                     elif st == "nr":
                         nr += 1
                     subs_out.append({"code": sub["code"], "label": sub["label"],
-                                     "status": st, "raw": raw})
+                                     "status": st, "raw": raw,
+                                     "jira_issue_key": link_key.get((wp.id, sub["code"]), "")})
                 is_fin = p.num in wpfin
                 total = len(subs_out)
                 effective = total - nr
@@ -503,6 +545,8 @@ def get_data():
         "pending": 0,
         "last_flush": dict(_last_saved),
         "jira_configured": jira_client.is_configured(),
+        "jira_site_url": jira_client.SITE_URL,
+        "jira_writes_enabled": _jira_writes_enabled(),
     }
 
 
@@ -1191,6 +1235,20 @@ def api_delete_project():
     return jsonify({"ok": True})
 
 
+def _epic_conflict(s, jira_key, exclude_wp_id=None):
+    """The other WorkPackage already linked to this epic key (case-insensitive), or None.
+    Enforces one epic per work package so the per-step Jira links stay unambiguous."""
+    key = (jira_key or "").strip().upper()
+    if not key:
+        return None
+    for wp in s.query(WorkPackage).all():
+        if exclude_wp_id is not None and wp.id == int(exclude_wp_id):
+            continue
+        if (wp.jira_project_key or "").strip().upper() == key:
+            return wp
+    return None
+
+
 @app.route("/api/add_project", methods=["POST"])
 def api_add_project():
     body = request.get_json(force=True, silent=True) or {}
@@ -1224,6 +1282,12 @@ def api_add_project():
             return jsonify({"error": "parent work package not found"}), 404
         if _dup_exists(s, client, name, parent_id=parent_id):
             return jsonify({"error": f"A project '{client} - {name}' already exists."}), 409
+        if jira_key:
+            other = _epic_conflict(s, jira_key)
+            if other:
+                return jsonify({"error": f"Epic {jira_key} is already linked to "
+                                         f"'{other.client} - {other.name}'. Each work package "
+                                         f"needs its own epic."}), 400
         max_id = s.query(WorkPackage.id).order_by(WorkPackage.id.desc()).first()
         new_id = (max_id[0] if max_id else 0) + 1
         sub_num = _next_sub_num(s, parent_id) if parent_id is not None else None
@@ -1352,7 +1416,8 @@ def api_jira_push_preview(wp_id):
 def api_jira_push(wp_id):
     """Push this work package's Abacus sub-points into its linked Jira epic's backlog,
     one issue per sub-point. Skips the 'Not required' points and any whose summary is
-    already under the epic (so it's safe to re-run). The app never reads these back."""
+    already under the epic (so it's safe to re-run). Each pushed (and each already-present)
+    sub-point is linked to its Jira issue key in wp_jira_link so the two-way sync can track it."""
     plan, err = _jira_push_plan(wp_id)
     if err:
         return jsonify({"error": err[0]}), err[1]
@@ -1374,22 +1439,66 @@ def api_jira_push(wp_id):
     except jira_client.JiraError as e:
         return jsonify({"error": str(e)}), 502
 
-    created, errors = [], []
+    created, errors = [], []          # created = [(code, key), ...]
     for summary in targets:
         try:
             key = jira_client.create_backlog_issue(project_key, epic_key, summary, issue_type_id)
-            created.append(key)
+            created.append((_code_of(summary), key))
         except jira_client.JiraError as e:
             errors.append({"summary": summary, "error": str(e)})
             # a 403 (read-only token) will fail every item - stop hammering Jira
             if "403" in str(e):
                 break
 
+    _record_push_links(wp_id, epic_key, dict(created))
+
     _mark_saved()
     return jsonify({"ok": True, "epic": epic_key, "project": project_key, "wp": plan["wp"],
-                    "created": len(created), "created_keys": created,
+                    "created": len(created), "created_keys": [k for _c, k in created],
                     "skipped": len(plan["skipped"]), "errors": errors,
                     "browse_url": plan["browse_url"]})
+
+
+def _record_push_links(wp_id, epic_key, created_by_code):
+    """Persist the Abacus-step -> Jira-issue links for a work package after a push.
+    Links every freshly created issue (created_by_code: {code: key}) plus every issue
+    ALREADY under the epic (backfill), keyed by the code its summary starts with. Both
+    baselines are seeded to the CURRENT state so a fresh push shows nothing pending on
+    the next sync. Never overwrites a link that already exists."""
+    # one read of the epic's children (for backfill + to seed the Jira-side baseline)
+    try:
+        children = jira_client.epic_children(epic_key)
+    except jira_client.JiraError:
+        children = []
+    status_by_code = {}
+    for c in children:
+        code = _code_of(c.get("summary"))
+        if code and code not in status_by_code:
+            status_by_code[code] = (c.get("key", ""), c.get("status") or "new")
+
+    with SessionLocal.begin() as s:
+        vals = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=int(wp_id)).all()}
+        # 1) freshly created issues (we already know their keys) -> baseline 'new'
+        for code, key in (created_by_code or {}).items():
+            if not code or not key:
+                continue
+            _upsert_jira_link(s, int(wp_id), code, key, "new", vals.get(code, ""))
+        # 2) backfill everything else under the epic, using its live status as baseline
+        for code, (key, status) in status_by_code.items():
+            if not key or code in (created_by_code or {}):
+                continue
+            _upsert_jira_link(s, int(wp_id), code, key, status, vals.get(code, ""))
+
+
+def _upsert_jira_link(s, wp_id, code, key, jira_status, abacus_value):
+    """Insert a wp_jira_link row if absent; leave an existing one untouched (its
+    baselines are managed by the sync, not re-seeded on every push)."""
+    row = s.get(WpJiraLink, {"wp_id": wp_id, "code": code})
+    if row:
+        return
+    s.add(WpJiraLink(wp_id=wp_id, code=code, jira_issue_key=key,
+                     last_jira_status=jira_status or "new", last_abacus_value=abacus_value or "",
+                     updated_at=datetime.utcnow()))
 
 
 @app.route("/api/jira/sync", methods=["POST"])
@@ -1413,6 +1522,44 @@ def api_sprint_jira_status():
         return jsonify(jira_sync.active_sprint_status())
     except jira_client.JiraError as e:
         return jsonify({"error": str(e)}), 502
+
+
+# Two-way status sync of PUSHED steps: review (preview) then accept/reject (apply).
+@app.route("/api/jira/sync_steps/preview", methods=["POST"])
+def api_jira_sync_steps_preview():
+    """Read-only: the pending changes for pushed steps (from_jira / from_abacus /
+    conflicts) that a sync would offer. Optional JSON {wp_id} scopes it to one WP."""
+    if not jira_client.is_configured():
+        return jsonify({"configured": False, "from_jira": [], "from_abacus": [],
+                        "conflicts": [], "error": "Jira is not configured on the server."}), 200
+    body = request.get_json(force=True, silent=True) or {}
+    wp_id = body.get("wp_id")
+    try:
+        plan = jira_sync.build_sync_plan(int(wp_id) if wp_id not in (None, "") else None)
+    except jira_client.JiraError as e:
+        return jsonify({"error": str(e)}), 502
+    plan["jira_writes_enabled"] = _jira_writes_enabled()
+    return jsonify(plan)
+
+
+@app.route("/api/jira/sync_steps/apply", methods=["POST"])
+def api_jira_sync_steps_apply():
+    """Apply the user's accepted decisions ([{wp_id, code, action}]). On the test build
+    Abacus->Jira transitions are SIMULATED (no real Jira write); Jira->Abacus is applied
+    locally. Re-derives the diff server-side so a stale decision can't apply anything odd."""
+    if not jira_client.is_configured():
+        return jsonify({"error": "Jira is not configured on the server."}), 400
+    body = request.get_json(force=True, silent=True) or {}
+    decisions = body.get("decisions") or []
+    try:
+        result = jira_sync.apply_sync_plan(decisions, allow_jira_writes=_jira_writes_enabled())
+    except jira_client.JiraError as e:
+        return jsonify({"error": str(e)}), 502
+    if result.get("error"):
+        return jsonify(result), 400
+    result["jira_writes_enabled"] = _jira_writes_enabled()
+    _mark_saved()
+    return jsonify(result)
 
 
 @app.route("/api/history")
@@ -1608,15 +1755,23 @@ def api_edit_project():
             return jsonify({"error": err}), 400
         if _dup_exists(s, client, name, exclude_id=wp.id, parent_id=wp.parent_id):
             return jsonify({"error": f"A project '{client} - {name}' already exists."}), 409
+        if jira_key and jira_key != (wp.jira_project_key or ""):
+            other = _epic_conflict(s, jira_key, exclude_wp_id=wp.id)
+            if other:
+                return jsonify({"error": f"Epic {jira_key} is already linked to "
+                                         f"'{other.client} - {other.name}'. Each work package "
+                                         f"needs its own epic."}), 400
         wp.client, wp.name, wp.icon = client, name, icon
         wp.description = description
         wp.confluence_url = confluence_url
         wp.dropbox_url = dropbox_url
         wp.jamie_tag = jamie_tag
         if jira_key != (wp.jira_project_key or ""):
-            # epic link changed -> clear stale totals until the next refresh
+            # epic link changed -> clear stale totals AND drop the old per-step links
+            # (they pointed at the previous epic's issues and are no longer valid)
             wp.jira_project_key = jira_key
             wp.jira_done, wp.jira_total, wp.jira_synced_at = 0, 0, None
+            s.query(WpJiraLink).filter_by(wp_id=wp.id).delete()
         # Category is set once at creation and locked on edit. Only Customer work
         # packages have a 12-step (Not-required) configuration to reconcile.
         if (wp.category or "Customer") == "Customer":

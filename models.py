@@ -93,6 +93,7 @@ class WorkPackage(Base):
     statuses = relationship("WpStatus", cascade="all, delete-orphan", backref="wp")
     finished = relationship("WpFinished", cascade="all, delete-orphan", backref="wp")
     tasks = relationship("WpTask", cascade="all, delete-orphan", backref="wp")
+    jira_links = relationship("WpJiraLink", cascade="all, delete-orphan", backref="wp")
     children = relationship("WorkPackage", cascade="all, delete-orphan",
                             backref=backref("parent", remote_side=[id]))
 
@@ -110,6 +111,22 @@ class WpFinished(Base):
     __tablename__ = "wp_finished"
     wp_id = Column(Integer, ForeignKey("work_package.id", ondelete="CASCADE"), primary_key=True)
     process_num = Column(Integer, ForeignKey("process.num"), primary_key=True)
+
+
+class WpJiraLink(Base):
+    """Links one pushed Abacus sub-point to the Jira issue created for it.
+    Presence of a row = this (wp, step) was pushed and should be kept in sync.
+
+    The two 'last_*' columns are the baselines captured at the last accepted sync:
+    comparing them to the live Jira status / live WpStatus.value is how the sync
+    preview works out exactly what changed on each side (and spots conflicts)."""
+    __tablename__ = "wp_jira_link"
+    wp_id = Column(Integer, ForeignKey("work_package.id", ondelete="CASCADE"), primary_key=True)
+    code = Column(String(16), ForeignKey("subprocess.code"), primary_key=True)
+    jira_issue_key = Column(String(32), nullable=False, default="")     # e.g. "MON-812"
+    last_jira_status = Column(String(16), default="new")    # statusCategory key at last sync (Jira-side detector)
+    last_abacus_value = Column(String(8), default="")       # WpStatus.value at last sync (Abacus-side detector)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 
 class WpTask(Base):

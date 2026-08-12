@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Customer logins · Insider Pro</title>
+  <title>{% if is_test %}[TEST] {% endif %}Customer logins · Insider Pro</title>
   <style>
     :root { --accent:#127d94; --accent-bright:#4cc6df; --text:#1f2933; --muted:#6b7480;
             --line:#e0e0dc; --panel-2:#f4f6f8; --todo:#b3362a; }
@@ -44,6 +44,7 @@
   </style>
 </head>
 <body>
+  {% include '_test_banner.html' %}
   <header class="topbar">
     <img class="logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
     <span class="title">Customer logins</span>

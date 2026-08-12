@@ -1,0 +1,12 @@
+{% if is_test %}
+{# Shown only on the local test copy (see IS_TEST in app.py); renders nothing on
+   the live site. Static full-width bar at the top of the page: it sits above the
+   content and scrolls away naturally, so it never clashes with the sticky page
+   headers on the dashboard/admin pages. The login page uses its own fixed variant
+   because its <body> is a centered grid. #}
+<div style="background:#b45309;color:#fff;text-align:center;font-weight:700;
+            padding:8px 12px;font-size:14px;line-height:20px;letter-spacing:.02em;
+            font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;">
+  &#9888; TEST VERSION - local copy for trying out features. This is NOT the live site.
+</div>
+{% endif %}
