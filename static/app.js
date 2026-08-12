@@ -346,7 +346,7 @@ function buildPanel(w) {
         ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer")
             ? `<button class="push-jira" title="Create a Jira backlog issue for every Abacus sub-point under epic ${esc(w.jira_project_key)}">⤴ Push to Jira</button>`
             : ""}
-        ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer" && hasPushedSteps(w))
+        ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer")
             ? `<button class="sync-jira" title="Review and apply status changes between Jira and this site (pushed steps only)">⟳ Sync from Jira</button>`
             : ""}
         <button class="status-toggle">${toggleLabel}</button>

@@ -11,6 +11,7 @@ Jira on demand (read-only). Two jobs:
 
 All Jira access is read-only and goes through jira_client (platform search API).
 """
+import re
 from datetime import datetime, timedelta
 
 import jira_client
@@ -265,6 +266,33 @@ def _sub_labels(s):
             for sp in s.query(Subprocess).all()}
 
 
+def _code_of(summary):
+    """The sub-point code a pushed issue's summary starts with, e.g. '3.2 ...' -> '3.2'."""
+    m = re.match(r"\s*(\d+\.\d+)", summary or "")
+    return m.group(1) if m else ""
+
+
+def _backfill_links(s, wp_id, children, valid_codes, vals):
+    """Link any pushed Jira issue (summary starts with a known sub-point code) that isn't
+    linked yet, using its current status + the step's current value as baselines. This is
+    what makes steps pushed BEFORE this feature existed show up in the sync (and get the
+    pink underline), without needing a re-push. Baseline-only: never changes either side.
+    Returns True if any link was added."""
+    existing = {l.code for l in s.query(WpJiraLink).filter_by(wp_id=wp_id).all()}
+    added = False
+    for c in children:
+        code = _code_of(c.get("summary"))
+        key = c.get("key")
+        if code and key and code in valid_codes and code not in existing:
+            s.add(WpJiraLink(wp_id=wp_id, code=code, jira_issue_key=key,
+                             last_jira_status=(c.get("status") or "new"),
+                             last_abacus_value=vals.get(code, ""),
+                             updated_at=datetime.utcnow()))
+            existing.add(code)
+            added = True
+    return added
+
+
 def build_sync_plan(wp_id=None):
     """Read-only: compare each pushed step's live Jira status and live Abacus value to
     the baselines on its wp_jira_link, and group the pending changes into
@@ -275,18 +303,21 @@ def build_sync_plan(wp_id=None):
     errors = []
     with SessionLocal() as s:
         sub_label = _sub_labels(s)
+        valid_codes = set(sub_label)
         for wp in _linked_wps(s, wp_id):
-            links = s.query(WpJiraLink).filter_by(wp_id=wp.id).all()
-            if not links:
-                continue
             epic = (wp.jira_project_key or "").strip()
             try:
                 children = jira_client.epic_children(epic)
             except jira_client.JiraError as e:
                 errors.append({"epic": epic, "error": str(e)})
                 continue
-            status_by_key = {c["key"]: (c.get("status") or "") for c in children}
             vals = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
+            # link any already-pushed steps that predate this feature (baseline only)
+            _backfill_links(s, wp.id, children, valid_codes, vals)
+            links = s.query(WpJiraLink).filter_by(wp_id=wp.id).all()
+            if not links:
+                continue
+            status_by_key = {c["key"]: (c.get("status") or "") for c in children}
             wp_label = f"{wp.client} - {wp.name}".strip(" -")
             for link in links:
                 jira_cur = status_by_key.get(link.jira_issue_key)
@@ -301,6 +332,7 @@ def build_sync_plan(wp_id=None):
                 (from_jira if kind == "from_jira"
                  else from_abacus if kind == "from_abacus"
                  else conflicts).append(item)
+        s.commit()   # persist any links created by the backfill above
     return {"configured": True, "from_jira": from_jira, "from_abacus": from_abacus,
             "conflicts": conflicts, "errors": errors}
 
@@ -324,17 +356,19 @@ def apply_sync_plan(decisions, allow_jira_writes=False):
 
     with SessionLocal() as s:
         sub_label = _sub_labels(s)
+        valid_codes = set(sub_label)
         for wp in _linked_wps(s):
-            links = s.query(WpJiraLink).filter_by(wp_id=wp.id).all()
-            if not links:
-                continue
             epic = (wp.jira_project_key or "").strip()
             try:
                 children = jira_client.epic_children(epic)
             except jira_client.JiraError:
                 continue
-            status_by_key = {c["key"]: (c.get("status") or "") for c in children}
             vals = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
+            _backfill_links(s, wp.id, children, valid_codes, vals)
+            links = s.query(WpJiraLink).filter_by(wp_id=wp.id).all()
+            if not links:
+                continue
+            status_by_key = {c["key"]: (c.get("status") or "") for c in children}
             wp_label = f"{wp.client} - {wp.name}".strip(" -")
             for link in links:
                 jira_cur = status_by_key.get(link.jira_issue_key)
