@@ -332,9 +332,15 @@ def build_sync_plan(wp_id=None):
                 (from_jira if kind == "from_jira"
                  else from_abacus if kind == "from_abacus"
                  else conflicts).append(item)
+        # how many pushed/linked steps exist in the queried scope (after backfill) -
+        # lets the UI tell "nothing pushed yet" from "pushed and already in sync"
+        lq = s.query(WpJiraLink)
+        if wp_id is not None:
+            lq = lq.filter_by(wp_id=int(wp_id))
+        linked_count = lq.count()
         s.commit()   # persist any links created by the backfill above
     return {"configured": True, "from_jira": from_jira, "from_abacus": from_abacus,
-            "conflicts": conflicts, "errors": errors}
+            "conflicts": conflicts, "errors": errors, "linked_count": linked_count}
 
 
 def apply_sync_plan(decisions, allow_jira_writes=False):

@@ -277,6 +277,11 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
 }
 .sync-jira:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .sync-jira:disabled { opacity: .6; cursor: default; }
+/* sits inline next to the Jira points badge in the header - size it badge-like */
+.panel-head-left .sync-jira { padding: 3px 10px; font-size: 11px; line-height: 1; }
+/* dimmed "ready but nothing pushed yet" state (still clickable -> shows a push-first alert) */
+.sync-jira.not-pushed { opacity: .5; border-style: dashed; }
+.sync-jira.not-pushed:hover { opacity: .85; background: var(--panel); color: var(--accent); }
 
 /* Pink underline on Abacus sub-points that have been pushed to Jira (kept in sync) */
 .sub-item.pushed .slabel {

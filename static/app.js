@@ -337,6 +337,9 @@ function buildPanel(w) {
         ${isActive ? "" : `<span class="badge ${esc(w.status)}">${esc(w.status)}</span>`}
         <span class="panel-overall" title="Overall progress">${w.overall}% complete</span>
         ${w.jira_total > 0 ? `<span class="jira-badge" title="Story points from Jira epic ${esc(w.jira_project_key)}${w.jira_synced_at ? " · synced " + esc(w.jira_synced_at) : ""}">Jira ${w.jira_done}/${w.jira_total} pts</span>` : ""}
+        ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer")
+            ? `<button class="sync-jira${hasPushedSteps(w) ? "" : " not-pushed"}" title="${hasPushedSteps(w) ? "Review and apply Jira and site status changes for pushed steps" : "Push this work package to Jira first, then Sync"}">⟳ Sync from Jira</button>`
+            : ""}
         ${locked ? '<span class="lock-note">🔒 Locked - make active to edit</span>' : ""}
         ${w.description ? `<div class="panel-desc">${esc(w.description)}</div>` : ""}
       </div>
@@ -345,9 +348,6 @@ function buildPanel(w) {
         ${locked ? "" : '<button class="edit-wp">Edit</button>'}
         ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer")
             ? `<button class="push-jira" title="Create a Jira backlog issue for every Abacus sub-point under epic ${esc(w.jira_project_key)}">⤴ Push to Jira</button>`
-            : ""}
-        ${(!locked && DATA.jira_configured && w.jira_project_key && (w.category || "Customer") === "Customer")
-            ? `<button class="sync-jira" title="Review and apply status changes between Jira and this site (pushed steps only)">⟳ Sync from Jira</button>`
             : ""}
         <button class="status-toggle">${toggleLabel}</button>
         ${locked ? '<button class="delete-wp" title="Permanently delete this project">Delete</button>' : ""}
@@ -1060,6 +1060,15 @@ async function runSyncPreview(body, titleLabel, btn) {
     return;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+  // Nothing pushed for this work package yet: no linked steps and nothing to sync.
+  // Tell the user to push first instead of opening an empty "in sync" dialog.
+  if (plan.configured !== false) {
+    const changes = (plan.from_jira || []).length + (plan.from_abacus || []).length + (plan.conflicts || []).length;
+    if (changes === 0 && !plan.linked_count) {
+      alert("Nothing has been pushed to Jira for " + titleLabel + " yet.\n\nUse the “⤴ Push to Jira” button first, then Sync.");
+      return;
+    }
   }
   openSyncModal(plan, titleLabel);
 }
