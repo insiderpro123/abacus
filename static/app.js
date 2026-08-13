@@ -53,6 +53,8 @@ async function load() {
     DATA = json;
     status.textContent = "";
     render();
+    const sa = $("#sync-all-jira");
+    if (sa) sa.style.display = json.jira_configured ? "" : "none";
     updateSyncBadge(json.pending, json.last_flush);
     if (json.pending > 0) startSyncPoll();
     maybeShowSyncNotice();
@@ -2317,6 +2319,7 @@ $("#filters").addEventListener("click", (e) => {
 
 // "Jira Points Dashboard": open the per-category points dashboard (Sync lives inside it)
 $("#view-history").addEventListener("click", openHistory);
+$("#sync-all-jira")?.addEventListener("click", (e) => syncAllFromJira(e.currentTarget));
 
 // "Meeting notes": open every visible work package showing its Jamie meeting notes
 $("#meeting-notes").addEventListener("change", (e) => {
