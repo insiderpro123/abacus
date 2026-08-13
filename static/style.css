@@ -306,6 +306,9 @@ table.matrix { border-collapse: separate; border-spacing: 0 6px; width: 100%; ta
   margin: 0 0 12px; padding: 9px 14px; border: 1px solid #f3b8d4; border-radius: 8px;
   background: #fdeef5; color: #7a2a52; font-size: 13px;
 }
+/* the flex display above would otherwise override the [hidden] attribute and leave an
+   empty pink strip on screen - make hidden actually hide it */
+.sync-notice[hidden] { display: none; }
 .sync-notice-actions { display: inline-flex; gap: 8px; flex: 0 0 auto; }
 
 /* Sync review modal sections */

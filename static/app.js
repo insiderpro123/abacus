@@ -1014,26 +1014,40 @@ async function pushToJira(w, btn) {
 // where the user accepts or rejects each pending change before anything is written.
 // --------------------------------------------------------------------------- #
 
-// A dismissible, non-blocking banner shown once per page load when Jira is configured
-// and something has been pushed. It never syncs on its own - it just opens the review.
-function maybeShowSyncNotice() {
+// A dismissible, non-blocking banner. It appears ONLY when there are actual pending
+// changes to review for already-pushed steps (a cheap linked-only check) - so there is
+// no empty pink ribbon when nothing needs syncing. It never syncs on its own.
+async function maybeShowSyncNotice() {
   const box = document.getElementById("jira-sync-notice");
   if (!box) return;
+  const hide = () => { box.hidden = true; box.innerHTML = ""; };
   const anyPushed = DATA && DATA.jira_configured &&
     (DATA.work_packages || []).some((w) => hasPushedSteps(w) ||
       (w.children || []).some((c) => hasPushedSteps(c)));
-  if (!anyPushed || jiraNoticeDismissed) { box.hidden = true; box.innerHTML = ""; return; }
+  if (!anyPushed || jiraNoticeDismissed) { hide(); return; }
+
+  // Cheap read-only check: are there any pending changes across pushed work packages?
+  let plan;
+  try {
+    const res = await fetch("/api/jira/sync_steps/preview", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ linked_only: true }),
+    });
+    plan = await res.json();
+  } catch (e) { hide(); return; }
+
+  const changes = (plan.from_jira || []).length + (plan.from_abacus || []).length + (plan.conflicts || []).length;
+  if (!changes || jiraNoticeDismissed) { hide(); return; }   // nothing to nudge about
+
   box.hidden = false;
-  box.innerHTML = `<span class="sync-notice-txt">🔄 Jira sync recommended - review and apply the latest status changes for pushed steps.</span>
+  box.innerHTML = `<span class="sync-notice-txt">🔄 ${changes} Jira ${changes === 1 ? "change" : "changes"} to review for pushed steps.</span>
     <span class="sync-notice-actions">
       <button class="btn btn-primary" id="sn-review">Review sync</button>
       <button class="btn" id="sn-dismiss">Dismiss</button>
     </span>`;
-  box.querySelector("#sn-review").addEventListener("click", (e) =>
-    syncAllFromJira(e.currentTarget));
-  box.querySelector("#sn-dismiss").addEventListener("click", () => {
-    jiraNoticeDismissed = true; box.hidden = true; box.innerHTML = "";
-  });
+  // reuse the plan we already fetched - no second Jira crawl on click
+  box.querySelector("#sn-review").addEventListener("click", () => openSyncModal(plan, "All pushed items"));
+  box.querySelector("#sn-dismiss").addEventListener("click", () => { jiraNoticeDismissed = true; hide(); });
 }
 
 // Per-work-package sync (from the panel header button).

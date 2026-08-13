@@ -1534,8 +1534,10 @@ def api_jira_sync_steps_preview():
                         "conflicts": [], "error": "Jira is not configured on the server."}), 200
     body = request.get_json(force=True, silent=True) or {}
     wp_id = body.get("wp_id")
+    linked_only = bool(body.get("linked_only"))
     try:
-        plan = jira_sync.build_sync_plan(int(wp_id) if wp_id not in (None, "") else None)
+        plan = jira_sync.build_sync_plan(int(wp_id) if wp_id not in (None, "") else None,
+                                         linked_only=linked_only)
     except jira_client.JiraError as e:
         return jsonify({"error": str(e)}), 502
     plan["jira_writes_enabled"] = _jira_writes_enabled()

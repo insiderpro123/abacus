@@ -293,10 +293,14 @@ def _backfill_links(s, wp_id, children, valid_codes, vals):
     return added
 
 
-def build_sync_plan(wp_id=None):
+def build_sync_plan(wp_id=None, linked_only=False):
     """Read-only: compare each pushed step's live Jira status and live Abacus value to
     the baselines on its wp_jira_link, and group the pending changes into
-    from_jira / from_abacus / conflicts. Writes nothing."""
+    from_jira / from_abacus / conflicts. Writes nothing (except link backfill).
+
+    linked_only=True is the cheap "is there anything to nudge about?" mode used by the
+    on-load banner: it looks ONLY at work packages that already have links (so it skips
+    the backfill crawl over every linked epic) - fast when few projects are pushed."""
     if not jira_client.is_configured():
         return {"configured": False, "from_jira": [], "from_abacus": [], "conflicts": []}
     from_jira, from_abacus, conflicts = [], [], []
@@ -305,6 +309,9 @@ def build_sync_plan(wp_id=None):
         sub_label = _sub_labels(s)
         valid_codes = set(sub_label)
         for wp in _linked_wps(s, wp_id):
+            has_links = s.query(WpJiraLink).filter_by(wp_id=wp.id).count() > 0
+            if linked_only and not has_links:
+                continue   # banner check: don't crawl epics nothing was pushed for
             epic = (wp.jira_project_key or "").strip()
             try:
                 children = jira_client.epic_children(epic)
@@ -312,8 +319,10 @@ def build_sync_plan(wp_id=None):
                 errors.append({"epic": epic, "error": str(e)})
                 continue
             vals = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
-            # link any already-pushed steps that predate this feature (baseline only)
-            _backfill_links(s, wp.id, children, valid_codes, vals)
+            # link any already-pushed steps that predate this feature (baseline only).
+            # Skipped in linked_only mode - that mode only reports on existing links.
+            if not linked_only:
+                _backfill_links(s, wp.id, children, valid_codes, vals)
             links = s.query(WpJiraLink).filter_by(wp_id=wp.id).all()
             if not links:
                 continue
