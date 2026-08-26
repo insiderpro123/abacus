@@ -217,12 +217,37 @@ def _set_point(s, wp_id, code, value):
         s.add(WpStatus(wp_id=int(wp_id), code=code, value=value))
 
 
+def in_sync_scope(wp):
+    """Whether a work package may take part in the two-way step sync at all.
+
+    Deliberately strict, because everything downstream trusts it:
+      * top-level only    - sub-workpackages have no 12-step checklist;
+      * Customer only     - Marketing / Process-and-Ops projects have no 12-step
+                            checklist either, so a Jira issue there that merely
+                            happens to be titled "3.2 ..." must never be mistaken
+                            for a pushed Abacus step;
+      * Active only       - "push to Jira, then end the project" has to stop the
+                            sync dead. Otherwise an ended project keeps offering
+                            changes and, on the live site, keeps transitioning real
+                            Jira issues for work that is finished with;
+      * epic linked       - nothing to compare against without one.
+    """
+    return (wp is not None
+            and wp.parent_id is None
+            and (wp.category or "Customer") == "Customer"
+            and (wp.status or "").strip().lower() == "active"
+            and bool((wp.jira_project_key or "").strip()))
+
+
 def _linked_wps(s, wp_id=None):
+    """The work packages the sync is allowed to touch. Both build_sync_plan() and
+    apply_sync_plan() go through here, so a preview and its apply can never disagree
+    about what is in scope."""
     q = s.query(WorkPackage).filter(WorkPackage.jira_project_key.isnot(None),
                                     WorkPackage.jira_project_key != "")
     if wp_id is not None:
         q = q.filter(WorkPackage.id == int(wp_id))
-    return [wp for wp in q.all() if (wp.jira_project_key or "").strip()]
+    return [wp for wp in q.all() if in_sync_scope(wp)]
 
 
 def _classify(link, jira_cur, abacus_cur):
@@ -341,12 +366,14 @@ def build_sync_plan(wp_id=None, linked_only=False):
                 (from_jira if kind == "from_jira"
                  else from_abacus if kind == "from_abacus"
                  else conflicts).append(item)
-        # how many pushed/linked steps exist in the queried scope (after backfill) -
-        # lets the UI tell "nothing pushed yet" from "pushed and already in sync"
-        lq = s.query(WpJiraLink)
-        if wp_id is not None:
-            lq = lq.filter_by(wp_id=int(wp_id))
-        linked_count = lq.count()
+        # How many pushed/linked steps exist in the queried scope (after backfill) -
+        # lets the UI tell "nothing pushed yet" from "pushed and already in sync".
+        # Counted over in-scope work packages ONLY: leftover links on an ended or
+        # non-Customer project must not make the dialog claim there is something
+        # synced when the plan deliberately ignores them.
+        scope_ids = [wp.id for wp in _linked_wps(s, wp_id)]
+        linked_count = (s.query(WpJiraLink)
+                        .filter(WpJiraLink.wp_id.in_(scope_ids)).count()) if scope_ids else 0
         s.commit()   # persist any links created by the backfill above
     return {"configured": True, "from_jira": from_jira, "from_abacus": from_abacus,
             "conflicts": conflicts, "errors": errors, "linked_count": linked_count}
@@ -367,16 +394,58 @@ def apply_sync_plan(decisions, allow_jira_writes=False):
             continue
 
     applied, simulated, failed, skipped = [], [], [], []
+    blocked = []          # decisions whose work package left the sync scope mid-review
     to_transition = []   # real Jira writes, done after the DB commit (network off the lock)
+
+    # A review dialog can sit open for a while. In the meantime the project may have
+    # been ended, deleted, or had its epic unlinked - all of which take it out of
+    # in_sync_scope(). Those decisions must not be applied, but they are reported
+    # rather than silently dropped, so "I clicked Apply and nothing happened" always
+    # has a visible reason.
+    with SessionLocal() as s:
+        allowed = {wp.id for wp in _linked_wps(s)}
+        for (d_wp, d_code), d_action in dmap.items():
+            if d_wp in allowed or d_action == "skip":
+                continue
+            wp = s.get(WorkPackage, d_wp)
+            if wp is None:
+                why = "the project was deleted"
+            elif wp.parent_id is not None:
+                why = "sub-workpackages are not part of the Jira step sync"
+            elif (wp.category or "Customer") != "Customer":
+                why = "only Customer projects use the 12-step Jira sync"
+            elif (wp.status or "").strip().lower() != "active":
+                why = f"the project is no longer active (now {wp.status})"
+            else:
+                why = "the project is no longer linked to a Jira epic"
+            blocked.append({
+                "wp_id": d_wp, "code": d_code,
+                "wp_label": (f"{wp.client} - {wp.name}".strip(" -") if wp else f"work package {d_wp}"),
+                "step_label": d_code, "reason": why,
+            })
+
+    # Only the work packages this review actually covers. Anything else is a Jira
+    # round-trip we don't need, and one more thing that can fail (or time out) while
+    # applying a change the user is waiting on.
+    decided_wps = {d_wp for (d_wp, _c) in dmap}
 
     with SessionLocal() as s:
         sub_label = _sub_labels(s)
         valid_codes = set(sub_label)
         for wp in _linked_wps(s):
+            if wp.id not in decided_wps:
+                continue
             epic = (wp.jira_project_key or "").strip()
             try:
                 children = jira_client.epic_children(epic)
-            except jira_client.JiraError:
+            except jira_client.JiraError as e:
+                # the epic is unreachable - report it rather than silently applying nothing
+                for (d_wp, d_code), d_action in dmap.items():
+                    if d_wp == wp.id and d_action != "skip":
+                        failed.append({"wp_id": wp.id, "code": d_code,
+                                       "wp_label": f"{wp.client} - {wp.name}".strip(" -"),
+                                       "step_label": d_code, "jira_issue_key": "",
+                                       "direction": "", "error": str(e)})
                 continue
             vals = {st.code: st.value for st in s.query(WpStatus).filter_by(wp_id=wp.id).all()}
             _backfill_links(s, wp.id, children, valid_codes, vals)
@@ -459,4 +528,4 @@ def apply_sync_plan(decisions, allow_jira_writes=False):
                           "detail": f"moved Jira to {CAT_LABEL.get(t['target_cat'], t['target_cat'])}"})
 
     return {"ok": True, "applied": applied, "simulated": simulated,
-            "failed": failed, "skipped": skipped}
+            "failed": failed, "skipped": skipped, "blocked": blocked}

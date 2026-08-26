@@ -1021,9 +1021,13 @@ async function maybeShowSyncNotice() {
   const box = document.getElementById("jira-sync-notice");
   if (!box) return;
   const hide = () => { box.hidden = true; box.innerHTML = ""; };
+  // Same scope as the server's sync: top-level, Customer, Active, epic-linked. Without
+  // this an ended project's leftover links kept the banner probing Jira on every load.
   const anyPushed = DATA && DATA.jira_configured &&
-    (DATA.work_packages || []).some((w) => hasPushedSteps(w) ||
-      (w.children || []).some((c) => hasPushedSteps(c)));
+    (DATA.work_packages || []).some((w) =>
+      (w.category || "Customer") === "Customer" &&
+      (w.status || "").toLowerCase() === "active" &&
+      w.jira_project_key && hasPushedSteps(w));
   if (!anyPushed || jiraNoticeDismissed) { hide(); return; }
 
   // Cheap read-only check: are there any pending changes across pushed work packages?
@@ -1180,16 +1184,22 @@ function openSyncModal(plan, titleLabel) {
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
-      const a = (json.applied || []).length, sim = (json.simulated || []).length, f = (json.failed || []).length;
+      const a = (json.applied || []).length, sim = (json.simulated || []).length,
+        f = (json.failed || []).length, bl = (json.blocked || []).length;
       closeEditor();
       await load();
       const parts = [`Applied ${a}`];
       if (sim) parts.push(`simulated ${sim}`);
       if (f) parts.push(`failed ${f}`);
+      if (bl) parts.push(`skipped ${bl}`);
       const st = $("#status");
       if (st) { st.className = "status"; st.textContent = "Jira sync: " + parts.join(" · "); }
       if (f) alert("Some Jira changes failed:\n" +
         (json.failed || []).slice(0, 5).map((x) => `• ${x.step_label}: ${x.error}`).join("\n"));
+      // the project changed underneath the review (ended / deleted / epic unlinked)
+      if (bl) alert("Some changes were skipped because the project changed while this " +
+        "review was open:\n" +
+        (json.blocked || []).slice(0, 5).map((x) => `• ${x.wp_label} ${x.step_label}: ${x.reason}`).join("\n"));
     } catch (e) {
       applyBtn.disabled = false;
       modal.querySelector("#sy-cancel").disabled = false;

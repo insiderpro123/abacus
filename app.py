@@ -63,11 +63,29 @@ app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 # Shared team password (set APP_PASSWORD in production; default is for local dev only)
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "abacus")
 
-# Local Dropbox "Clients" root. The app lives at <Clients>/ISP Project Management
-# Documents/full system test server, so the Clients root is two levels up - derived
-# automatically so it resolves on any colleague's machine (override with DROPBOX_ROOT).
+# Local Dropbox "Clients" root. The app lives somewhere underneath the synced
+# "Clients" folder, so walk up the path until that folder is found rather than
+# counting levels - the app folder has moved deeper before and would silently
+# re-root onto the wrong tree. Falls back to two levels up (the historic
+# behaviour) if nothing on the path is called "Clients".
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DROPBOX_ROOT = os.environ.get("DROPBOX_ROOT") or os.path.dirname(os.path.dirname(_APP_DIR))
+
+
+def _find_clients_root(start):
+    """Nearest ancestor directory named "Clients" (case-insensitive), or None."""
+    cur = start
+    while True:
+        if os.path.basename(cur).lower() == "clients":
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:                       # hit the drive root
+            return None
+        cur = parent
+
+
+DROPBOX_ROOT = (os.environ.get("DROPBOX_ROOT")
+                or _find_clients_root(_APP_DIR)
+                or os.path.dirname(os.path.dirname(_APP_DIR)))
 
 # Link to the Jamie meeting dashboard (a separate local Flask app, default port 5057)
 JAMIE_URL = os.environ.get("JAMIE_URL", "http://127.0.0.1:5057")
@@ -1356,9 +1374,18 @@ def _jira_push_plan(wp_id):
         wp = s.get(WorkPackage, wp_id)
         if not wp:
             return None, ("work package not found", 404)
+        if wp.parent_id is not None:
+            return None, ("Push to Jira is only for top-level work packages "
+                          "(sub-workpackages have no 12-step checklist).", 400)
         if (wp.category or "Customer") != "Customer":
             return None, ("Push to Jira is only for Customer work packages "
                           "(the ones that use the 12-step Abacus checklist).", 400)
+        # An ended project must not gain new Jira issues. The panel already hides the
+        # button when locked; this is the server-side half of that rule, so a stale
+        # page or a direct API call can't push to work that is finished with.
+        if (wp.status or "").strip().lower() != "active":
+            return None, (f"This work package is {wp.status or 'inactive'}. Make it active "
+                          "again before pushing anything to Jira.", 403)
         epic_key = (wp.jira_project_key or "").strip()
         wp_label = f"{wp.client} - {wp.name}".strip(" -")
         if not epic_key:
@@ -1465,11 +1492,14 @@ def _record_push_links(wp_id, epic_key, created_by_code):
     ALREADY under the epic (backfill), keyed by the code its summary starts with. Both
     baselines are seeded to the CURRENT state so a fresh push shows nothing pending on
     the next sync. Never overwrites a link that already exists."""
-    # one read of the epic's children (for backfill + to seed the Jira-side baseline)
+    # one read of the epic's children (for backfill + to seed the Jira-side baseline).
+    # live_keys is None when that read FAILED - important, because an empty set would
+    # otherwise make every existing link look deleted and get repointed (see below).
     try:
         children = jira_client.epic_children(epic_key)
+        live_keys = {c.get("key") for c in children if c.get("key")}
     except jira_client.JiraError:
-        children = []
+        children, live_keys = [], None
     status_by_code = {}
     for c in children:
         code = _code_of(c.get("summary"))
@@ -1482,19 +1512,35 @@ def _record_push_links(wp_id, epic_key, created_by_code):
         for code, key in (created_by_code or {}).items():
             if not code or not key:
                 continue
-            _upsert_jira_link(s, int(wp_id), code, key, "new", vals.get(code, ""))
+            _upsert_jira_link(s, int(wp_id), code, key, "new", vals.get(code, ""), live_keys)
         # 2) backfill everything else under the epic, using its live status as baseline
         for code, (key, status) in status_by_code.items():
             if not key or code in (created_by_code or {}):
                 continue
-            _upsert_jira_link(s, int(wp_id), code, key, status, vals.get(code, ""))
+            _upsert_jira_link(s, int(wp_id), code, key, status, vals.get(code, ""), live_keys)
 
 
-def _upsert_jira_link(s, wp_id, code, key, jira_status, abacus_value):
+def _upsert_jira_link(s, wp_id, code, key, jira_status, abacus_value, live_keys=None):
     """Insert a wp_jira_link row if absent; leave an existing one untouched (its
-    baselines are managed by the sync, not re-seeded on every push)."""
+    baselines are managed by the sync, not re-seeded on every push).
+
+    The one exception is a link pointing at an issue that no longer exists under the
+    epic - someone deleted it in Jira. The sync skips such a link forever (it can't
+    read a status for it), so a re-push, which happily creates a replacement issue,
+    would otherwise leave the step permanently un-syncable. When live_keys tells us
+    the old key is genuinely gone, the link is repointed at the replacement and its
+    baselines are re-seeded. live_keys is None if we couldn't read the epic - then
+    nothing is assumed to be deleted."""
     row = s.get(WpJiraLink, {"wp_id": wp_id, "code": code})
     if row:
+        stale = (live_keys is not None and row.jira_issue_key
+                 and row.jira_issue_key not in live_keys)
+        if not (stale and key and key != row.jira_issue_key):
+            return
+        row.jira_issue_key = key
+        row.last_jira_status = jira_status or "new"
+        row.last_abacus_value = abacus_value or ""
+        row.updated_at = datetime.utcnow()
         return
     s.add(WpJiraLink(wp_id=wp_id, code=code, jira_issue_key=key,
                      last_jira_status=jira_status or "new", last_abacus_value=abacus_value or "",
