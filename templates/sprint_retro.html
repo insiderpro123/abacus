@@ -37,17 +37,13 @@ body{
   padding-bottom:60px;
 }
 h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif}
-.wrap{max-width:1500px;margin:0 auto;padding:0 24px}
+/* Full width with Abacus's side margins, so switching pages the content edge stays put. */
+.wrap{padding:0 32px}
+@media (max-width:1700px){ .wrap{padding:0 24px} }
+@media (max-width:640px){ .wrap{padding:0 16px} }
 
 /* ===================================================== top bar */
-.topbar{background:#fff;position:sticky;top:0;z-index:50;box-shadow:var(--shadow-sm);border-bottom:1px solid var(--line)}
-.topbar-inner{max-width:1500px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:14px}
-.brand img{height:34px;width:auto;display:block}
-.brand .divider{width:1px;height:30px;background:var(--line)}
-.brand .title{display:flex;flex-direction:column;line-height:1.15}
-.brand .t1{font-family:'Sora';font-weight:700;font-size:19px;color:var(--ink)}
-.brand .t2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate-light);font-weight:600}
+/* The bar itself is shared by every page: templates/_topbar.html. */
 .spacer{flex:1}
 
 .btn{font-family:'Inter';font-weight:600;font-size:15px;border:none;cursor:pointer;border-radius:999px;
@@ -66,7 +62,10 @@ h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif}
 /* Sync progress: an indeterminate stripe along the bottom edge of the top bar.
    Jira's search endpoint pages by token and never reports a total, so there is no
    honest percentage to show - only that the pull is still in flight. */
-.syncbar{height:3px;background:var(--paper-2);overflow:hidden;opacity:0;transition:opacity .2s}
+/* Laid over the bar's bottom edge rather than below it, so this bar stays the same
+   height as every other page's. */
+.syncbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--paper-2);overflow:hidden;
+  opacity:0;transition:opacity .2s}
 .syncbar.on{opacity:1}
 .syncbar i{display:block;height:100%;width:40%;border-radius:999px;background:var(--grad-brand)}
 .syncbar.on i{animation:slide 1.15s cubic-bezier(.65,0,.35,1) infinite}
@@ -266,7 +265,6 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
 @media print{
   @page{size:A4 landscape;margin:11mm}
   body{background:#fff;padding:0}
-  .topbar{position:static;box-shadow:none}
   .no-print,.navbtn,select.weeksel{display:none!important}
   .card{break-inside:avoid;box-shadow:none;border-color:#ccc}
   .proj{break-inside:avoid}
@@ -279,17 +277,11 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
 {% include '_test_banner.html' %}
 {% set nav_active = "retro" %}{% include '_nav.html' %}
 
-<div class="topbar">
-  <div class="topbar-inner">
-    <div class="brand">
-      <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro">
-      <div class="divider"></div>
-      <div class="title">
-        <span class="t1">Sprint Retro Dashboard</span>
-        <span class="t2">Jira · points completed</span>
-      </div>
-    </div>
-    <div class="spacer"></div>
+{% from '_topbar.html' import brand %}
+<div class="ip-top">
+  <div class="ip-top-inner">
+    {{ brand("Sprint Retro Dashboard", "Jira · points completed") }}
+    <div class="ip-top-spacer"></div>
     <div class="sync-meta" id="syncMeta"></div>
     <button class="btn btn-primary no-print" id="syncBtn"><span id="syncIcon">⟳</span> Sync from Jira</button>
     <button class="btn btn-ghost no-print" id="printBtn" title="Print or save as PDF">🖨</button>

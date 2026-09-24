@@ -23,12 +23,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
      background:var(--paper);-webkit-font-smoothing:antialiased;min-height:100vh}
 h1,h2{font-family:'Sora','Inter',sans-serif}
 
-.topbar{background:#fff;box-shadow:var(--shadow-sm);border-bottom:1px solid var(--line)}
-.topbar-inner{max-width:1100px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;gap:14px}
-.topbar img{height:34px;width:auto;display:block}
-.divider{width:1px;height:30px;background:var(--line)}
-.t1{font-family:'Sora';font-weight:700;font-size:19px}
-.spacer{flex:1}
+/* The top bar is shared by every page: templates/_topbar.html. */
 .signout{font-size:14px;font-weight:600;color:var(--slate);text-decoration:none;padding:8px 14px;
          border:1px solid var(--line);border-radius:999px;background:#fff}
 .signout:hover{border-color:var(--blue-300);color:var(--ink)}
@@ -53,7 +48,7 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 
 @media (max-width:900px){ .choices{grid-template-columns:1fr} }
 @media (max-width:640px){
-  .topbar-inner,.wrap{padding-left:16px;padding-right:16px}
+  .wrap{padding-left:16px;padding-right:16px}
   .wrap{padding-top:28px}
   .lead h1{font-size:24px}
   .choices{grid-template-columns:1fr;gap:16px}
@@ -66,12 +61,11 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 {% include '_test_banner.html' %}
 {% set nav_active = "home" %}{% include '_nav.html' %}
 
-<div class="topbar">
-  <div class="topbar-inner">
-    <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro">
-    <div class="divider"></div>
-    <span class="t1">Live Process Dashboard</span>
-    <div class="spacer"></div>
+{% from '_topbar.html' import brand %}
+<div class="ip-top">
+  <div class="ip-top-inner">
+    {{ brand("Live Process Dashboard", "Insider Pro · internal") }}
+    <div class="ip-top-spacer"></div>
     <a class="signout" href="{{ url_for('logout') }}">Sign out</a>
   </div>
 </div>

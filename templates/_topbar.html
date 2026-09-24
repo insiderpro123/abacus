@@ -1,0 +1,50 @@
+{# The white bar under the nav strip, shared by every page so the logo sits in exactly the
+   same place whichever page you switch to. Only the title, subtitle and the page's own
+   buttons change. Full width (like Abacus), a fixed height so a page's buttons can't make
+   it taller, sticky on every page.
+
+   Use:
+     {% from '_topbar.html' import brand %}
+     <div class="ip-top">
+       <div class="ip-top-inner">
+         {{ brand("Sprint Retro Dashboard", "Jira · points completed") }}
+         <div class="ip-top-spacer"></div>
+         ...this page's buttons...
+       </div>
+       ...optional full-width extras, e.g. the retro's sync progress stripe...
+     </div>
+
+   Styles are inline and self-contained, like _nav.html, because the pages carry
+   different stylesheets. Class names are ip-top* so no page's own rules reach them. #}
+{% macro brand(title, subtitle) -%}
+<div class="ip-brand">
+  <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro">
+  <div class="ip-brand-div"></div>
+  <div class="ip-brand-title">
+    <span class="ip-brand-t1">{{ title }}</span>
+    <span class="ip-brand-t2">{{ subtitle }}</span>
+  </div>
+</div>
+<style>
+  .ip-top{background:#fff;position:sticky;top:0;z-index:50;border-bottom:1px solid #DDE6F1;
+    box-shadow:0 2px 8px rgba(11,42,74,.08)}
+  .ip-top-inner{box-sizing:border-box;min-height:72px;padding:12px 32px;display:flex;align-items:center;
+    gap:18px;flex-wrap:wrap}
+  .ip-top-spacer{flex:1}
+  .ip-brand{display:flex;align-items:center;gap:14px;flex:none}
+  .ip-brand img{height:34px;width:auto;display:block}
+  .ip-brand-div{width:1px;height:30px;background:#DDE6F1}
+  .ip-brand-title{display:flex;flex-direction:column;line-height:1.15}
+  .ip-brand-t1{font-family:'Sora','Inter',sans-serif;font-weight:700;font-size:19px;color:#0B2A4A}
+  .ip-brand-t2{font-family:'Inter',sans-serif;font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:#6B7B91;font-weight:600}
+  @media (max-width:640px){
+    .ip-top-inner{min-height:60px;padding:10px 16px;gap:10px}
+    .ip-brand img{height:28px}
+    .ip-brand-t1{font-size:17px}
+  }
+  @media print{.ip-top{position:static;box-shadow:none}}
+  /* Holds the logo still across a page switch (see the view transition in _nav.html). */
+  @media (prefers-reduced-motion:no-preference){ .ip-brand img{view-transition-name:ip-logo} }
+</style>
+{%- endmacro %}

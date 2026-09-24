@@ -1051,20 +1051,13 @@ table.matrix.stacked { display: block; table-layout: auto; border-spacing: 0; }
 h1, h2, h3, h4 { font-family: 'Sora', 'Inter', sans-serif; }
 button, input, select, textarea { font-family: inherit; }
 
-/* ---- top bar (same as the Sprint Retro page) */
-.topbar { background: #fff; position: sticky; top: 0; z-index: 50; box-shadow: var(--shadow-sm); border-bottom: 1px solid var(--line); }
-.topbar-inner { max-width: 1600px; margin: 0 auto; padding: 13px 24px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 14px; }
-.brand img { height: 34px; width: auto; display: block; }
-.brand .divider { width: 1px; height: 30px; background: var(--line); }
-.brand .title { display: flex; flex-direction: column; line-height: 1.15; }
-.brand .t1 { font-family: 'Sora'; font-weight: 700; font-size: 19px; color: var(--ink); }
-.brand .t2 { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--slate-light); font-weight: 600; }
+/* ---- top bar: the bar itself is shared by every page (templates/_topbar.html);
+   only this page's own save-status text is styled here. */
 .spacer { flex: 1; }
-.topbar .sync { font-size: 13.5px; color: var(--slate-light); }
-.topbar .sync.ok { color: var(--good); }
-.topbar .sync.pending { color: var(--progress); }
-.topbar .sync.error { color: var(--danger); }
+.ip-top .sync { font-size: 13.5px; color: var(--slate-light); }
+.ip-top .sync.ok { color: var(--good); }
+.ip-top .sync.pending { color: var(--progress); }
+.ip-top .sync.error { color: var(--danger); }
 .control-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 
 /* ---- page body */
@@ -1195,8 +1188,7 @@ main.wrap { max-width: 1600px; margin: 0 auto; padding: 20px 24px 60px; }
 /* ---- readability: the Sprint Retro's type sizes, and the full width of the screen.
    The matrix is twelve columns wide, so it gets every pixel; a max-width only left
    empty margins on a wide monitor while squeezing the column titles. */
-.topbar-inner, main.wrap { max-width: none; }
-.topbar-inner { padding: 14px 32px; }
+main.wrap { max-width: none; }
 main.wrap { padding: 22px 32px 60px; }
 body { font-size: 15px; }
 .btn, .linkbtn { font-size: 15px; }
@@ -1218,7 +1210,7 @@ table.matrix { border-spacing: 0 8px; }
   .proc-th .ptitle { font-size: 13px; }
   .wp-title { font-size: 15.5px; }
   .card { padding-left: 16px; padding-right: 16px; }
-  main.wrap, .topbar-inner { padding-left: 24px; padding-right: 24px; }
+  main.wrap { padding-left: 24px; padding-right: 24px; }
 }
 .wp-cell { padding: 12px 8px 12px 10px; gap: 12px; }
 .wp-icon { width: 32px; height: 32px; min-width: 32px; }
@@ -1264,9 +1256,6 @@ table.matrix { border-spacing: 0 8px; }
 .status-opt, .cat-opt { font-size: 14.5px; }
 
 @media (max-width: 640px) {
-  .topbar-inner { padding: 10px 16px; gap: 10px; }
-  .brand img { height: 28px; }
-  .brand .t1 { font-size: 17px; }
   .control-actions { width: 100%; }
   .control-actions .linkbtn { padding: 8px 12px; font-size: 12.5px; }
   main.wrap { padding: 14px 16px 48px; }

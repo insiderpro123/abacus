@@ -14,18 +14,12 @@
   {% include '_test_banner.html' %}
   {% set nav_active = "abacus" %}{% include '_nav.html' %}
 
-  <!-- Top bar: the Sprint Retro Dashboard's, so the pages read as one set. -->
-  <div class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
-        <div class="divider"></div>
-        <div class="title">
-          <span class="t1">Abacus</span>
-          <span class="t2">Work package tracker</span>
-        </div>
-      </div>
-      <div class="spacer"></div>
+  <!-- Top bar: shared by every page (templates/_topbar.html), so the logo never moves. -->
+  {% from '_topbar.html' import brand %}
+  <div class="ip-top">
+    <div class="ip-top-inner">
+      {{ brand("Abacus", "Work package tracker") }}
+      <div class="ip-top-spacer"></div>
       <span id="sync" class="sync"></span>
       <div class="control-actions">
         <button class="linkbtn sync-all-jira" id="sync-all-jira" title="Review and apply Jira status changes across all pushed work packages">⟳ Sync all pushed items from Jira</button>

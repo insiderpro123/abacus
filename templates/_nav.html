@@ -19,4 +19,11 @@
   .ip-nav-tab:hover{color:#fff;background:rgba(255,255,255,.1)}
   .ip-nav-tab.is-on{color:#0B2A4A;background:#fff}
   @media print{.ip-nav{display:none}}
+  /* Switching pages: the strip and the white bar under it hold still while only the page
+     below cross-fades (Chrome/Edge; other browsers just switch as before). */
+  @media (prefers-reduced-motion:no-preference){
+    @view-transition{navigation:auto}
+    .ip-nav{view-transition-name:ip-nav}
+    ::view-transition-group(root){animation-duration:.22s}
+  }
 </style>

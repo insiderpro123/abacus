@@ -24,17 +24,13 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
      background:var(--paper);-webkit-font-smoothing:antialiased;padding-bottom:60px}
 h1,h2,h3{font-family:'Sora','Inter',sans-serif}
 
-.topbar{background:#fff;box-shadow:var(--shadow-sm);border-bottom:1px solid var(--line)}
-.topbar-inner{max-width:1500px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;gap:14px}
-.topbar img{height:34px;width:auto;display:block}
-.divider{width:1px;height:30px;background:var(--line)}
-.title{display:flex;flex-direction:column;line-height:1.15}
-.t1{font-family:'Sora';font-weight:700;font-size:19px}
-.t2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate-light);font-weight:600}
+/* The top bar is shared by every page: templates/_topbar.html. */
 
-.wrap{max-width:1500px;margin:0 auto;padding:20px 24px 0}
+/* Full width with Abacus's side margins, so switching pages the content edge stays put. */
+.wrap{padding:22px 32px 0}
+@media (max-width:1700px){ .wrap{padding:22px 24px 0} }
 /* Three panes: who (Jamie tag), which meeting, then the notes. */
-.layout{display:grid;grid-template-columns:250px 290px minmax(0,1fr);gap:16px;align-items:start}
+.layout{display:grid;grid-template-columns:280px 330px minmax(0,1fr);gap:16px;align-items:start}
 .pane{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-sm);
       overflow:hidden}
 .pane-head{padding:13px 16px 11px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:8px}
@@ -94,13 +90,13 @@ h1,h2,h3{font-family:'Sora','Inter',sans-serif}
   .pane.detail-pane{grid-column:1 / -1}
 }
 @media (max-width:700px){
-  .topbar-inner,.wrap{padding-left:16px;padding-right:16px}
+  .wrap{padding-left:16px;padding-right:16px}
   .layout{grid-template-columns:1fr}
   .pane-list{max-height:260px}
   .detail{padding:16px}
 }
 @media print{
-  .topbar,.tags-pane,.meetings-pane,.note-toggle{display:none!important}
+  .ip-top,.tags-pane,.meetings-pane,.note-toggle{display:none!important}
   .layout{display:block} .pane{border:none;box-shadow:none}
 }
 </style>
@@ -109,14 +105,10 @@ h1,h2,h3{font-family:'Sora','Inter',sans-serif}
 {% include '_test_banner.html' %}
 {% set nav_active = "notes" %}{% include '_nav.html' %}
 
-<div class="topbar">
-  <div class="topbar-inner">
-    <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro">
-    <div class="divider"></div>
-    <div class="title">
-      <span class="t1">Meeting Notes</span>
-      <span class="t2">Jamie · overviews &amp; action items</span>
-    </div>
+{% from '_topbar.html' import brand %}
+<div class="ip-top">
+  <div class="ip-top-inner">
+    {{ brand("Meeting Notes", "Jamie · overviews & action items") }}
   </div>
 </div>
 

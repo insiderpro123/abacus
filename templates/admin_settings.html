@@ -5,21 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% if is_test %}[TEST] {% endif %}Settings · Insider Pro</title>
   <link rel="icon" href="{{ url_for('static', filename='ip-logo.svg') }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root { --accent:#127d94; --accent-bright:#4cc6df; --text:#1f2933; --muted:#6b7480;
             --line:#e0e0dc; --panel-2:#f4f6f8; --todo:#b3362a; --done:#2e7d32; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Arial, "Segoe UI", Helvetica, sans-serif; background:#fff;
            color:var(--text); font-size:14px; }
-    .topbar { display:flex; align-items:center; gap:16px; padding:14px 28px; border-bottom:1px solid var(--line); position:sticky; top:0; background:#fff; z-index:10; }
-    .topbar .logo { height:30px; }
-    .topbar .title { font-size:15px; font-weight:800; color:var(--accent); }
-    .topbar .sp { margin-left:auto; }
-    .topbar .saved { font-size:12px; color:var(--done); font-weight:700; margin-right:6px; min-width:70px; text-align:right; }
-    .topbar .saved.err { color:var(--todo); }
-    .topbar a, .topbar button.act { font-size:12.5px; font-weight:700; color:var(--accent); text-decoration:none; cursor:pointer;
-                border:1px solid var(--accent); border-radius:5px; padding:7px 12px; margin-left:8px; background:#fff; font-family:inherit; }
-    .topbar a:hover, .topbar button.act:hover { background:var(--accent); color:#fff; }
+    /* The bar itself is shared by every page (templates/_topbar.html); these are only
+       this page's save status and buttons, as the same pills Abacus uses. */
+    .ip-top .saved { font-size:13px; color:var(--done); font-weight:700; min-width:70px; text-align:right; }
+    .ip-top .saved.err { color:var(--todo); }
+    .ip-top a.act, .ip-top button.act { font-family:'Inter',sans-serif; font-size:14px; font-weight:600; color:#0B2A4A;
+                text-decoration:none; cursor:pointer; border:1px solid #DDE6F1; border-radius:999px; padding:9px 16px;
+                background:#fff; box-shadow:0 2px 8px rgba(11,42,74,.08); }
+    .ip-top a.act:hover, .ip-top button.act:hover { border-color:#4C9DF0; }
     main { max-width: 900px; margin:0 auto; padding:22px 20px 60px; }
     .intro { color:var(--muted); font-size:13px; margin:0 0 18px; }
     h2.page { font-size:16px; color:var(--accent); margin:6px 0 4px; }
@@ -66,14 +68,17 @@
 </head>
 <body>
   {% include '_test_banner.html' %}
-  <header class="topbar">
-    <img class="logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
-    <span class="title">Settings</span>
-    <span class="sp"></span>
-    <span id="saved" class="saved"></span>
-    <button class="act" id="refresh-jira">↻ Refresh from Jira</button>
-    <a href="{{ url_for('index') }}">← Dashboard</a>
-    <a href="{{ url_for('logout') }}">Sign out</a>
+  {% set nav_active = "abacus" %}{% include '_nav.html' %}
+  {% from '_topbar.html' import brand %}
+  <header class="ip-top">
+    <div class="ip-top-inner">
+      {{ brand("Settings", "Abacus · the 12 steps") }}
+      <div class="ip-top-spacer"></div>
+      <span id="saved" class="saved"></span>
+      <button class="act" id="refresh-jira">↻ Refresh from Jira</button>
+      <a class="act" href="{{ url_for('index') }}">← Back to Abacus</a>
+      <a class="act" href="{{ url_for('logout') }}">Sign out</a>
+    </div>
   </header>
   <main>
     <h2 class="page">Edit the 12 steps &amp; sub-processes</h2>
