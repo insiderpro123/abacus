@@ -29,10 +29,8 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 .signout:hover{border-color:var(--blue-300);color:var(--ink)}
 
 .wrap{max-width:1100px;margin:0 auto;padding:48px 24px 60px}
-.lead h1{font-size:30px;font-weight:700}
-.lead p{margin-top:8px;font-size:16px;color:var(--slate-light)}
 
-.choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin-top:30px}
+.choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
 .choice{display:flex;flex-direction:column;gap:14px;padding:30px;background:#fff;color:inherit;
         text-decoration:none;border:1px solid var(--line);border-radius:var(--r-lg);
         box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
@@ -50,7 +48,6 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 @media (max-width:640px){
   .wrap{padding-left:16px;padding-right:16px}
   .wrap{padding-top:28px}
-  .lead h1{font-size:24px}
   .choices{grid-template-columns:1fr;gap:16px}
   .choice{padding:24px}
 }
@@ -71,11 +68,6 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 </div>
 
 <main class="wrap">
-  <div class="lead">
-    <h1>Where would you like to go?</h1>
-    <p>Pick a dashboard. You can switch between them from the strip at the top of each page.</p>
-  </div>
-
   <div class="choices">
     <a class="choice" href="{{ url_for('index') }}">
       <span class="icon" aria-hidden="true">🧮</span>
