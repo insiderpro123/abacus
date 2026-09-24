@@ -1,0 +1,49 @@
+{% extends "_page.html" %}
+{# STARTER for a new dashboard. Nothing routes to this file: copy it to
+   templates/<your_page>.html, then follow README "Adding a dashboard".
+   Everything marked CHANGE is yours to fill in; the rest is already done for you
+   (nav strip, top bar, fonts, colours, TEST banner, full-width layout). #}
+{% set nav_active = "starter" %}                 {# CHANGE: the key from dashboards.py #}
+{% set page_title = "New Dashboard" %}           {# CHANGE: tab + top bar title #}
+{% set bar_subtitle = "What this shows" %}       {# CHANGE: top bar small caps line #}
+
+{% block head %}
+<style>
+/* CHANGE: this page's own CSS. The colour tokens (var(--ink), var(--blue), ...),
+   .card, .btn / .btn-primary / .btn-ghost and .page-wrap come from _page.html. */
+.intro{font-size:15px;color:var(--slate);line-height:1.5}
+</style>
+{% endblock %}
+
+{% block bar_actions %}
+{# CHANGE: buttons on the right of the top bar, or delete this block. #}
+<button class="btn btn-ghost" id="refreshBtn">⟳ Refresh</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>{{ page_title }}</h2>
+  <p class="intro" id="status">Loading…</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+"use strict";
+/* CHANGE: fetch this dashboard's data from its own /api/... route. A 401 means the
+   login expired, so send the person to sign in again (every other page does this). */
+async function load(){
+  const el = document.getElementById("status");
+  try{
+    const r = await fetch("/api/data", { cache:"no-store" });
+    if (r.status === 401){ window.location.href = "/login"; return; }
+    await r.json();
+    el.textContent = "Connected. Replace this with the dashboard.";
+  }catch(e){
+    el.textContent = "Could not load: " + e.message;
+  }
+}
+document.getElementById("refreshBtn").onclick = load;
+load();
+</script>
+{% endblock %}

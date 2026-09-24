@@ -63,6 +63,44 @@ Environment variables:
 - `DATABASE_URL` - Postgres URL in prod; unset locally → SQLite `abacus.db`.
 - `PORT` / `NO_BROWSER` - local dev only.
 
+## The site and its dashboards
+
+Live at **https://insiderpro-process.onrender.com**. After sign-in, `/` is a home page with one
+card per dashboard, and every page carries the same nav strip (`templates/_nav.html`) and white
+top bar (`templates/_topbar.html`), so the logo never moves between pages.
+
+| Dashboard | URL | Template |
+|-----------|-----|----------|
+| 🧮 Abacus | `/abacus` | `index.html` + `static/app.js` |
+| 📊 Sprint Retro | `/sprint-retro` | `sprint_retro.html` |
+| 📋 Meeting Notes | `/meeting-notes` | `meeting_notes.html` |
+
+The list itself lives in **`dashboards.py`**. The nav strip and the home cards are both built
+from it, in its order.
+
+## Adding a dashboard
+
+1. **Page:** copy `templates/dashboard_starter.html` to `templates/<name>.html`. It extends
+   `templates/_page.html`, which already supplies the head, fonts, colour tokens, TEST banner,
+   nav strip, top bar and a full-width content area. Fill in the parts marked `CHANGE`.
+2. **Route** in `app.py`, next to the other dashboards:
+   ```python
+   @app.route("/my-dashboard")
+   def my_dashboard():
+       return render_template("my_dashboard.html")
+   ```
+   Every route is behind the team login automatically (`_require_login`). Give its data its own
+   `/api/my-dashboard/...` routes; a new table goes in `models.py` and is created on the next
+   start (`init_db` → `create_all`), with no migration step.
+3. **List it** in `dashboards.py`: a `key` (the same one the page sets as `nav_active`), a
+   `title`, an `emoji` (colour form, e.g. `🖨️` not `🖨`), the `endpoint` (the route's function
+   name, `my_dashboard` above) and a one-sentence `blurb` for its home card.
+4. **Check locally**, commit, and deploy (see *Deploy online*).
+
+An entry in `dashboards.py` whose route doesn't exist yet is skipped rather than breaking the
+site, so the list can be edited before the page is finished. The home page wraps onto a new row
+past three cards, and the nav strip scrolls sideways once the tabs no longer fit.
+
 ## Local development
 
 ```sh
@@ -105,7 +143,10 @@ Re-running `import_data.py --yes` wipes and reloads everything - only do it to r
 | `app.py` | Flask app: routes, auth, DB reads/writes |
 | `models.py` | SQLAlchemy schema (Process, Subprocess, WorkPackage, WpStatus, WpFinished) |
 | `import_data.py` | One-time Excel → database importer / seeder |
-| `templates/index.html`, `templates/login.html` | Page shells |
+| `dashboards.py` | The list of dashboards (nav strip + home cards) |
+| `templates/_page.html` | Layout new dashboards extend; `dashboard_starter.html` is the copy-me page |
+| `templates/_nav.html`, `templates/_topbar.html` | The nav strip and top bar every page shares |
+| `templates/index.html`, `sprint_retro.html`, `meeting_notes.html`, `home.html`, `login.html` | Pages |
 | `static/app.js`, `static/style.css`, `static/ip-logo.svg` | Front-end |
 | `requirements.txt`, `render.yaml`, `Procfile`, `.python-version` | Deploy config |
 | `RUN - *.bat/.command`, `SETUP-*.txt` | Local-dev launchers + notes |

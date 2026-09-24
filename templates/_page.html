@@ -1,0 +1,88 @@
+{# The layout every new dashboard page builds on: <head>, fonts, the Insider Pro colour
+   tokens, the TEST banner, the nav strip and the shared top bar. A page only fills in
+   its own parts. Copy templates/dashboard_starter.html to begin one; README "Adding a
+   dashboard" has the steps.
+
+     {% extends "_page.html" %}
+     {% set nav_active = "mykey" %}             the key from dashboards.py
+     {% set page_title = "My Dashboard" %}      browser tab and top bar, big line
+     {% set bar_subtitle = "What it shows" %}   top bar, small caps line
+     {% block bar_actions %}...buttons...{% endblock %}  top bar, right-hand side
+     {% block head %}<style>...</style>{% endblock %}    the page's own CSS
+     {% block content %}...{% endblock %}                inside a full-width .page-wrap
+     {% block scripts %}<script>...</script>{% endblock %}
+
+   The older pages (Abacus, Sprint Retro, Meeting Notes) predate this and carry their own
+   <head>, but use the same _nav.html and _topbar.html, so they look identical. #}
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if is_test %}[TEST] {% endif %}Insider Pro · {{ page_title or "Live Process Dashboard" }}</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='ip-logo.svg') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Insider Pro brand tokens, the same set as the Sprint Retro page. */
+:root{
+  --ink:#0B2A4A; --ink-800:#113456; --ink-700:#1C4570; --ink-deep:#0E3A63;
+  --blue:#1663C7; --blue-600:#2B74D6; --blue-300:#4C9DF0;
+  --teal:#12B5A5; --teal-600:#0E9C8E;
+  --paper:#F6F9FD; --paper-2:#EEF4FB; --white:#FFFFFF;
+  --line:#DDE6F1; --slate:#4A5B70; --slate-light:#6B7B91;
+  --priority:#E0A32E; --danger:#D6453C; --good:#2E9E5B;
+  --r-sm:10px; --r-md:16px; --r-lg:24px;
+  --shadow-sm:0 2px 8px rgba(11,42,74,.08);
+  --shadow-md:0 8px 24px rgba(11,42,74,.13);
+  --shadow-blue:0 8px 22px rgba(22,99,199,.26);
+  --grad-brand:linear-gradient(120deg,var(--blue) 0%,var(--blue-600) 55%,var(--teal) 100%);
+  --grad-dark:linear-gradient(135deg,#0B2A4A 0%,#0E3A63 55%,#113456 100%);
+  --cat-customer:#2a78d6; --cat-marketing:#eb6834; --cat-ops:#1baf7a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--ink);
+     background:var(--paper);-webkit-font-smoothing:antialiased;min-height:100vh}
+h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif}
+
+/* Full width with Abacus's side margins, so the content edge stays put between pages. */
+.page-wrap{padding:22px 32px 60px}
+@media (max-width:1700px){ .page-wrap{padding:22px 24px 60px} }
+@media (max-width:640px){ .page-wrap{padding:16px 16px 48px} }
+
+/* Buttons for the top bar and pages, the same pills as the Sprint Retro. */
+.btn{font-family:'Inter';font-weight:600;font-size:15px;border:none;cursor:pointer;border-radius:999px;
+     padding:10px 18px;display:inline-flex;align-items:center;gap:8px;text-decoration:none;
+     transition:box-shadow .15s,background .15s}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--grad-brand);color:#fff;box-shadow:var(--shadow-blue)}
+.btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
+.btn-ghost:hover{border-color:var(--blue-300)}
+
+/* A white panel, the building block of every dashboard. */
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-sm);
+      padding:20px 22px;margin:0 0 18px}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+{% include '_test_banner.html' %}
+{% include '_nav.html' %}
+
+{% from '_topbar.html' import brand %}
+<div class="ip-top">
+  <div class="ip-top-inner">
+    {{ brand(page_title or "Live Process Dashboard", bar_subtitle or "") }}
+    <div class="ip-top-spacer"></div>
+    {% block bar_actions %}{% endblock %}
+  </div>
+  {% block bar_extra %}{% endblock %}
+</div>
+
+<main class="page-wrap">
+{% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

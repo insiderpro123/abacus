@@ -53,6 +53,7 @@ from models import (
     Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask,
     Sprint, SprintHistory, WpJiraLink, RetroSnapshot, RetroNote, RetroSetting,
 )
+from dashboards import DASHBOARDS
 import jira_client
 import jamie_client
 import jira_sync
@@ -115,6 +116,15 @@ def _env_flag(name):
 def inject_env_flags():
     """Make the live/test flags available to every template."""
     return {"is_test": IS_TEST, "is_live": IS_LIVE}
+
+
+@app.context_processor
+def inject_dashboards():
+    """The dashboard list (dashboards.py) for the nav strip and home page, each with its
+    URL. An entry whose route does not exist yet is left out, so a half-added dashboard
+    cannot break every page with a url_for BuildError."""
+    return {"dashboards": [dict(d, url=url_for(d["endpoint"]))
+                           for d in DASHBOARDS if d["endpoint"] in app.view_functions]}
 
 
 @app.template_global()

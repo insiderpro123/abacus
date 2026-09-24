@@ -1,23 +1,26 @@
-{# The strip across the very top of the home page, Abacus, the Sprint Retro and Meeting Notes.
-   Include with  {% set nav_active = "home" %},  "abacus",  "retro"  or  "notes"  first. Styles are inline
-   and self-contained because the two pages carry different stylesheets. #}
+{# The strip across the very top of every page: Home, then one tab per dashboard in
+   dashboards.py (injected as `dashboards` by app.py). Include with
+   {% set nav_active = "home" %}  or a dashboard's key first. Styles are inline and
+   self-contained because the pages carry different stylesheets. #}
 <nav class="ip-nav" aria-label="Insider Pro dashboards">
   <a href="/" class="ip-nav-tab{% if nav_active == 'home' %} is-on{% endif %}"
      {% if nav_active == 'home' %}aria-current="page"{% endif %}>🏠 Home</a>
-  <a href="/abacus" class="ip-nav-tab{% if nav_active == 'abacus' %} is-on{% endif %}"
-     {% if nav_active == 'abacus' %}aria-current="page"{% endif %}>🧮 Abacus</a>
-  <a href="/sprint-retro" class="ip-nav-tab{% if nav_active == 'retro' %} is-on{% endif %}"
-     {% if nav_active == 'retro' %}aria-current="page"{% endif %}>📊 Sprint Retro</a>
-  <a href="/meeting-notes" class="ip-nav-tab{% if nav_active == 'notes' %} is-on{% endif %}"
-     {% if nav_active == 'notes' %}aria-current="page"{% endif %}>📋 Meeting Notes</a>
+  {% for d in dashboards %}
+  <a href="{{ d.url }}" class="ip-nav-tab{% if nav_active == d.key %} is-on{% endif %}"
+     {% if nav_active == d.key %}aria-current="page"{% endif %}>{{ d.emoji }} {{ d.title }}</a>
+  {% endfor %}
 </nav>
 <style>
+  /* One row that scrolls sideways once there are more tabs than fit, never wraps. */
   .ip-nav{display:flex;gap:6px;align-items:center;padding:7px 24px;background:#0B2A4A;
+    overflow-x:auto;scrollbar-width:none;
     font-family:'Inter',system-ui,-apple-system,'Segoe UI',Arial,sans-serif}
-  .ip-nav-tab{color:#B8C9DE;text-decoration:none;font-size:14px;font-weight:600;line-height:1;
-    padding:8px 14px;border-radius:999px;transition:background .12s,color .12s}
+  .ip-nav::-webkit-scrollbar{display:none}
+  .ip-nav-tab{flex:none;white-space:nowrap;color:#B8C9DE;text-decoration:none;font-size:14px;font-weight:600;
+    line-height:1;padding:8px 14px;border-radius:999px;transition:background .12s,color .12s}
   .ip-nav-tab:hover{color:#fff;background:rgba(255,255,255,.1)}
   .ip-nav-tab.is-on{color:#0B2A4A;background:#fff}
+  @media (max-width:640px){.ip-nav{padding:7px 12px}.ip-nav-tab{padding:8px 11px}}
   @media print{.ip-nav{display:none}}
   /* Switching pages: the strip and the white bar under it hold still while only the page
      below cross-fades (Chrome/Edge; other browsers just switch as before). */
