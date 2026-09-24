@@ -309,7 +309,7 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
       <div class="spacer"></div>
       <div class="cust-pick no-print" id="custPick">
         <button class="btn btn-ghost" id="custBtn" aria-haspopup="true" aria-expanded="false"
-                title="Choose customers to show every sprint, even when they have no points">👥 Customers<span class="cust-count" id="custCount"></span> ▾</button>
+                title="Choose which customers to show, even when they have no points">👥 Customers<span class="cust-count" id="custCount"></span> ▾</button>
         <div class="cust-menu" id="custMenu" hidden></div>
       </div>
     </div>
@@ -646,12 +646,14 @@ function renderProjects(){
 
 
   $("rows").innerHTML = ROWS.map((row) => {
-    const projs = w.projects.filter((p) => p.sector === row.sector && active(p));
+    let projs = w.projects.filter((p) => p.sector === row.sector && active(p));
     let items = [];
     if (row.by === "project"){
-      /* Customers ticked in the Customers picker always get a card, so a quiet sprint
-         still has somewhere to write their next goal. A customer with nothing in this
-         week's pull gets a blank one: 0 completed, none scheduled. */
+      /* Nothing ticked in the Customers picker: every customer with work this sprint.
+         Something ticked: only the ticked customers, each with a card even in a quiet
+         sprint so there is somewhere to write their next goal. A customer with nothing
+         in this week's pull gets a blank one: 0 completed, none scheduled. */
+      if (PINNED.size) projs = projs.filter((p) => PINNED.has(p.code));
       const shown = new Set(projs.map((p) => p.code));
       const known = allCustomers();
       PINNED.forEach((code) => {
@@ -720,8 +722,10 @@ function renderCustPicker(){
   const list = [...known].sort((a, b) => a[1].localeCompare(b[1]));
   $("custCount").textContent = PINNED.size || "";
   $("custMenu").innerHTML =
-    '<div class="cm-head">Ticked customers get a card every sprint, even with no points. ' +
-      "Everyone sees the same list.</div>" +
+    '<div class="cm-head">' + (PINNED.size
+      ? "Showing only the ticked customers, points or not."
+      : "Showing every customer with work this sprint. Tick some to show only those.") +
+      " Everyone sees the same list.</div>" +
     '<div class="cm-list">' + (list.length ? list.map(([code, name]) =>
       '<label><input type="checkbox" value="' + esc(code) + '"' + (PINNED.has(code) ? " checked" : "") +
       ">" + esc(name) + "</label>").join("") : '<div class="muted" style="padding:8px 6px">No customers in the Jira pull yet.</div>') +
