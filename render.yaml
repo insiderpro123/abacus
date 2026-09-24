@@ -33,3 +33,32 @@ services:
         sync: false          # set this yourself in the Render dashboard (read-only token)
       - key: PYTHON_VERSION
         value: "3.12.6"
+
+  # The same app at its new address, insiderpro-process.onrender.com. A service's
+  # onrender.com name is fixed when it is created, so the new address needs a new
+  # service. It shares abacus-db with abacus-tracker above, so no data moves. Once it
+  # is checked, abacus-tracker is removed from this file and deleted in Render.
+  - type: web
+    name: insiderpro-process
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: abacus-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: APP_PASSWORD
+        sync: false          # set this yourself in the Render dashboard
+      - key: JIRA_BASE_URL
+        value: "https://insiderpro.atlassian.net"
+      - key: JIRA_EMAIL
+        value: "team@insiderpro.co.uk"
+      - key: JIRA_API_TOKEN
+        sync: false          # set this yourself in the Render dashboard (read-only token)
+      - key: PYTHON_VERSION
+        value: "3.12.6"

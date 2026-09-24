@@ -1,7 +1,7 @@
 # Abacus Work Package Tracker (online)
 
 > **Quick links**
-> - **App:** https://abacus-tracker.onrender.com
+> - **App:** https://insiderpro-process.onrender.com
 > - **Password:** shared team password - _ask Sam Hucks_ (kept out of this page on purpose)
 > - **Code (GitHub):** https://github.com/insiderpro123/abacus
 > - **Hosting (Render):** https://dashboard.render.com
@@ -22,7 +22,7 @@ It is hosted on **Render** and protected by a single **shared team password**.
 
 ## Getting in
 
-1. Go to **https://abacus-tracker.onrender.com**
+1. Go to **https://insiderpro-process.onrender.com**
 2. Enter the **team password** and click **Sign in**.
 3. You'll land on the dashboard.
 
