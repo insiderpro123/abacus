@@ -24,7 +24,6 @@ from datetime import datetime
 from flask import (
     Flask, jsonify, render_template, request, redirect, url_for, session,
 )
-from werkzeug.security import generate_password_hash, check_password_hash
 
 
 def _load_local_env():
@@ -51,7 +50,7 @@ _load_local_env()
 
 from models import (
     init_db, SessionLocal,
-    Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask, Customer, StaffUser,
+    Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask,
     Sprint, SprintHistory, WpJiraLink, RetroSnapshot, RetroNote,
 )
 import jira_client
@@ -287,29 +286,14 @@ def _dup_exists(s, client, name, exclude_id=None, parent_id=None):
 
 
 # --------------------------------------------------------------------------- #
-# Authentication - three roles behind one login page:
-#   * admin    - blank email + shared APP_PASSWORD; full access incl. "full settings"
-#                (editing the 12 steps and managing ISP/customer logins)
-#   * staff    - ISP staff email + password; everything operational EXCEPT the
-#                admin-only settings below
-#   * customer - email + per-customer password; read-only Jamie portal only
-# Both admin and ISP staff have session["authed"]; an admin is an authed session
-# WITHOUT a staff_id (shared password), so old admin sessions stay admin.
+# Authentication - an internal system behind one shared team password
+# (APP_PASSWORD). There are no per-person or customer logins. A session from
+# before that change (an ISP-staff or customer login) is not accepted: it is
+# cleared and sent back to the login page.
 # --------------------------------------------------------------------------- #
-def _is_staff():
-    return bool(session.get("authed"))
-
-
-def _is_admin():
-    return bool(session.get("authed")) and not session.get("staff_id")
-
-
-def _is_customer():
-    return session.get("role") == "customer"
-
-
-# Endpoints only a full admin may call (ISP staff are blocked with 403)
-ADMIN_ONLY_PREFIXES = ("/api/admin/process/", "/api/admin/subprocess/", "/api/admin/staff/")
+def _is_signed_in():
+    return (bool(session.get("authed")) and not session.get("staff_id")
+            and session.get("role", "admin") == "admin")
 
 
 @app.before_request
@@ -317,18 +301,9 @@ def _require_login():
     p = request.path
     if p == "/login" or p == "/logout" or p.startswith("/static/"):
         return
-    if _is_staff():
-        if not _is_admin() and any(p.startswith(pref) for pref in ADMIN_ONLY_PREFIXES):
-            return jsonify({"error": "Admin only."}), 403
-        return                                  # staff: full operational access
-    if _is_customer():
-        # customers may reach only their portal and its read-only API
-        if p == "/portal" or p.startswith("/api/portal/"):
-            return
-        if p.startswith("/api/"):
-            return jsonify({"error": "Not allowed"}), 403
-        return redirect(url_for("portal"))
-    # not logged in
+    if _is_signed_in():
+        return
+    session.clear()
     if p.startswith("/api/"):
         return jsonify({"error": "Not authenticated"}), 401
     return redirect(url_for("login"))
@@ -337,40 +312,16 @@ def _require_login():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = _clean(request.form.get("email"))
         password = request.form.get("password", "")
-        if email:
-            with SessionLocal() as s:
-                # ISP staff login (email + password) - operational access, not admin
-                staff = s.query(StaffUser).filter(StaffUser.email.ilike(email)).first()
-                if staff and check_password_hash(staff.password_hash, password):
-                    session.clear()
-                    session["authed"] = True
-                    session["role"] = "staff"
-                    session["staff_id"] = staff.id
-                    session.permanent = True
-                    return redirect(url_for("index"))
-                # customer login (email + password) - read-only portal
-                cust = s.query(Customer).filter(Customer.email.ilike(email)).first()
-                if cust and check_password_hash(cust.password_hash, password):
-                    session.clear()
-                    session["role"] = "customer"
-                    session["customer_id"] = cust.id
-                    session.permanent = True
-                    return redirect(url_for("portal"))
-            return render_template("login.html", error="Incorrect email or password"), 401
-        # admin login (shared team password, no email) - full access
         if hmac.compare_digest(password, APP_PASSWORD):
             session.clear()
             session["authed"] = True
             session["role"] = "admin"
             session.permanent = True
-            return redirect(url_for("index"))
+            return redirect(url_for("home"))
         return render_template("login.html", error="Incorrect password"), 401
-    if _is_staff():
-        return redirect(url_for("index"))
-    if _is_customer():
-        return redirect(url_for("portal"))
+    if _is_signed_in():
+        return redirect(url_for("home"))
     return render_template("login.html", error=None)
 
 
@@ -378,13 +329,6 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
-
-
-def _current_customer(s):
-    """Return the logged-in Customer row (within session s), or None."""
-    cid = session.get("customer_id")
-    return s.get(Customer, cid) if cid else None
-
 
 # --------------------------------------------------------------------------- #
 # Data assembly
@@ -575,59 +519,18 @@ def get_data():
 # Routes
 # --------------------------------------------------------------------------- #
 @app.route("/")
+def home():
+    """Where staff land after signing in: a choice of Abacus or the Sprint Retro."""
+    return render_template("home.html")
+
+
+@app.route("/abacus")
 def index():
     return render_template("index.html", jamie_url=JAMIE_URL)
 
 
 # --------------------------------------------------------------------------- #
-# Customer portal (read-only, Jamie meeting notes only)
-# --------------------------------------------------------------------------- #
-@app.route("/portal")
-def portal():
-    with SessionLocal() as s:
-        cust = _current_customer(s)
-        name = (cust.client or cust.email) if cust else "your project"
-        tag = (cust.jamie_tag if cust else "") or ""
-    return render_template("portal.html", customer_name=name, jamie_tag=tag)
-
-
-@app.route("/api/portal/meetings")
-def api_portal_meetings():
-    with SessionLocal() as s:
-        cust = _current_customer(s)
-        tag = cust.jamie_tag if cust else ""
-    if not tag:
-        return jsonify({"meetings": [], "note": "No meetings are linked to your account yet."})
-    try:
-        meetings = jamie_client.fetch_meetings(tag)
-    except jamie_client.JamieError as e:
-        return jsonify({"error": str(e)}), 502
-    out = [{"id": m.get("id"), "title": m.get("title") or "(untitled meeting)",
-            "startTime": m.get("startTime")} for m in meetings]
-    return jsonify({"meetings": out})
-
-
-@app.route("/api/portal/meeting/<meeting_id>")
-def api_portal_meeting(meeting_id):
-    with SessionLocal() as s:
-        cust = _current_customer(s)
-        tag = cust.jamie_tag if cust else ""
-    if not tag:
-        return jsonify({"error": "No meetings are linked to your account."}), 403
-    try:
-        detail = jamie_client.fetch_meeting_detail(meeting_id)
-    except jamie_client.JamieError as e:
-        return jsonify({"error": str(e)}), 502
-    # security: only let a customer open a meeting that carries their tag
-    tag_names = {(t.get("name") or "").lower() for t in (detail.get("tags") or [])}
-    if tag.lower() not in tag_names:
-        return jsonify({"error": "Not allowed"}), 403
-    return jsonify(_shape_meeting_detail(detail))
-
-
-# --------------------------------------------------------------------------- #
-# Staff: Jamie meeting notes per work package (same data customers see; staff
-# see every project, each scoped to that project's own Jamie tag).
+# Jamie meeting notes per work package (each scoped to that project's own Jamie tag).
 # --------------------------------------------------------------------------- #
 def _shape_meeting_detail(detail):
     summary = detail.get("summary") or {}
@@ -708,10 +611,8 @@ def admin_settings():
             })
         processes = [{"num": p.num, "title": p.title or "", "subs": by_proc.get(p.num, [])}
                      for p in procs]
-        staff = [{"id": u.id, "email": u.email, "name": u.name or ""}
-                 for u in s.query(StaffUser).order_by(StaffUser.email).all()]
-    return render_template("admin_settings.html", processes=processes, staff=staff,
-                           is_admin=_is_admin(), jira_configured=jira_client.is_configured())
+    return render_template("admin_settings.html", processes=processes,
+                           jira_configured=jira_client.is_configured())
 
 
 @app.route("/api/admin/process/update", methods=["POST"])
@@ -817,121 +718,6 @@ def api_admin_subprocess_delete():
         s.query(WpStatus).filter_by(code=code).delete()
         s.delete(sp)
     _mark_saved()
-    return jsonify({"ok": True})
-
-
-# --------------------------------------------------------------------------- #
-# Admin: manage ISP staff logins (admin-only; gated by ADMIN_ONLY_PREFIXES)
-# --------------------------------------------------------------------------- #
-@app.route("/api/admin/staff/add", methods=["POST"])
-def api_admin_staff_add():
-    body = request.get_json(force=True, silent=True) or {}
-    email = _clean(body.get("email")).lower()
-    password = body.get("password", "")
-    name = _clean(body.get("name"))
-    if "@" not in email or "." not in email:
-        return jsonify({"error": "A valid email is required."}), 400
-    if len(password) < 6:
-        return jsonify({"error": "Password must be at least 6 characters."}), 400
-    with SessionLocal.begin() as s:
-        if s.query(StaffUser).filter(StaffUser.email.ilike(email)).first():
-            return jsonify({"error": f"A staff login for {email} already exists."}), 409
-        s.add(StaffUser(email=email, password_hash=generate_password_hash(password), name=name))
-    return jsonify({"ok": True})
-
-
-@app.route("/api/admin/staff/reset_password", methods=["POST"])
-def api_admin_staff_reset():
-    body = request.get_json(force=True, silent=True) or {}
-    sid = _clean(body.get("id"))
-    password = body.get("password", "")
-    if not sid.isdigit() or len(password) < 6:
-        return jsonify({"error": "Password must be at least 6 characters."}), 400
-    with SessionLocal.begin() as s:
-        u = s.get(StaffUser, int(sid))
-        if not u:
-            return jsonify({"error": "staff login not found"}), 404
-        u.password_hash = generate_password_hash(password)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/admin/staff/delete", methods=["POST"])
-def api_admin_staff_delete():
-    body = request.get_json(force=True, silent=True) or {}
-    sid = _clean(body.get("id"))
-    if not sid.isdigit():
-        return jsonify({"error": "invalid id"}), 400
-    with SessionLocal.begin() as s:
-        u = s.get(StaffUser, int(sid))
-        if u:
-            s.delete(u)
-    return jsonify({"ok": True})
-
-
-# --------------------------------------------------------------------------- #
-# Staff admin: manage customer logins
-# --------------------------------------------------------------------------- #
-@app.route("/admin/customers")
-def admin_customers():
-    with SessionLocal() as s:
-        customers = [{"id": c.id, "email": c.email, "client": c.client or "",
-                      "jamie_tag": c.jamie_tag or ""}
-                     for c in s.query(Customer).order_by(Customer.email).all()]
-        clients = sorted({(wp.client or "").strip() for wp in s.query(WorkPackage).all()
-                          if (wp.client or "").strip()}, key=str.lower)
-    try:
-        tags = sorted([t.get("name", "") for t in jamie_client.fetch_tags() if t.get("name")],
-                      key=str.lower)
-    except jamie_client.JamieError:
-        tags = []
-    return render_template("admin_customers.html",
-                           customers=customers, clients=clients, jamie_tags=tags)
-
-
-@app.route("/api/admin/customers/add", methods=["POST"])
-def api_admin_customers_add():
-    body = request.get_json(force=True, silent=True) or {}
-    email = _clean(body.get("email")).lower()
-    password = body.get("password", "")
-    client = _clean(body.get("client"))
-    jamie_tag = _clean(body.get("jamie_tag"))
-    if "@" not in email or "." not in email:
-        return jsonify({"error": "A valid email is required."}), 400
-    if len(password) < 6:
-        return jsonify({"error": "Password must be at least 6 characters."}), 400
-    with SessionLocal.begin() as s:
-        if s.query(Customer).filter(Customer.email.ilike(email)).first():
-            return jsonify({"error": f"A login for {email} already exists."}), 409
-        s.add(Customer(email=email, password_hash=generate_password_hash(password),
-                       client=client, jamie_tag=jamie_tag))
-    return jsonify({"ok": True})
-
-
-@app.route("/api/admin/customers/reset_password", methods=["POST"])
-def api_admin_customers_reset():
-    body = request.get_json(force=True, silent=True) or {}
-    cid = _clean(body.get("id"))
-    password = body.get("password", "")
-    if not cid.isdigit() or len(password) < 6:
-        return jsonify({"error": "Password must be at least 6 characters."}), 400
-    with SessionLocal.begin() as s:
-        c = s.get(Customer, int(cid))
-        if not c:
-            return jsonify({"error": "Customer not found."}), 404
-        c.password_hash = generate_password_hash(password)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/admin/customers/delete", methods=["POST"])
-def api_admin_customers_delete():
-    body = request.get_json(force=True, silent=True) or {}
-    cid = _clean(body.get("id"))
-    if not cid.isdigit():
-        return jsonify({"error": "invalid id"}), 400
-    with SessionLocal.begin() as s:
-        c = s.get(Customer, int(cid))
-        if c:
-            s.delete(c)
     return jsonify({"ok": True})
 
 
@@ -1611,21 +1397,6 @@ def api_jira_sync_steps_apply():
     result["jira_writes_enabled"] = _jira_writes_enabled()
     _mark_saved()
     return jsonify(result)
-
-
-@app.route("/api/history")
-def api_history():
-    """Per-week, per-category points history for the history view (newest week first)."""
-    with SessionLocal() as s:
-        rows = (s.query(SprintHistory)
-                .order_by(SprintHistory.week_start.desc(), SprintHistory.category).all())
-    out = [{
-        "week_start": r.week_start, "week_end": r.week_end, "label": r.label,
-        "category": r.category, "points_planned": r.points_planned, "points_done": r.points_done,
-        "tasks_total": r.tasks_total, "tasks_todo": r.tasks_todo,
-        "tasks_progress": r.tasks_progress, "tasks_done": r.tasks_done, "source": r.source,
-    } for r in rows]
-    return jsonify({"history": out, "categories": ["Customer", "Marketing", "Process and Ops"]})
 
 
 @app.route("/api/sprint/rollover", methods=["POST"])

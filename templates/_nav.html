@@ -1,8 +1,10 @@
-{# The strip across the very top of Abacus and the Sprint Retro page that links the two.
-   Include with  {% set nav_active = "abacus" %}  or  "retro"  first. Styles are inline
+{# The strip across the very top of the home page, Abacus and the Sprint Retro page.
+   Include with  {% set nav_active = "home" %},  "abacus"  or  "retro"  first. Styles are inline
    and self-contained because the two pages carry different stylesheets. #}
 <nav class="ip-nav" aria-label="Insider Pro dashboards">
-  <a href="/" class="ip-nav-tab{% if nav_active == 'abacus' %} is-on{% endif %}"
+  <a href="/" class="ip-nav-tab{% if nav_active == 'home' %} is-on{% endif %}"
+     {% if nav_active == 'home' %}aria-current="page"{% endif %}>⌂ Home</a>
+  <a href="/abacus" class="ip-nav-tab{% if nav_active == 'abacus' %} is-on{% endif %}"
      {% if nav_active == 'abacus' %}aria-current="page"{% endif %}>▦ Abacus</a>
   <a href="/sprint-retro" class="ip-nav-tab{% if nav_active == 'retro' %} is-on{% endif %}"
      {% if nav_active == 'retro' %}aria-current="page"{% endif %}>🏁 Sprint Retro</a>

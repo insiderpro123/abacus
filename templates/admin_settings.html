@@ -60,16 +60,8 @@
     .sub-add:hover { border-color:var(--accent); color:var(--accent); background:#f6f9fe; }
 
     .card { border:1px solid var(--line); border-radius:8px; padding:16px 18px; margin:0 0 22px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-    .staff-add { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:8px 0; }
-    .staff-add .fld { width:auto; flex:1; min-width:150px; }
     .btnp { font-size:13px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:6px; padding:9px 14px; cursor:pointer; font-family:inherit; white-space:nowrap; }
     .btnp:hover { background:#0d5c6e; }
-    .staff-table { width:100%; border-collapse:collapse; margin-top:6px; }
-    .staff-table th, .staff-table td { text-align:left; padding:8px; border-bottom:1px solid var(--line); font-size:13px; }
-    .staff-table th { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
-    .staff-table button { font-size:12px; font-weight:600; border:1px solid var(--line); background:#fff; border-radius:4px; padding:5px 10px; cursor:pointer; color:var(--muted); font-family:inherit; margin-left:6px; }
-    .staff-reset:hover { border-color:var(--accent); color:var(--accent); }
-    .staff-del:hover { border-color:var(--todo); color:var(--todo); }
   </style>
 </head>
 <body>
@@ -80,42 +72,10 @@
     <span class="sp"></span>
     <span id="saved" class="saved"></span>
     <button class="act" id="refresh-jira">↻ Refresh from Jira</button>
-    <a href="{{ url_for('admin_customers') }}">👥 Customer logins</a>
     <a href="{{ url_for('index') }}">← Dashboard</a>
     <a href="{{ url_for('logout') }}">Sign out</a>
   </header>
   <main>
-    {% if is_admin %}
-    <div class="card">
-      <h2 class="page">ISP staff logins</h2>
-      <p class="intro">Give ISP colleagues their own login (email + password). Staff can use everything
-        (dashboard, work packages, tasks, meeting notes, Refresh, customer logins) but cannot edit the
-        12 steps or manage logins - those stay admin-only via the team password.</p>
-      <div class="staff-add">
-        <input id="s-email" class="fld" type="email" placeholder="name@insiderpro.co.uk" autocomplete="off" />
-        <input id="s-name" class="fld" placeholder="Name (optional)" autocomplete="off" />
-        <input id="s-pass" class="fld" type="text" placeholder="password (min 6)" autocomplete="off" />
-        <button class="btnp" id="s-add">+ Add staff login</button>
-      </div>
-      {% if staff %}
-      <table class="staff-table">
-        <thead><tr><th>Email</th><th>Name</th><th></th></tr></thead>
-        <tbody>
-          {% for u in staff %}
-          <tr data-id="{{ u.id }}">
-            <td>{{ u.email }}</td>
-            <td>{{ u.name }}</td>
-            <td style="text-align:right; white-space:nowrap">
-              <button class="staff-reset">Reset password</button>
-              <button class="staff-del">Delete</button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}<p class="intro">No ISP staff logins yet.</p>{% endif %}
-    </div>
-
     <h2 class="page">Edit the 12 steps &amp; sub-processes</h2>
     <p class="intro">Rename a step, edit a sub-process's outcome/guidance, or add / duplicate / delete
       outcomes. Changes save automatically and apply to every work package.</p>
@@ -162,11 +122,6 @@
       </div>
     </div>
     {% endfor %}
-    {% else %}
-    <p class="intro">You're signed in as ISP staff, so you can use everything on the dashboard.
-      Editing the 12 steps and managing logins is admin-only (team password). Use <b>↻ Refresh from
-      Jira</b> or <b>👥 Customer logins</b> above.</p>
-    {% endif %}
   </main>
 
   <script>
@@ -204,34 +159,6 @@
         }
       });
     });
-    // ISP staff logins (admin only - elements exist only then)
-    const sAdd = document.getElementById("s-add");
-    if (sAdd) {
-      sAdd.addEventListener("click", async () => {
-        try {
-          await post("/api/admin/staff/add", {
-            email: document.getElementById("s-email").value.trim(),
-            name: document.getElementById("s-name").value.trim(),
-            password: document.getElementById("s-pass").value,
-          });
-          location.reload();
-        } catch (e) { flash(false, e.message); }
-      });
-      document.querySelectorAll(".staff-del").forEach((b) => b.addEventListener("click", async () => {
-        const tr = b.closest("tr");
-        if (!confirm("Delete this staff login?")) return;
-        try { await post("/api/admin/staff/delete", { id: tr.dataset.id }); tr.remove(); }
-        catch (e) { alert(e.message); }
-      }));
-      document.querySelectorAll(".staff-reset").forEach((b) => b.addEventListener("click", async () => {
-        const id = b.closest("tr").dataset.id;
-        const pw = prompt("New password (min 6 characters):");
-        if (pw === null) return;
-        try { await post("/api/admin/staff/reset_password", { id, password: pw }); alert("Password updated."); }
-        catch (e) { alert(e.message); }
-      }));
-    }
-
     // add / duplicate / delete sub-processes (reload so codes re-render correctly)
     document.querySelectorAll(".sub-add").forEach((b) => b.addEventListener("click", async () => {
       try { await post("/api/admin/subprocess/add", { process_num: b.dataset.num }); location.reload(); }

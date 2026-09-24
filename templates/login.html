@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% if is_test %}[TEST] {% endif %}InsiderPro- Abacus · Sign in</title>
+  <title>{% if is_test %}[TEST] {% endif %}Insider Pro - Process · Sign in</title>
   <style>
     :root { --accent: #127d94; --accent-bright: #4cc6df; --text: #1f2933; --muted: #6b7480; --line: #e0e0dc; }
     * { box-sizing: border-box; }
@@ -39,15 +39,13 @@
   {% endif %}
   <form class="card" method="POST" action="{{ url_for('login') }}">
     <img class="logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
-    <h1>InsiderPro- Abacus</h1>
+    <h1>Insider Pro - Process</h1>
     <p class="sub">Sign in to continue</p>
-    <label for="email">Email <span style="font-weight:400;text-transform:none;color:var(--muted)">(staff or customers)</span></label>
-    <input type="email" id="email" name="email" autocomplete="username" placeholder="you@company.com" />
-    <label for="password">Password</label>
-    <input type="password" id="password" name="password" autocomplete="current-password" />
+    <label for="password">Team password</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" autofocus />
     <button type="submit">Sign in</button>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
-    <div class="hint">Staff &amp; customers: sign in with your email and password.<br>Admin: leave email blank and enter the team password.</div>
+    <div class="hint">Internal Insider Pro system. Sign in with the team password.</div>
   </form>
 </body>
 </html>

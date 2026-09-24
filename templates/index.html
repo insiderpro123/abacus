@@ -1,20 +1,40 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% if is_test %}[TEST] {% endif %}InsiderPro- Abacus</title>
+  <title>{% if is_test %}[TEST] {% endif %}Insider Pro · Abacus</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='ip-logo.svg') }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="{{ static_v('style.css') }}" />
 </head>
 <body>
   {% include '_test_banner.html' %}
   {% set nav_active = "abacus" %}{% include '_nav.html' %}
-  <main>
-    <header class="pagehead">
-      <span id="sync" class="sync"></span>
-      <img class="ip-logo" src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
-    </header>
 
+  <!-- Top bar: the Sprint Retro Dashboard's, so the pages read as one set. -->
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro" />
+        <div class="divider"></div>
+        <div class="title">
+          <span class="t1">Abacus</span>
+          <span class="t2">Work package tracker</span>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <span id="sync" class="sync"></span>
+      <div class="control-actions">
+        <button class="linkbtn sync-all-jira" id="sync-all-jira" title="Review and apply Jira status changes across all pushed work packages">⟳ Sync all pushed items from Jira</button>
+        <a class="linkbtn" href="/admin/settings" title="Settings: edit the 12 steps, refresh from Jira, sign out">⚙ Settings</a>
+      </div>
+    </div>
+  </div>
+
+  <main class="wrap">
     <section class="controls">
       <div class="filters" id="filters">
         <button class="chip active" data-filter="Active">Active</button>
@@ -23,18 +43,12 @@
           <input type="checkbox" id="meeting-notes" /> Meeting notes
         </label>
       </div>
-      <div class="controls-right">
-        <div class="control-actions">
-          <button class="linkbtn sync-all-jira" id="sync-all-jira" title="Review and apply Jira status changes across all pushed work packages">⟳ Sync all pushed items from Jira</button>
-          <button class="linkbtn" id="view-history" title="Jira points dashboard - last 12 weeks">📊 Jira Points Dashboard</button>          <a class="linkbtn" href="/admin/settings" title="Settings: edit the 12 steps, customer logins, refresh, sign out">⚙ Settings</a>
-        </div>
-        <div class="legend">
-          <span><i class="sw done"></i>Complete</span>
-          <span><i class="sw progress"></i>In progress</span>
-          <span><i class="sw todo"></i>Outstanding</span>
-          <span><i class="sw na"></i>Not started</span>
-          <span><i class="sw nr"></i>Not required</span>
-        </div>
+      <div class="legend">
+        <span><i class="sw done"></i>Complete</span>
+        <span><i class="sw progress"></i>In progress</span>
+        <span><i class="sw todo"></i>Outstanding</span>
+        <span><i class="sw na"></i>Not started</span>
+        <span><i class="sw nr"></i>Not required</span>
       </div>
     </section>
 

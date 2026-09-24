@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if is_test %}[TEST] {% endif %}Insider Pro · Live Process Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='ip-logo.svg') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Same brand tokens as the Sprint Retro page, so the landing page reads as part of the set. */
+:root{
+  --ink:#0B2A4A; --blue:#1663C7; --blue-600:#2B74D6; --blue-300:#4C9DF0;
+  --teal:#12B5A5; --paper:#F6F9FD; --line:#DDE6F1; --slate:#4A5B70; --slate-light:#6B7B91;
+  --r-lg:24px;
+  --shadow-sm:0 2px 8px rgba(11,42,74,.08);
+  --shadow-md:0 8px 24px rgba(11,42,74,.13);
+  --grad-brand:linear-gradient(120deg,var(--blue) 0%,var(--blue-600) 55%,var(--teal) 100%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--ink);
+     background:var(--paper);-webkit-font-smoothing:antialiased;min-height:100vh}
+h1,h2{font-family:'Sora','Inter',sans-serif}
+
+.topbar{background:#fff;box-shadow:var(--shadow-sm);border-bottom:1px solid var(--line)}
+.topbar-inner{max-width:1100px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;gap:14px}
+.topbar img{height:34px;width:auto;display:block}
+.divider{width:1px;height:30px;background:var(--line)}
+.t1{font-family:'Sora';font-weight:700;font-size:19px}
+.spacer{flex:1}
+.signout{font-size:14px;font-weight:600;color:var(--slate);text-decoration:none;padding:8px 14px;
+         border:1px solid var(--line);border-radius:999px;background:#fff}
+.signout:hover{border-color:var(--blue-300);color:var(--ink)}
+
+.wrap{max-width:1100px;margin:0 auto;padding:48px 24px 60px}
+.lead h1{font-size:30px;font-weight:700}
+.lead p{margin-top:8px;font-size:16px;color:var(--slate-light)}
+
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin-top:30px}
+.choice{display:flex;flex-direction:column;gap:14px;padding:30px;background:#fff;color:inherit;
+        text-decoration:none;border:1px solid var(--line);border-radius:var(--r-lg);
+        box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
+        transition:box-shadow .15s,border-color .15s,transform .15s}
+.choice::before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:var(--grad-brand)}
+.choice:hover,.choice:focus-visible{box-shadow:var(--shadow-md);border-color:var(--blue-300);transform:translateY(-2px);outline:none}
+.icon{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:28px;
+      background:#EEF4FB}
+.choice h2{font-size:22px;font-weight:700}
+.choice p{font-size:15px;line-height:1.5;color:var(--slate)}
+.go{margin-top:auto;font-weight:600;font-size:15px;color:var(--blue)}
+.choice:hover .go{text-decoration:underline}
+
+@media (max-width:640px){
+  .topbar-inner,.wrap{padding-left:16px;padding-right:16px}
+  .wrap{padding-top:28px}
+  .lead h1{font-size:24px}
+  .choices{grid-template-columns:1fr;gap:16px}
+  .choice{padding:24px}
+}
+@media (prefers-reduced-motion:reduce){.choice{transition:none}.choice:hover{transform:none}}
+</style>
+</head>
+<body>
+{% include '_test_banner.html' %}
+{% set nav_active = "home" %}{% include '_nav.html' %}
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro">
+    <div class="divider"></div>
+    <span class="t1">Live Process Dashboard</span>
+    <div class="spacer"></div>
+    <a class="signout" href="{{ url_for('logout') }}">Sign out</a>
+  </div>
+</div>
+
+<main class="wrap">
+  <div class="lead">
+    <h1>Where would you like to go?</h1>
+    <p>Pick a dashboard. You can switch between them from the strip at the top of each page.</p>
+  </div>
+
+  <div class="choices">
+    <a class="choice" href="{{ url_for('index') }}">
+      <span class="icon" aria-hidden="true">▦</span>
+      <h2>Abacus</h2>
+      <p>Work-package progress across the 12-step delivery framework, with Jira points and sync.</p>
+      <span class="go">Open Abacus →</span>
+    </a>
+    <a class="choice" href="{{ url_for('sprint_retro') }}">
+      <span class="icon" aria-hidden="true">🏁</span>
+      <h2>Sprint Retro</h2>
+      <p>Points completed each sprint, by project and sector, for the Monday retro.</p>
+      <span class="go">Open Sprint Retro →</span>
+    </a>
+  </div>
+</main>
+</body>
+</html>

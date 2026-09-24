@@ -1,35 +1,55 @@
+/* ===================================================== Insider Pro brand tokens
+   Copied from the Sprint Retro Dashboard so the two read as one set. The old Abacus
+   token names are kept below as aliases onto them, because app.js and the rules in
+   this file use them throughout. */
 :root {
+  --ink: #0B2A4A; --ink-800: #113456; --ink-deep: #0E3A63;
+  --blue: #1663C7; --blue-600: #2B74D6; --blue-300: #4C9DF0;
+  --teal: #12B5A5; --teal-600: #0E9C8E;
+  --paper: #F6F9FD; --paper-2: #EEF4FB; --white: #FFFFFF;
+  --slate: #4A5B70; --slate-light: #6B7B91;
+  --danger: #D6453C; --good: #2E9E5B; --priority: #E0A32E;
+  --r-sm: 10px; --r-md: 16px; --r-lg: 24px;
+  --shadow-sm: 0 2px 8px rgba(11,42,74,.08);
+  --shadow-md: 0 8px 24px rgba(11,42,74,.13);
+  --shadow-blue: 0 8px 22px rgba(22,99,199,.26);
+  --grad-brand: linear-gradient(120deg, var(--blue) 0%, var(--blue-600) 55%, var(--teal) 100%);
+  --grad-dark: linear-gradient(135deg, #0B2A4A 0%, #0E3A63 55%, #113456 100%);
+  --tint-blue: #E3EEFB;
+
+  /* old Abacus names */
   --bg: #ffffff;
   --panel: #ffffff;
-  --panel-2: #f4f6f8;
-  --line: #e0e0dc;
-  --text: #1f2933;
-  --muted: #6b7480;
-  --accent: #127d94;          /* deep logo teal - readable for text/buttons */
-  --accent-bright: #4cc6df;   /* exact logo blue - for number tiles & accents */
-  --accent-ink: #06333d;      /* dark text on the bright teal tiles */
-  --done: #2e7d32;            /* green */
-  --done-bg: #e3f0e4;
-  --progress: #b26a00;        /* amber */
-  --progress-bg: #f7ecd9;
-  --todo: #b3362a;            /* red */
-  --todo-bg: #f6e3e1;
-  --na: #c9cec9;
-  --na-bg: #eeefec;
-  --nr: #6b7a8f;              /* not required - slate blue */
-  --nr-bg: #e5e9ef;
-  --radius: 6px;
-  --shadow: 0 1px 3px rgba(0,0,0,.08);
+  --panel-2: var(--paper-2);
+  --line: #DDE6F1;
+  --text: var(--ink);
+  --muted: var(--slate-light);
+  --accent: var(--blue);
+  --accent-bright: var(--tint-blue);
+  --accent-ink: var(--blue);
+  --done: var(--good);
+  --done-bg: #E4F3EA;
+  --progress: #C98A1B;
+  --progress-bg: #FBF1DC;
+  --todo: var(--danger);
+  --todo-bg: #FBE7E5;
+  --na: #C9D3DF;
+  --na-bg: #EEF2F7;
+  --nr: var(--slate-light);
+  --nr-bg: #E6ECF3;
+  --radius: var(--r-sm);
+  --shadow: var(--shadow-sm);
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: Arial, "Segoe UI", Helvetica, sans-serif;
-  background: var(--bg);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--paper);
   color: var(--text);
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Logo header */
@@ -600,74 +620,6 @@ textarea.text-input { resize: vertical; min-height: 44px; line-height: 1.4; }
   border: 1px solid var(--accent, #127d94); font-size: 9.5px; font-weight: 800; letter-spacing: .04em;
 }
 
-/* Sprint history modal (multi-series line chart + table) */
-/* category colours: validated dataviz categorical slots 1-3 (blue / orange / aqua) + a dark Total */
-:root { --cat-customer: #2a78d6; --cat-marketing: #eb6834; --cat-ops: #1baf7a; --hist-total: #2b2b2b; }
-@media (prefers-color-scheme: dark) {
-  :root { --cat-customer: #3987e5; --cat-marketing: #d95926; --cat-ops: #199e70; --hist-total: #e8e8e2; }
-}
-.history-box { max-width: 940px; width: 94vw; }
-.hist-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
-.hist-legend { display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.hist-leg { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600; }
-.hist-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
-.hist-swatch.total { height: 4px; }
-
-.hist-chart { position: relative; margin: 4px 0 16px; }
-.hist-ymax { font-size: 10px; color: var(--muted); margin-bottom: 2px; letter-spacing: .03em; }
-.hist-svg { width: 100%; height: auto; display: block; overflow: visible; }
-.hg-grid { stroke: var(--line); stroke-width: 1; }
-.hg-axis { stroke: #c9ced6; stroke-width: 1; }
-.hg-ylabel { fill: var(--muted); font-size: 10px; text-anchor: end; }
-.hg-xlabel { fill: var(--muted); font-size: 9.5px; text-anchor: middle; font-variant-numeric: tabular-nums; }
-.hg-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.hg-total { stroke-width: 3; stroke-dasharray: 1 6; stroke-linecap: round; }
-.hg-dot { transition: r .1s; }
-.hg-dot:hover { r: 6; }
-.hist-xaxis-title { font-size: 10px; color: var(--muted); text-align: center; margin-top: 2px; letter-spacing: .04em; }
-.hg-area { opacity: .12; }
-
-/* modal header actions (Sync button next to the close ✕) */
-.head-actions { display: inline-flex; align-items: center; gap: 12px; }
-
-/* stacked bar chart: one bar per week, 3 category segments stacked from the
-   baseline. The bars sit flush - the columns share the plot width 2px apart (up
-   to a sane bar width, then the row centres) and the segments inside a bar
-   touch, so a week reads as one solid stack. */
-.hist-plot { display: flex; align-items: flex-end; gap: 2px; overflow-x: auto; padding: 0 10px 2px; border-bottom: 1px solid var(--line);
-  justify-content: center; justify-content: safe center; }   /* safe: falls back to flex-start when the row has to scroll */
-.hist-col { display: flex; flex-direction: column; align-items: center; min-width: 12px; max-width: 46px; flex: 1 1 0; }
-.hist-stack { width: 100%; display: flex; flex-direction: column-reverse; justify-content: flex-start; border-radius: 3px 3px 0 0; overflow: hidden; }
-.hist-seg { width: 100%; }
-.hist-seg:hover { filter: brightness(1.08); }
-.hist-seg.is-zero { height: 2px; background: #c9ced6; }
-.hist-xlabel { font-size: 9.5px; color: var(--muted); margin-top: 5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-/* thinned x labels keep their slot so every bar keeps the same baseline */
-.hist-xlabel.is-hidden { visibility: hidden; }
-
-/* KPI tiles */
-.kpi-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; }
-.kpi-tile { flex: 1 1 120px; min-width: 110px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--panel-2); }
-.kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-.kpi-val { font-size: 24px; font-weight: 800; color: var(--text); line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.kpi-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
-
-/* planned-vs-completed grouped bar chart */
-.dash-barwrap { margin: 6px 0 16px; }
-.dash-bars { display: flex; align-items: flex-end; gap: 8px; height: 150px; overflow-x: auto; padding-bottom: 2px; border-bottom: 1px solid var(--line); }
-.dash-col { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 30px; flex: 1 0 auto; }
-.dash-pair { display: flex; align-items: flex-end; gap: 2px; height: 124px; }
-.dash-bar { width: 9px; border-radius: 3px 3px 0 0; }
-.dash-bar.plan { background: #c9d0d8; }
-.dash-bar.done { background: var(--cat-customer); }
-.dash-x { font-size: 9px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-
-.hist-table-wrap { overflow-x: auto; margin-top: 8px; max-height: 300px; overflow-y: auto; }
-.hist-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.hist-table th, .hist-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
-.hist-table th { color: var(--muted); font-weight: 700; position: sticky; top: 0; background: var(--panel); }
-.hist-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-
 /* assignee (name) filter in the controls row */
 .name-filter { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .name-filter select {
@@ -1124,4 +1076,281 @@ table.matrix.stacked { display: block; table-layout: auto; border-spacing: 0; }
   .ref-label { width: 100%; min-width: 0; padding: 8px 12px; }
   .ref-input, .ref-value { border-left: none; }
   .ref-input { border-top: 1px solid var(--line); }
+}
+
+/* ===================================================================== */
+/* v2: Sprint Retro Dashboard house style.                               */
+/* Everything above is v1's layout, recoloured through the tokens at the  */
+/* top. This layer changes shape only: the white sticky top bar, pill     */
+/* buttons, white 16px cards, Sora for headings and numbers. It comes     */
+/* last so it wins without editing the rules above.                       */
+/* ===================================================================== */
+h1, h2, h3, h4 { font-family: 'Sora', 'Inter', sans-serif; }
+button, input, select, textarea { font-family: inherit; }
+
+/* ---- top bar (same as the Sprint Retro page) */
+.topbar { background: #fff; position: sticky; top: 0; z-index: 50; box-shadow: var(--shadow-sm); border-bottom: 1px solid var(--line); }
+.topbar-inner { max-width: 1600px; margin: 0 auto; padding: 13px 24px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand img { height: 34px; width: auto; display: block; }
+.brand .divider { width: 1px; height: 30px; background: var(--line); }
+.brand .title { display: flex; flex-direction: column; line-height: 1.15; }
+.brand .t1 { font-family: 'Sora'; font-weight: 700; font-size: 19px; color: var(--ink); }
+.brand .t2 { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--slate-light); font-weight: 600; }
+.spacer { flex: 1; }
+.topbar .sync { font-size: 13.5px; color: var(--slate-light); }
+.topbar .sync.ok { color: var(--good); }
+.topbar .sync.pending { color: var(--progress); }
+.topbar .sync.error { color: var(--danger); }
+.control-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+
+/* ---- page body */
+main.wrap { max-width: 1600px; margin: 0 auto; padding: 20px 24px 60px; }
+.controls { margin-bottom: 12px; }
+.legend { color: var(--slate); font-size: 13px; font-weight: 600; margin-left: auto; }
+.sw { width: 13px; height: 13px; border-radius: 4px; }
+.status { font-size: 13.5px; padding: 4px 0 8px; min-height: 0; }
+.status:empty { padding: 0; }
+
+/* ---- buttons are pills: ghost by default, the brand gradient for the main action */
+.btn, .linkbtn {
+  font-family: 'Inter'; font-weight: 600; font-size: 14px; line-height: 1;
+  border-radius: 999px; padding: 10px 18px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+  background: #fff; color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+  transition: box-shadow .15s, border-color .15s, background .15s, color .15s;
+}
+.btn:hover, .linkbtn:hover { background: #fff; color: var(--ink); border-color: var(--blue-300); }
+.btn:active, .linkbtn:active { transform: translateY(1px); }
+.btn-primary, .linkbtn.primary { background: var(--grad-brand); color: #fff; border-color: transparent; box-shadow: var(--shadow-blue); }
+.btn-primary:hover, .linkbtn.primary:hover { background: var(--grad-brand); color: #fff; border-color: transparent; box-shadow: 0 10px 26px rgba(22,99,199,.34); }
+.btn-primary:disabled, .linkbtn.primary:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+.linkbtn:disabled, .linkbtn.disabled { background: var(--paper-2); color: var(--slate-light); border-color: var(--line); box-shadow: none; }
+/* pink stays the "pushed to Jira" colour everywhere */
+#sync-all-jira { color: #e83e8c; border-color: #f3b8d4; }
+#sync-all-jira:hover { background: #e83e8c; color: #fff; border-color: #e83e8c; }
+
+/* filter chips */
+.filters { align-items: center; }
+.chip { border-radius: 999px; padding: 9px 18px; font-size: 14px; font-weight: 600; color: var(--slate); background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+.chip:hover { color: var(--ink); border-color: var(--blue-300); }
+.chip.active[data-filter="Active"] { background: var(--grad-brand); color: #fff; border-color: transparent; box-shadow: var(--shadow-blue); }
+.chip.active[data-filter="Inactive"] { background: var(--danger); color: #fff; border-color: var(--danger); }
+.actions-toggle { font-size: 14px; color: var(--slate); }
+.actions-toggle input { accent-color: var(--blue); }
+
+/* small in-panel buttons: pills too */
+.status-toggle, .edit-wp, .dup-wp, .delete-wp, .push-jira, .sync-jira, .phase-setall, .nr-all,
+.subwp-body-actions button { border-radius: 999px; padding: 6px 14px; font-size: 12.5px; }
+.panel-head-left .sync-jira { padding: 4px 11px; }
+.phase-setall, .nr-all { padding: 3px 10px; font-size: 11px; }
+.edit-wp:hover, .dup-wp:hover, .phase-setall:hover, .nr-all:hover { border-color: var(--blue-300); color: var(--blue); }
+
+/* ---- the matrix sits in a white card */
+.card { background: #fff; border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-sm); padding: 8px 18px 14px; overflow: visible; }
+.matrix thead th { background: #fff; color: var(--ink); }
+.matrix thead th.wp-col { background: #fff; }
+.proc-th .pnum { background: var(--grad-brand); color: #fff; font-family: 'Sora'; font-weight: 700; width: 26px; height: 26px; line-height: 26px; font-size: 12.5px; }
+.proc-th .ptitle { color: var(--slate); font-size: 12.5px; }
+.section-row td { background: #fff; }
+.section-head { font-family: 'Sora'; font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: .1em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+.section-count { background: var(--blue); font-family: 'Inter'; letter-spacing: 0; }
+.cat-head { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--slate-light); font-weight: 700; }
+.cat-head:hover { color: var(--blue); }
+
+/* work-package rows: white cards with a soft brand shadow */
+.wp-row td { box-shadow: 0 1px 4px rgba(11,42,74,.10); }
+.wp-row td.wp-col { border-radius: 10px 0 0 10px; }
+.wp-row td:last-child { border-radius: 0 10px 10px 0; }
+.wp-row:hover td, .wp-row:hover td.wp-col { background: var(--paper); }
+.wp-row.open td, .wp-row.open td.wp-col { background: var(--paper-2); }
+.wp-title { font-family: 'Sora'; font-size: 13.5px; color: var(--ink); }
+.wp-client { color: var(--slate-light); letter-spacing: .1em; }
+.wp-icon { border-radius: 8px; }
+.cell-pill { border-radius: 8px; background: var(--na-bg); color: var(--slate-light); font-family: 'Sora'; }
+.cell-pill.nr { background: #C3CDD9; }
+.cell-pill.nr span { color: var(--slate); }
+.add-project-btn, .subwp-add, .tb-add-btn { border-radius: var(--r-sm); border-color: var(--line); color: var(--slate-light); }
+.add-project-btn:hover, .subwp-add:hover, .tb-add-btn:hover { border-color: var(--blue-300); color: var(--blue); background: var(--paper); }
+
+/* badges and chips: pills in the brand tint */
+.jira-badge { background: var(--tint-blue); color: var(--blue); border-color: transparent; border-radius: 999px; padding: 3px 8px; }
+.assignee-chip, .task-assignee-chip { background: var(--tint-blue); color: var(--blue); border-color: transparent; }
+.task-badge { border-radius: 999px; padding: 3px 8px; }
+.badge { border-radius: 999px; }
+
+/* ---- expanded work-package panel */
+.panel { border-radius: var(--r-md); box-shadow: var(--shadow-md); border-color: var(--line); }
+.panel-head { background: var(--paper-2); border-left: none; box-shadow: inset 4px 0 0 var(--blue); }
+.panel-head h2 { color: var(--ink); font-size: 18px; font-weight: 700; }
+.panel-overall { background: var(--grad-brand); border-radius: 999px; font-family: 'Sora'; padding: 5px 13px; }
+.psec-head { background: #fff; }
+.psec-head:hover { background: var(--paper); }
+.psec-title { color: var(--slate-light); letter-spacing: .12em; font-weight: 700; font-size: 12px; }
+.tl-phase { border-radius: var(--r-sm); }
+.tl-phase:hover { border-color: var(--blue-300); }
+.tl-phase .tl-num { color: var(--blue); font-family: 'Sora'; }
+.tl-phase .tl-pct { font-family: 'Sora'; font-size: 17px; color: var(--ink); }
+.grow { border-radius: var(--r-sm); }
+.grow:hover { background: var(--paper); }
+.grow-label .gnum, .nr-group-head .gnum { background: var(--grad-brand); color: #fff; border-radius: 8px; font-family: 'Sora'; font-weight: 700; }
+.grow-label .gtitle { font-size: 13px; }
+.gpct { font-family: 'Sora'; color: var(--ink); }
+.seg { border-radius: 4px; }
+.sub-item { border-left-color: var(--line); }
+.sub-item:hover { background: var(--paper); }
+.sub-item .scode { color: var(--blue); }
+.taskboard-section { background: #fff; }
+.task-box { border-radius: var(--r-md); background: var(--paper); }
+.task-box.complete { background: #F1F8F3; border-color: #CFE7D7; }
+.task-box-head { letter-spacing: .12em; font-weight: 700; color: var(--slate); }
+.task-card { border-radius: var(--r-sm); }
+.task-points, .task-subwp, .task-prio { border-radius: 999px; }
+.subwp { border-radius: var(--r-sm); }
+.note-badge { background: var(--grad-brand); }
+.note-title { font-family: 'Sora'; color: var(--ink); }
+.note-item.active { background: var(--tint-blue); }
+.note-overview h1, .note-overview h2 { color: var(--ink); font-family: 'Sora'; }
+.notes-list, .note-action { border-radius: var(--r-sm); }
+
+/* ---- dialogs */
+.modal-overlay { background: rgba(11,42,74,.45); }
+.modal { border-radius: var(--r-md); box-shadow: 0 18px 50px rgba(11,42,74,.28); overflow: hidden; }
+.modal-head { background: #fff; border-left: none; border-top: 4px solid var(--blue); border-radius: 0; padding: 18px 22px 14px; }
+.modal-head h3 { font-family: 'Sora'; font-size: 17px; font-weight: 700; color: var(--ink); }
+.modal-code { color: var(--slate-light); letter-spacing: .12em; }
+.modal-body { padding: 16px 22px; }
+.modal-foot { background: var(--paper); border-radius: 0; padding: 12px 22px; }
+.field-label { color: var(--slate-light); font-size: 11.5px; letter-spacing: .1em; }
+.text-input, .emoji-input, .name-filter select { border-radius: var(--r-sm); border-color: var(--line); }
+.text-input:focus, .emoji-input:focus { border-color: var(--blue-300); box-shadow: 0 0 0 3px rgba(22,99,199,.14); }
+.ref-block, .nr-picker, .push-list { border-radius: var(--r-sm); }
+.ref-input:focus { box-shadow: inset 0 0 0 2px var(--blue-300); }
+.status-opt, .cat-opt, .point-chip { border-radius: 999px; }
+.cat-opt.sel, .emoji-btn.sel { background: var(--tint-blue); border-color: var(--blue); color: var(--blue); }
+.point-chip.sel { background: var(--grad-brand); border-color: transparent; color: #fff; }
+.emoji-btn { border-radius: var(--r-sm); }
+.mini-menu { border-radius: 12px; box-shadow: var(--shadow-md); }
+.mini-opt { border-radius: 8px; }
+.sync-notice { border-radius: var(--r-sm); }
+
+/* ---- readability: the Sprint Retro's type sizes, and the full width of the screen.
+   The matrix is twelve columns wide, so it gets every pixel; a max-width only left
+   empty margins on a wide monitor while squeezing the column titles. */
+.topbar-inner, main.wrap { max-width: none; }
+.topbar-inner { padding: 14px 32px; }
+main.wrap { padding: 22px 32px 60px; }
+body { font-size: 15px; }
+.btn, .linkbtn { font-size: 15px; }
+.chip { font-size: 15px; padding: 10px 20px; }
+.actions-toggle { font-size: 15px; }
+.legend { font-size: 14px; gap: 18px; }
+.sw { width: 14px; height: 14px; }
+.card { padding: 10px 22px 18px; }
+table.matrix { border-spacing: 0 8px; }
+.matrix thead th.wp-col, .matrix tbody td.wp-col { width: 280px; }
+.proc-th .pnum { width: 32px; height: 32px; line-height: 32px; font-size: 14.5px; margin-bottom: 9px; }
+/* "Recommendation" must not split as "Recommendatio / n": whole words where they fit,
+   a proper hyphen (the page is lang="en-GB") on a screen too narrow for them */
+.matrix thead th.proc-th { padding-left: 2px; padding-right: 2px; }
+.proc-th .ptitle { font-size: 14px; line-height: 1.3; color: var(--ink); overflow-wrap: break-word; word-break: normal; hyphens: auto; }
+/* a laptop-width screen: give the twelve columns more room before any word has to break */
+@media (max-width: 1700px) and (min-width: 641px) {
+  .matrix thead th.wp-col, .matrix tbody td.wp-col { width: 250px; }
+  .proc-th .ptitle { font-size: 13px; }
+  .wp-title { font-size: 15.5px; }
+  .card { padding-left: 16px; padding-right: 16px; }
+  main.wrap, .topbar-inner { padding-left: 24px; padding-right: 24px; }
+}
+.wp-cell { padding: 12px 8px 12px 10px; gap: 12px; }
+.wp-icon { width: 32px; height: 32px; min-width: 32px; }
+.wp-icon.emoji { font-size: 20px; }
+.wp-client { font-size: 11.5px; }
+.wp-title { font-size: 16.5px; line-height: 1.3; }
+.jira-badge, .task-badge { font-size: 12.5px; padding: 4px 10px; }
+.wp-text .jira-badge, .wp-text .task-badge { margin-top: 5px; }
+.wp-row td { padding: 0 4px; }
+.cell-pill { height: 44px; font-size: 14.5px; }
+.section-head { font-size: 17px; }
+.cat-head { font-size: 13.5px; }
+.add-project-btn { font-size: 15px; padding: 14px; }
+/* expanded work-package panel */
+.panel-head { padding: 16px 22px; }
+.panel-head h2 { font-size: 21px; }
+.panel-overall { font-size: 14.5px; }
+.status-toggle, .edit-wp, .dup-wp, .delete-wp, .push-jira, .sync-jira,
+.subwp-body-actions button { font-size: 14px; padding: 8px 16px; }
+.panel-head-left .sync-jira { font-size: 13px; padding: 5px 12px; }
+.psec-head { padding: 13px 22px; }
+.psec-title { font-size: 13.5px; }
+.gantt { padding: 18px 22px; }
+.tl-phase { min-height: 84px; padding: 11px; }
+.tl-phase .tl-num { font-size: 15px; }
+.tl-phase .tl-pct { font-size: 20px; }
+.tl-phase .tl-title { font-size: 12px; }
+.grow-label { width: 360px; }
+.grow-label .gnum { width: 32px; height: 32px; min-width: 32px; font-size: 14px; }
+.grow-label .gtitle { font-size: 15px; }
+.gpct { font-size: 16px; width: 58px; min-width: 58px; }
+.seg { height: 24px; }
+.phase-setall { font-size: 12.5px; padding: 4px 11px; }
+.sub-item { font-size: 14.5px; padding: 9px 14px; }
+.sub-item .sdot { width: 11px; height: 11px; margin-top: 6px; }
+.task-box-head { font-size: 13.5px; }
+.task-card .task-title { font-size: 14.5px; }
+.note-item .ni-title { font-size: 14.5px; }
+.note-overview, .na-text { font-size: 15px; }
+/* dialogs */
+.modal-head h3 { font-size: 19px; }
+.modal-body, .ref-value, .ref-input, .text-input { font-size: 14.5px; }
+.ref-label { font-size: 13px; }
+.field-label { font-size: 12.5px; }
+.status-opt, .cat-opt { font-size: 14.5px; }
+
+@media (max-width: 640px) {
+  .topbar-inner { padding: 10px 16px; gap: 10px; }
+  .brand img { height: 28px; }
+  .brand .t1 { font-size: 17px; }
+  .control-actions { width: 100%; }
+  .control-actions .linkbtn { padding: 8px 12px; font-size: 12.5px; }
+  main.wrap { padding: 14px 16px 48px; }
+  .legend { margin-left: 0; font-size: 12px; }
+  .card { padding: 4px 8px 10px; }
+  /* v1's phone sizes, which the desktop rules in this layer would otherwise override */
+  .proc-th .pnum { width: 22px; height: 22px; line-height: 22px; font-size: 11.5px; }
+  .proc-th .ptitle { font-size: 10px; }
+  .wp-title { font-size: 11.5px; }
+  .panel-head h2 { font-size: 15px; }
+  .chip { padding: 8px 14px; font-size: 13px; }
+  .actions-toggle { font-size: 13px; }
+  .legend { gap: 6px 12px; }
+  body { font-size: 13px; }
+  table.matrix { border-spacing: 0 6px; }
+  .matrix thead th.wp-col, .matrix tbody td.wp-col { width: 128px; }
+  .proc-th .pnum { margin-bottom: 4px; }
+  .proc-th .ptitle { overflow-wrap: break-word; }
+  .wp-cell { gap: 7px; padding: 7px 4px 7px 6px; }
+  .wp-icon { width: 22px; height: 22px; min-width: 22px; }
+  .wp-icon.emoji { font-size: 14px; }
+  .wp-client { font-size: 8.5px; }
+  .jira-badge, .task-badge { font-size: 10px; padding: 3px 7px; }
+  .wp-row td { padding: 0 3px; }
+  .cell-pill { height: 30px; font-size: 11px; }
+  .section-head { font-size: 14px; }
+  .panel-head { padding: 10px 12px; }
+  .status-toggle, .edit-wp, .dup-wp, .delete-wp, .push-jira, .sync-jira,
+  .subwp-body-actions button { font-size: 12px; padding: 5px 11px; }
+  .gantt { padding: 12px 10px; }
+  .tl-phase { min-height: 58px; padding: 6px; }
+  .tl-phase .tl-pct { font-size: 15px; }
+  .tl-phase .tl-title { font-size: 9.5px; }
+  .grow-label { width: 148px; }
+  .grow-label .gnum { width: 22px; height: 22px; min-width: 22px; font-size: 11.5px; }
+  .grow-label .gtitle { font-size: 11px; }
+  .gpct { width: 38px; min-width: 38px; font-size: 12px; }
+  .seg { height: 20px; }
+  .sub-item { font-size: 12.5px; padding: 7px 10px; }
+  .modal-head h3 { font-size: 16px; }
+  .modal-body, .ref-value, .ref-input, .text-input { font-size: 13px; }
+  .status-opt { font-size: 12px; }
 }
