@@ -4,7 +4,7 @@
 # automatically from the database below.)
 databases:
   - name: abacus-db
-    plan: free
+    plan: basic-256mb        # upgraded from free in the dashboard; a sync may not downgrade it
     region: frankfurt
 
 services:
