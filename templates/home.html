@@ -37,7 +37,7 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 .lead h1{font-size:30px;font-weight:700}
 .lead p{margin-top:8px;font-size:16px;color:var(--slate-light)}
 
-.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin-top:30px}
+.choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin-top:30px}
 .choice{display:flex;flex-direction:column;gap:14px;padding:30px;background:#fff;color:inherit;
         text-decoration:none;border:1px solid var(--line);border-radius:var(--r-lg);
         box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
@@ -51,6 +51,7 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 .go{margin-top:auto;font-weight:600;font-size:15px;color:var(--blue)}
 .choice:hover .go{text-decoration:underline}
 
+@media (max-width:900px){ .choices{grid-template-columns:1fr} }
 @media (max-width:640px){
   .topbar-inner,.wrap{padding-left:16px;padding-right:16px}
   .wrap{padding-top:28px}
@@ -93,6 +94,12 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
       <h2>Sprint Retro</h2>
       <p>Points completed each sprint, by project and sector, for the Monday retro.</p>
       <span class="go">Open Sprint Retro →</span>
+    </a>
+    <a class="choice" href="{{ url_for('meeting_notes') }}">
+      <span class="icon" aria-hidden="true">📝</span>
+      <h2>Meeting Notes</h2>
+      <p>Every project's Jamie meeting notes in one place: overviews and key action items.</p>
+      <span class="go">Open Meeting Notes →</span>
     </a>
   </div>
 </main>

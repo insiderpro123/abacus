@@ -2,7 +2,6 @@ let DATA = null;
 let filter = "Active";
 let nameFilter = "";       // assignee filter: "" = everyone
 let actionsOnly = false;   // "Actions only" mode: open WPs showing just the task boards
-let meetingNotes = false;  // "Meeting notes" mode: open WPs showing their Jamie notes
 const openWPs = new Set();
 const openPhases = new Set(); // key: wpId + ":" + phaseNum
 const collapsedSecs = new Set(); // collapsed panel sections, key: wpId + ":tasks" | ":steps"
@@ -123,7 +122,7 @@ function renderMatrix() {
   const tbody = $("#matrix tbody");
   thead.innerHTML = "";
   tbody.innerHTML = "";
-  const stacked = actionsOnly || meetingNotes;
+  const stacked = actionsOnly;
   document.getElementById("matrix").classList.toggle("stacked", stacked);
 
   // header - the 12-step process columns (hidden in the stacked modes)
@@ -160,7 +159,7 @@ function renderMatrix() {
   );
 
   statuses.forEach((status) => {
-    if (stacked) {                       // meeting-notes mode: rowless panels only
+    if (stacked) {                       // actions-only mode: rowless panels only
       groups[status].forEach((w) => appendPanel(tbody, w));
       return;
     }
@@ -277,7 +276,7 @@ function sizePanels() {
   const wrap = document.querySelector(".matrix-wrap");
   if (!wrap) return;
   document.querySelectorAll(".panel-row .panel").forEach((p) => {
-    p.style.width = (actionsOnly || meetingNotes) ? "" : Math.max(wrap.clientWidth - 24, 320) + "px";
+    p.style.width = actionsOnly ? "" : Math.max(wrap.clientWidth - 24, 320) + "px";
   });
 }
 
@@ -382,7 +381,7 @@ function buildPanel(w) {
     setStatus(w, toggleTo);
   });
   head.querySelector(".close").addEventListener("click", () => {
-    if (actionsOnly || meetingNotes) {
+    if (actionsOnly) {
       // collapse the section in place instead of removing the (rowless) package
       const sec = panel.querySelector(".psec");
       if (sec) {
@@ -395,13 +394,6 @@ function buildPanel(w) {
     }
   });
   panel.appendChild(head);
-
-  if (meetingNotes) {
-    // Meeting-notes mode: one collapsible section showing the Jamie notes. There is no
-    // matrix row to reopen from, so ✕ collapses in place rather than vanish.
-    panel.appendChild(collapsibleSection(w.wp_id, "notes", "Meeting notes", buildMeetingNotes(w)));
-    return panel;
-  }
 
   // Normal mode: the 12 Abacus steps + sub-workpackages. (Task boards were removed;
   // Jira points are tracked centrally in the Jira Points Dashboard.)
@@ -2043,125 +2035,7 @@ function updateRowTaskBadge(wpId, tasks) {
   badge.textContent = `✓ ${done}/${total} tasks`;
 }
 
-/* ------------------------------------------------------------------ */
-/* Meeting notes (Jamie) - embedded per work package. Same content the  */
-/* customer portal shows; staff see every project (each scoped to its   */
-/* own Jamie tag). Overview (Summary / Full notes) + Key action items.  */
-/* ------------------------------------------------------------------ */
-function nFmtDate(iso, long) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d)) return "";
-  return d.toLocaleDateString(undefined,
-    long ? { weekday: "short", day: "numeric", month: "long", year: "numeric" }
-         : { day: "numeric", month: "short", year: "numeric" });
-}
-function nInitials(name) {
-  const p = String(name || "").trim().split(/\s+/);
-  return ((p[0]?.[0] || "") + (p[1]?.[0] || "")).toUpperCase() || "?";
-}
-const N_ACTION_RE = /(action items?|next steps?|follow[\s-]?ups?)/i;
-function nStripActions(html) {
-  if (!html) return html;
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  Array.from(tmp.querySelectorAll("h1,h2,h3,h4,h5")).forEach((h) => {
-    if (!N_ACTION_RE.test(h.textContent || "")) return;
-    const rm = [h]; let n = h.nextElementSibling;
-    while (n && !/^H[1-5]$/.test(n.nodeName)) { rm.push(n); n = n.nextElementSibling; }
-    rm.forEach((x) => x.remove());
-  });
-  return tmp.innerHTML;
-}
-function nExtractSummary(html) {
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  const out = []; let capturing = false, saw = false;
-  for (const node of Array.from(tmp.childNodes)) {
-    if (node.nodeName === "H1" || node.nodeName === "H2") {
-      saw = true;
-      const t = (node.textContent || "").toLowerCase();
-      capturing = t.includes("executive") || (t.includes("summary") && !t.includes("full"));
-      if (t.includes("full summary") || t.includes("attendees") || t.includes("transcript")) capturing = false;
-    }
-    if (capturing) out.push(node.outerHTML || node.textContent);
-  }
-  return (saw && out.length) ? out.join("") : html;
-}
-function nActionHtml(t) {
-  const who = t.assignee || "";
-  const av = who ? `<span class="note-assignee"><span class="avatar">${esc(nInitials(who))}</span>${esc(who)}</span>` : "";
-  return `<li class="note-action ${t.completed ? "done" : ""}"><div class="na-text">${esc(t.text || "")}</div>${av}</li>`;
-}
-
-function buildMeetingNotes(w) {
-  const box = el("div", "wp-notes");
-  if (!w.jamie_tag) {
-    box.innerHTML = `<div class="notes-empty">No Jamie tag set for this project. Click <b>Edit</b> and choose a Jamie tag to show its meeting notes.</div>`;
-    return box;
-  }
-  box.innerHTML = `<div class="notes-layout">
-      <div class="notes-list"><div class="notes-loading">Loading meetings…</div></div>
-      <div class="notes-detail"></div>
-    </div>`;
-  const listEl = box.querySelector(".notes-list");
-  const detailEl = box.querySelector(".notes-detail");
-  const base = "/api/wp/" + w.wp_id;
-  let meetings = [], currentId = null, currentDetail = null, view = "summary";
-
-  function renderList() {
-    listEl.innerHTML = "";
-    meetings.forEach((m) => {
-      const it = el("div", "note-item" + (m.id === currentId ? " active" : ""));
-      it.innerHTML = `<div class="ni-title">${esc(m.title)}</div><div class="ni-date">${esc(nFmtDate(m.startTime))}</div>`;
-      it.addEventListener("click", () => selectMeeting(m.id));
-      listEl.appendChild(it);
-    });
-  }
-  async function selectMeeting(id) {
-    currentId = id; renderList();
-    detailEl.innerHTML = `<div class="notes-loading">Loading notes…</div>`;
-    try {
-      const r = await fetch(base + "/meeting/" + encodeURIComponent(id));
-      const j = await r.json(); if (j.error) throw new Error(j.error);
-      currentDetail = j; renderDetail();
-    } catch (e) { detailEl.innerHTML = `<div class="notes-empty">Could not load notes: ${esc(e.message)}</div>`; }
-  }
-  function renderDetail() {
-    const d = currentDetail; if (!d) return;
-    const isFirst = meetings.length && meetings[0].id === d.id;
-    const tasks = d.tasks || [];
-    const clean = nStripActions(d.summaryHtml || "");
-    const overview = d.summaryHtml
-      ? (view === "summary" ? nExtractSummary(clean) : clean)
-      : `<p class="notes-empty">No overview available for this meeting.</p>`;
-    const actions = tasks.length ? tasks.map(nActionHtml).join("") : `<li class="notes-empty">No action items captured.</li>`;
-    detailEl.innerHTML = `
-      <div class="note-badge">${isFirst ? "Latest meeting" : "Meeting"}</div>
-      <h3 class="note-title">${esc(d.title)}</h3>
-      <div class="note-meta">📅 ${esc(nFmtDate(d.startTime, true))}</div>
-      <div class="note-toggle">
-        <button data-v="summary" class="ntg${view === "summary" ? " active" : ""}">Summary</button>
-        <button data-v="full" class="ntg${view === "full" ? " active" : ""}">Full notes</button>
-      </div>
-      <div class="note-overview">${overview}</div>
-      <div class="note-actions-head">Key action items
-        <span class="pill">${tasks.filter((t) => !t.completed).length} open / ${tasks.length} total</span></div>
-      <ul class="note-actions">${actions}</ul>`;
-    detailEl.querySelectorAll(".ntg").forEach((b) =>
-      b.addEventListener("click", () => { view = b.dataset.v; renderDetail(); }));
-  }
-
-  fetch(base + "/meetings").then((r) => r.json()).then((j) => {
-    if (j.error) { listEl.innerHTML = `<div class="notes-empty">Could not load meetings: ${esc(j.error)}</div>`; return; }
-    meetings = j.meetings || [];
-    if (!meetings.length) { listEl.innerHTML = `<div class="notes-empty">${esc(j.note || "No meetings found for this project.")}</div>`; return; }
-    renderList();
-    selectMeeting(meetings[0].id);
-  }).catch((e) => { listEl.innerHTML = `<div class="notes-empty">Could not load meetings: ${esc(e.message)}</div>`; });
-
-  return box;
-}
+/* Meeting notes (Jamie) moved out of Abacus to their own page: /meeting-notes. */
 
 /* ------------------------------------------------------------------ */
 /* Excel sync indicator                                                */
@@ -2211,17 +2085,6 @@ $("#filters").addEventListener("click", (e) => {
 });
 
 $("#sync-all-jira")?.addEventListener("click", (e) => syncAllFromJira(e.currentTarget));
-
-// "Meeting notes": open every visible work package showing its Jamie meeting notes
-$("#meeting-notes").addEventListener("change", (e) => {
-  meetingNotes = e.target.checked;
-  if (meetingNotes) {
-    visibleWPs().forEach((w) => { openWPs.add(w.wp_id); collapsedSecs.delete(w.wp_id + ":notes"); });
-  } else {
-    openWPs.clear();
-  }
-  render();
-});
 
 // (Refresh moved to the Settings page: /admin/settings)
 

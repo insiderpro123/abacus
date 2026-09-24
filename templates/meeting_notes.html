@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if is_test %}[TEST] {% endif %}Insider Pro · Meeting Notes</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='ip-logo.svg') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Same brand tokens as the Sprint Retro page, so the pages read as one set. */
+:root{
+  --ink:#0B2A4A; --blue:#1663C7; --blue-600:#2B74D6; --blue-300:#4C9DF0;
+  --teal:#12B5A5; --paper:#F6F9FD; --paper-2:#EEF4FB; --tint-blue:#E6F0FB;
+  --line:#DDE6F1; --slate:#4A5B70; --slate-light:#6B7B91; --good:#2E9E5B;
+  --r-sm:10px; --r-md:16px;
+  --shadow-sm:0 2px 8px rgba(11,42,74,.08);
+  --grad-brand:linear-gradient(120deg,var(--blue) 0%,var(--blue-600) 55%,var(--teal) 100%);
+  --cat-customer:#2a78d6; --cat-marketing:#eb6834; --cat-ops:#1baf7a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--ink);
+     background:var(--paper);-webkit-font-smoothing:antialiased;padding-bottom:60px}
+h1,h2,h3{font-family:'Sora','Inter',sans-serif}
+
+.topbar{background:#fff;box-shadow:var(--shadow-sm);border-bottom:1px solid var(--line)}
+.topbar-inner{max-width:1500px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;gap:14px}
+.topbar img{height:34px;width:auto;display:block}
+.divider{width:1px;height:30px;background:var(--line)}
+.title{display:flex;flex-direction:column;line-height:1.15}
+.t1{font-family:'Sora';font-weight:700;font-size:19px}
+.t2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate-light);font-weight:600}
+
+.wrap{max-width:1500px;margin:0 auto;padding:20px 24px 0}
+/* Three panes: who (Jamie tag), which meeting, then the notes. */
+.layout{display:grid;grid-template-columns:250px 290px minmax(0,1fr);gap:16px;align-items:start}
+.pane{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-sm);
+      overflow:hidden}
+.pane-head{padding:13px 16px 11px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:8px}
+.pane-head h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--slate-light);font-weight:700;font-family:'Inter'}
+.pane-head .count{font-size:12.5px;color:var(--slate-light)}
+.pane-list{max-height:calc(100vh - 220px);min-height:120px;overflow-y:auto}
+.search{display:block;width:calc(100% - 20px);margin:10px;font-family:'Inter';font-size:14.5px;color:var(--ink);
+        border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--paper)}
+.search:focus{outline:none;border-color:var(--blue-300);background:#fff}
+
+.item{display:block;width:100%;text-align:left;border:none;background:none;font:inherit;color:inherit;
+      padding:11px 16px;border-top:1px solid var(--paper-2);cursor:pointer;border-left:3px solid transparent}
+.item:hover{background:var(--paper-2)}
+.item.active{background:var(--tint-blue);border-left-color:var(--blue)}
+.item:focus-visible{outline:2px solid var(--blue-300);outline-offset:-2px}
+.item .i1{font-weight:700;font-size:14.5px;line-height:1.3;display:flex;align-items:center;gap:7px}
+.item .i2{font-size:12.5px;color:var(--slate-light);margin-top:3px;line-height:1.35}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--cat-customer)}
+.dot.c-ProcessandOps{background:var(--cat-ops)} .dot.c-Marketing{background:var(--cat-marketing)}
+.tag-inactive{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--slate-light);
+              border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+.group-lbl{padding:12px 16px 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--slate-light)}
+
+.detail{padding:20px 24px 24px;min-height:200px}
+.note-badge{display:inline-block;background:var(--grad-brand);color:#fff;font-size:10.5px;font-weight:700;
+            letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
+.note-title{margin:10px 0 4px;font-size:22px;font-weight:700;line-height:1.25}
+.note-meta{font-size:14px;font-weight:600;color:var(--slate-light);margin-bottom:14px}
+.note-toggle{display:inline-flex;background:var(--paper-2);border-radius:999px;padding:3px;margin-bottom:14px}
+.ntg{border:none;background:none;padding:6px 15px;border-radius:999px;font-family:'Inter';font-size:13.5px;
+     font-weight:600;color:var(--slate);cursor:pointer}
+.ntg.active{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(11,42,74,.12)}
+.note-overview{font-size:15px;line-height:1.6;color:#2b3a4c}
+.note-overview h1,.note-overview h2{font-family:'Sora';font-size:16px;font-weight:700;margin:18px 0 8px;
+  padding-bottom:5px;border-bottom:1px solid var(--line);color:var(--ink)}
+.note-overview h1:first-child,.note-overview h2:first-child{margin-top:0}
+.note-overview h3,.note-overview h4{font-size:15px;font-weight:700;margin:12px 0 5px}
+.note-overview p{margin:6px 0}
+.note-overview ul,.note-overview ol{padding-left:22px;margin:6px 0}
+.note-overview li{margin:4px 0}
+.note-actions-head{display:flex;align-items:center;gap:10px;margin:22px 0 10px;font-family:'Sora';font-size:16px;font-weight:700}
+.pill{font-family:'Inter';font-size:12px;font-weight:600;color:var(--slate);background:var(--paper-2);
+      border-radius:999px;padding:3px 10px}
+.note-actions{list-style:none;display:flex;flex-direction:column;gap:8px}
+.note-action{display:flex;flex-direction:column;gap:6px;padding:11px 14px;border:1px solid var(--line);
+             border-radius:var(--r-sm);background:#fff}
+.note-action.done .na-text{text-decoration:line-through;color:var(--slate-light)}
+.na-text{font-size:15px;line-height:1.45}
+.note-assignee{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--slate-light)}
+.avatar{width:21px;height:21px;border-radius:50%;background:var(--blue);color:#fff;font-size:10px;font-weight:700;
+        display:grid;place-items:center}
+.empty{color:var(--slate-light);font-size:14px;padding:16px}
+.empty b{color:var(--slate)}
+
+@media (max-width:1100px){
+  .layout{grid-template-columns:250px minmax(0,1fr)}
+  .pane.detail-pane{grid-column:1 / -1}
+}
+@media (max-width:700px){
+  .topbar-inner,.wrap{padding-left:16px;padding-right:16px}
+  .layout{grid-template-columns:1fr}
+  .pane-list{max-height:260px}
+  .detail{padding:16px}
+}
+@media print{
+  .topbar,.tags-pane,.meetings-pane,.note-toggle{display:none!important}
+  .layout{display:block} .pane{border:none;box-shadow:none}
+}
+</style>
+</head>
+<body>
+{% include '_test_banner.html' %}
+{% set nav_active = "notes" %}{% include '_nav.html' %}
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro">
+    <div class="divider"></div>
+    <div class="title">
+      <span class="t1">Meeting Notes</span>
+      <span class="t2">Jamie · overviews &amp; action items</span>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <div class="layout">
+    <section class="pane tags-pane" aria-label="Projects">
+      <div class="pane-head"><h2>Projects</h2><span class="count" id="tagCount"></span></div>
+      <input class="search" id="tagSearch" type="search" placeholder="Filter projects" aria-label="Filter projects">
+      <div class="pane-list" id="tagList"><div class="empty">Loading projects…</div></div>
+    </section>
+
+    <section class="pane meetings-pane" aria-label="Meetings">
+      <div class="pane-head"><h2>Meetings</h2><span class="count" id="mtgCount"></span></div>
+      <div class="pane-list" id="mtgList"><div class="empty">Pick a project.</div></div>
+    </section>
+
+    <section class="pane detail-pane" aria-label="Notes">
+      <div class="detail" id="detail"><div class="empty">Pick a meeting to read its notes.</div></div>
+    </section>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+/* The notes come from Jamie, scoped by each project's Jamie tag (set in Abacus via Edit).
+   This page only reads: the list of tags from /api/meeting-notes/projects, then a tag's
+   meetings through the same /api/wp/<id>/meeting(s) routes Abacus used when the notes
+   were a toggle inside it. */
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
+  (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+let TAGS = [], tag = null, meetings = [], currentId = null, detail = null, view = "summary";
+let mtgReq = 0, noteReq = 0;       // drop responses that arrive after the user has moved on
+
+function fmtDate(iso, long){
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString("en-GB",
+    long ? { weekday:"short", day:"numeric", month:"long", year:"numeric" }
+         : { day:"numeric", month:"short", year:"numeric" });
+}
+function initials(name){
+  const p = String(name || "").trim().split(/\s+/);
+  return ((p[0]?.[0] || "") + (p[1]?.[0] || "")).toUpperCase() || "?";
+}
+
+/* Jamie's notes carry their own action-items heading; the page lists the real tasks
+   underneath instead, so drop that section from the overview. */
+const ACTION_RE = /(action items?|next steps?|follow[\s-]?ups?)/i;
+function stripActions(html){
+  if (!html) return html;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  [...tmp.querySelectorAll("h1,h2,h3,h4,h5")].forEach((h) => {
+    if (!ACTION_RE.test(h.textContent || "")) return;
+    const rm = [h]; let n = h.nextElementSibling;
+    while (n && !/^H[1-5]$/.test(n.nodeName)){ rm.push(n); n = n.nextElementSibling; }
+    rm.forEach((x) => x.remove());
+  });
+  return tmp.innerHTML;
+}
+/* "Summary" view: just the executive summary section, when the notes have one. */
+function extractSummary(html){
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  const out = []; let capturing = false, saw = false;
+  for (const node of [...tmp.childNodes]){
+    if (node.nodeName === "H1" || node.nodeName === "H2"){
+      saw = true;
+      const t = (node.textContent || "").toLowerCase();
+      capturing = t.includes("executive") || (t.includes("summary") && !t.includes("full"));
+      if (t.includes("full summary") || t.includes("attendees") || t.includes("transcript")) capturing = false;
+    }
+    if (capturing) out.push(node.outerHTML || node.textContent);
+  }
+  return (saw && out.length) ? out.join("") : html;
+}
+
+async function getJson(url){
+  const r = await fetch(url, { cache:"no-store" });
+  if (r.status === 401){ window.location.href = "/login"; throw new Error("signed out"); }
+  const j = await r.json();
+  if (j && j.error) throw new Error(j.error);
+  return j;
+}
+
+/* ===================================================== projects (Jamie tags) */
+
+function renderTags(){
+  const q = $("tagSearch").value.trim().toLowerCase();
+  const hits = TAGS.filter((t) => !q ||
+    [t.client, t.tag, ...t.projects.map((p) => p.name)].join(" ").toLowerCase().includes(q));
+  $("tagCount").textContent = TAGS.length ? String(TAGS.length) : "";
+
+  const row = (t) => {
+    const names = t.projects.map((p) => p.name).join(", ");
+    return '<button class="item' + (tag && tag.tag === t.tag ? " active" : "") + '" data-tag="' + esc(t.tag) + '">' +
+      '<div class="i1"><span class="dot c-' + esc(t.category.replace(/\s+/g, "")) + '"></span>' + esc(t.client) +
+      (t.active ? "" : ' <span class="tag-inactive">Inactive</span>') + "</div>" +
+      '<div class="i2">' + esc(names) + "</div></button>";
+  };
+  const active = hits.filter((t) => t.active), inactive = hits.filter((t) => !t.active);
+  let html = active.map(row).join("");
+  if (inactive.length) html += '<div class="group-lbl">Inactive</div>' + inactive.map(row).join("");
+  $("tagList").innerHTML = html || '<div class="empty">' +
+    (TAGS.length ? "No project matches that." :
+      "No project has a Jamie tag yet. In <b>Abacus</b>, click a project's <b>Edit</b> and choose its Jamie tag.") +
+    "</div>";
+  $("tagList").querySelectorAll(".item").forEach((b) => {
+    b.onclick = () => selectTag(b.dataset.tag);
+  });
+}
+
+async function selectTag(name){
+  tag = TAGS.find((t) => t.tag === name) || null;
+  if (!tag) return;
+  try{ localStorage.setItem("meetingNotesTag", tag.tag); }catch(e){}
+  const u = new URL(location.href); u.searchParams.set("tag", tag.tag); history.replaceState(null, "", u);
+  renderTags();
+
+  meetings = []; currentId = null; detail = null;
+  $("mtgCount").textContent = "";
+  $("mtgList").innerHTML = '<div class="empty">Loading meetings…</div>';
+  $("detail").innerHTML = "";
+  const req = ++mtgReq;
+  try{
+    const j = await getJson("/api/wp/" + encodeURIComponent(tag.wp_id) + "/meetings");
+    if (req !== mtgReq) return;
+    meetings = j.meetings || [];
+    if (!meetings.length){
+      $("mtgList").innerHTML = '<div class="empty">' + esc(j.note || "No meetings in Jamie for this tag yet.") + "</div>";
+      $("detail").innerHTML = '<div class="empty">Nothing to show for ' + esc(tag.client) + ".</div>";
+      return;
+    }
+    $("mtgCount").textContent = String(meetings.length);
+    selectMeeting(meetings[0].id);
+  }catch(e){
+    if (req !== mtgReq) return;
+    $("mtgList").innerHTML = '<div class="empty">Could not load meetings: ' + esc(e.message) + "</div>";
+  }
+}
+
+/* ===================================================== meetings */
+
+function renderMeetings(){
+  $("mtgList").innerHTML = meetings.map((m) =>
+    '<button class="item' + (m.id === currentId ? " active" : "") + '" data-id="' + esc(m.id) + '">' +
+    '<div class="i1">' + esc(m.title) + "</div>" +
+    '<div class="i2">' + esc(fmtDate(m.startTime)) + "</div></button>").join("");
+  $("mtgList").querySelectorAll(".item").forEach((b) => {
+    b.onclick = () => selectMeeting(b.dataset.id);
+  });
+}
+
+async function selectMeeting(id){
+  currentId = id; renderMeetings();
+  $("detail").innerHTML = '<div class="empty">Loading notes…</div>';
+  const req = ++noteReq;
+  try{
+    const j = await getJson("/api/wp/" + encodeURIComponent(tag.wp_id) + "/meeting/" + encodeURIComponent(id));
+    if (req !== noteReq) return;
+    detail = j; renderDetail();
+  }catch(e){
+    if (req !== noteReq) return;
+    $("detail").innerHTML = '<div class="empty">Could not load notes: ' + esc(e.message) + "</div>";
+  }
+}
+
+function renderDetail(){
+  const d = detail; if (!d) return;
+  const isFirst = meetings.length && meetings[0].id === d.id;
+  const tasks = d.tasks || [];
+  const clean = stripActions(d.summaryHtml || "");
+  const overview = d.summaryHtml
+    ? (view === "summary" ? extractSummary(clean) : clean)
+    : '<p class="empty" style="padding:4px 0">No overview available for this meeting.</p>';
+  const actions = tasks.length ? tasks.map((t) => {
+    const who = t.assignee || "";
+    const av = who ? '<span class="note-assignee"><span class="avatar">' + esc(initials(who)) + "</span>" + esc(who) + "</span>" : "";
+    return '<li class="note-action' + (t.completed ? " done" : "") + '"><div class="na-text">' + esc(t.text || "") + "</div>" + av + "</li>";
+  }).join("") : '<li class="empty" style="padding:4px 0">No action items captured.</li>';
+
+  $("detail").innerHTML =
+    '<span class="note-badge">' + esc(tag.client) + (isFirst ? " · Latest meeting" : "") + "</span>" +
+    '<h3 class="note-title">' + esc(d.title) + "</h3>" +
+    '<div class="note-meta">' + esc(fmtDate(d.startTime, true)) + "</div>" +
+    '<div class="note-toggle">' +
+      '<button class="ntg' + (view === "summary" ? " active" : "") + '" data-v="summary">Summary</button>' +
+      '<button class="ntg' + (view === "full" ? " active" : "") + '" data-v="full">Full notes</button></div>' +
+    '<div class="note-overview">' + overview + "</div>" +
+    '<div class="note-actions-head">Key action items <span class="pill">' +
+      tasks.filter((t) => !t.completed).length + " open / " + tasks.length + " total</span></div>" +
+    '<ul class="note-actions">' + actions + "</ul>";
+  $("detail").querySelectorAll(".ntg").forEach((b) => {
+    b.onclick = () => { view = b.dataset.v; renderDetail(); };
+  });
+}
+
+/* ===================================================== boot */
+
+async function boot(){
+  $("tagSearch").addEventListener("input", renderTags);
+  try{
+    const j = await getJson("/api/meeting-notes/projects");
+    TAGS = j.tags || [];
+  }catch(e){
+    $("tagList").innerHTML = '<div class="empty">Could not load projects: ' + esc(e.message) + "</div>";
+    return;
+  }
+  renderTags();
+  /* Open the tag in the link, else the last one looked at, else the first active one. */
+  let want = new URL(location.href).searchParams.get("tag");
+  if (!want){ try{ want = localStorage.getItem("meetingNotesTag"); }catch(e){} }
+  const start = TAGS.find((t) => t.tag === want) || TAGS[0];
+  if (start) selectTag(start.tag);
+}
+boot();
+</script>
+</body>
+</html>

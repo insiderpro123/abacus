@@ -563,6 +563,44 @@ def _wp_tag(wp_id):
         return (wp.jamie_tag or "") if wp else None
 
 
+@app.route("/meeting-notes")
+def meeting_notes():
+    """Every project's Jamie meeting notes on one page. Used to be a toggle inside Abacus."""
+    return render_template("meeting_notes.html")
+
+
+@app.route("/api/meeting-notes/projects")
+def api_meeting_notes_projects():
+    """One entry per Jamie tag, for the Meeting notes page's list. Meetings are looked up
+    by tag, and some tags are shared by several work packages (two Bridgepoint projects,
+    two DMU), so listing work packages would show the same meetings twice. wp_id is one of
+    the tag's work packages, used only to reach the existing /api/wp/<id>/meeting(s) routes."""
+    with SessionLocal() as s:
+        wps = s.query(WorkPackage).all()
+    by_id = {w.id: w for w in wps}
+    tags, untagged = {}, 0
+    for w in wps:
+        tag = (w.jamie_tag or "").strip()
+        if not tag:
+            untagged += 1
+            continue
+        parent = by_id.get(w.parent_id) if w.parent_id else None
+        t = tags.setdefault(tag.lower(), {"tag": tag, "client": "", "category": "", "projects": [],
+                                          "active": False, "wp_id": None})
+        active = (w.status or "") == "Active"
+        # Point at an active work package where the tag has one.
+        if t["wp_id"] is None or (active and not t["active"]):
+            t["wp_id"] = str(w.id)
+            t["client"] = (parent.client if parent else w.client) or tag
+            t["category"] = w.category or "Customer"
+        t["active"] = t["active"] or active
+        t["projects"].append({"name": w.name or "", "status": w.status or "Unknown"})
+    out = sorted(tags.values(), key=lambda t: (not t["active"], t["client"].lower()))
+    for t in out:
+        t["projects"].sort(key=lambda p: (p["status"] != "Active", p["name"].lower()))
+    return jsonify({"tags": out, "untagged": untagged})
+
+
 @app.route("/api/wp/<int:wp_id>/meetings")
 def api_wp_meetings(wp_id):
     tag = _wp_tag(wp_id)

@@ -1,5 +1,5 @@
-{# The strip across the very top of the home page, Abacus and the Sprint Retro page.
-   Include with  {% set nav_active = "home" %},  "abacus"  or  "retro"  first. Styles are inline
+{# The strip across the very top of the home page, Abacus, the Sprint Retro and Meeting Notes.
+   Include with  {% set nav_active = "home" %},  "abacus",  "retro"  or  "notes"  first. Styles are inline
    and self-contained because the two pages carry different stylesheets. #}
 <nav class="ip-nav" aria-label="Insider Pro dashboards">
   <a href="/" class="ip-nav-tab{% if nav_active == 'home' %} is-on{% endif %}"
@@ -8,6 +8,8 @@
      {% if nav_active == 'abacus' %}aria-current="page"{% endif %}>▦ Abacus</a>
   <a href="/sprint-retro" class="ip-nav-tab{% if nav_active == 'retro' %} is-on{% endif %}"
      {% if nav_active == 'retro' %}aria-current="page"{% endif %}>🏁 Sprint Retro</a>
+  <a href="/meeting-notes" class="ip-nav-tab{% if nav_active == 'notes' %} is-on{% endif %}"
+     {% if nav_active == 'notes' %}aria-current="page"{% endif %}>📝 Meeting Notes</a>
 </nav>
 <style>
   .ip-nav{display:flex;gap:6px;align-items:center;padding:7px 24px;background:#0B2A4A;

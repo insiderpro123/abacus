@@ -788,7 +788,7 @@ textarea.text-input { resize: vertical; min-height: 44px; line-height: 1.4; }
 .psec.collapsed .psec-body { display: none; }
 .psec-body .taskboard-section { border-bottom: none; }
 
-/* Stacked modes (Actions only / Meeting notes): hide the 12-step Abacus matrix;
+/* Stacked mode (Actions only): hide the 12-step Abacus matrix;
    show only the per-package panels, stacked full-width as a simple vertical list. */
 table.matrix.stacked { display: block; table-layout: auto; border-spacing: 0; }
 .matrix.stacked thead { display: none; }
@@ -803,43 +803,6 @@ table.matrix.stacked { display: block; table-layout: auto; border-spacing: 0; }
 .matrix.stacked .section-row td { padding: 10px 2px 4px; background: var(--bg); }
 .matrix.stacked .add-row td { padding: 4px 0 8px; }
 
-/* Meeting notes embedded in a work-package panel (Jamie overview + action items) */
-.wp-notes { padding: 4px; }
-.notes-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
-.notes-list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; max-height: 420px; overflow-y: auto; }
-.note-item { padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
-.note-item:last-child { border-bottom: none; }
-.note-item:hover { background: var(--panel-2); }
-.note-item.active { background: #e9f6f9; }
-.note-item .ni-title { font-size: 13px; font-weight: 700; line-height: 1.3; }
-.note-item .ni-date { font-size: 11px; color: var(--muted); margin-top: 3px; }
-.notes-detail { min-width: 0; }
-.note-badge { display: inline-block; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
-  padding: 3px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: .04em; }
-.note-title { margin: 8px 0 4px; font-size: 18px; font-weight: 800; color: var(--text); line-height: 1.25; }
-.note-meta { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 12px; }
-.note-toggle { display: inline-flex; background: var(--panel-2); border-radius: 8px; padding: 3px; margin-bottom: 10px; }
-.ntg { border: none; background: none; padding: 5px 13px; border-radius: 6px; font-size: 12.5px; font-weight: 600;
-  color: var(--muted); cursor: pointer; font-family: inherit; }
-.ntg.active { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-.note-overview { font-size: 13.5px; line-height: 1.6; color: #33383a; }
-.note-overview h1, .note-overview h2 { font-size: 15px; font-weight: 700; margin: 16px 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line); color: var(--accent); }
-.note-overview h2:first-child, .note-overview h1:first-child { margin-top: 0; }
-.note-overview h3, .note-overview h4 { font-size: 13.5px; font-weight: 700; margin: 12px 0 5px; }
-.note-overview ul { padding-left: 20px; margin: 6px 0; }
-.note-overview li { margin: 4px 0; }
-.note-actions-head { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px; font-size: 15px; font-weight: 700; }
-.note-actions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.note-action { display: flex; flex-direction: column; gap: 6px; padding: 11px 13px; border: 1px solid var(--line);
-  border-radius: 9px; background: var(--panel-2); }
-.note-action.done .na-text { text-decoration: line-through; color: var(--muted); }
-.na-text { font-size: 13.5px; line-height: 1.4; }
-.note-assignee { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
-.note-assignee .avatar { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff;
-  font-size: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
-.notes-empty { color: var(--muted); font-size: 13px; font-style: italic; padding: 14px 4px; }
-.notes-loading { color: var(--muted); font-size: 13px; padding: 14px 4px; }
-@media (max-width: 760px) { .notes-layout { grid-template-columns: 1fr; } .notes-list { max-height: 220px; } }
 
 /* "Actions only" toggle at the top */
 .actions-toggle {
@@ -1207,11 +1170,6 @@ main.wrap { max-width: 1600px; margin: 0 auto; padding: 20px 24px 60px; }
 .task-card { border-radius: var(--r-sm); }
 .task-points, .task-subwp, .task-prio { border-radius: 999px; }
 .subwp { border-radius: var(--r-sm); }
-.note-badge { background: var(--grad-brand); }
-.note-title { font-family: 'Sora'; color: var(--ink); }
-.note-item.active { background: var(--tint-blue); }
-.note-overview h1, .note-overview h2 { color: var(--ink); font-family: 'Sora'; }
-.notes-list, .note-action { border-radius: var(--r-sm); }
 
 /* ---- dialogs */
 .modal-overlay { background: rgba(11,42,74,.45); }
@@ -1298,8 +1256,6 @@ table.matrix { border-spacing: 0 8px; }
 .sub-item .sdot { width: 11px; height: 11px; margin-top: 6px; }
 .task-box-head { font-size: 13.5px; }
 .task-card .task-title { font-size: 14.5px; }
-.note-item .ni-title { font-size: 14.5px; }
-.note-overview, .na-text { font-size: 15px; }
 /* dialogs */
 .modal-head h3 { font-size: 19px; }
 .modal-body, .ref-value, .ref-input, .text-input { font-size: 14.5px; }
