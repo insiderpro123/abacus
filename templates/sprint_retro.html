@@ -221,6 +221,24 @@ tr.tot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none;ba
 .sector-row .projects{margin-top:10px}
 .stat .of-total{font-family:'Inter';font-size:14.5px;font-weight:600;color:var(--slate-light);margin-left:5px}
 .sector-row .row-empty{font-size:14px;color:var(--slate-light);padding:8px 0 2px}
+/* Customer picker: ticked customers get a card every sprint, even with no points. */
+.cust-pick{position:relative}
+.cust-count{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;margin-left:4px;
+  border-radius:999px;background:var(--blue);color:#fff;font-size:12px;font-weight:700}
+.cust-count:empty{display:none}
+.cust-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:60;width:300px;max-width:calc(100vw - 32px);
+  background:#fff;border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-md);padding:12px}
+.cust-menu[hidden]{display:none}
+.cust-menu .cm-head{font-size:13px;color:var(--slate);line-height:1.4;padding:2px 4px 10px;border-bottom:1px solid var(--line)}
+.cust-menu .cm-list{max-height:340px;overflow-y:auto;padding:6px 0}
+.cust-menu label{display:flex;align-items:center;gap:10px;padding:7px 6px;border-radius:8px;cursor:pointer;
+  font-size:14.5px;font-weight:500;color:var(--ink)}
+.cust-menu label:hover{background:var(--paper-2)}
+.cust-menu input{width:16px;height:16px;accent-color:var(--blue);cursor:pointer;flex:none}
+.cust-menu .cm-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  border-top:1px solid var(--line);padding-top:10px;font-size:12.5px;color:var(--slate-light)}
+.cust-menu .cm-clear{border:none;background:none;color:var(--blue);font-weight:600;font-size:13px;cursor:pointer;padding:4px}
+.cust-menu .cm-clear:disabled{color:var(--slate-light);cursor:default}
 details.done-list{margin-top:10px}
 details.done-list summary{font-size:13px;color:var(--slate-light);cursor:pointer;font-weight:600}
 details.done-list ul{margin:8px 0 0 2px;list-style:none;font-size:13.5px;line-height:1.45;color:var(--slate)}
@@ -288,6 +306,12 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
     <div class="card-head">
       <h2>Project summary</h2>
       <span class="hint" id="notesHint"></span>
+      <div class="spacer"></div>
+      <div class="cust-pick no-print" id="custPick">
+        <button class="btn btn-ghost" id="custBtn" aria-haspopup="true" aria-expanded="false"
+                title="Choose customers to show every sprint, even when they have no points">👥 Customers<span class="cust-count" id="custCount"></span> ▾</button>
+        <div class="cust-menu" id="custMenu" hidden></div>
+      </div>
     </div>
     <div id="rows"></div>
   </div>
@@ -329,6 +353,8 @@ let weekIdx = 0;
 /* Categories picked in the legend. Empty means no filter, i.e. show all three. */
 let picked = new Set();
 let saveTimer = null;
+/* Customer project codes ticked in the Customers picker: always shown, points or not. */
+let PINNED = new Set();
 
 const $  = (id) => document.getElementById(id);
 const fmtNum = (n) => Number(n || 0).toLocaleString("en-GB");
@@ -590,8 +616,9 @@ function renderProjects(){
   const stat = (n) => '<div class="stat"><div class="n">' + n + "</div></div>";
 
   /* One card. A customer card is a project; an Operations or Marketing card is one epic.
-     Both show the points completed this week, as a bare number, of the epic total. Completed means resolved inside this Monday-Friday week, so work finished
-     earlier and still sitting in this sprint is never counted again. */
+     Both show the points completed this week of the points scheduled in the sprint.
+     Completed means resolved inside this Monday-Friday week, so work finished earlier
+     and still sitting in this sprint is never counted again. */
   const card = (it) => {
     const p = it.src;
     const sc = "s-" + it.sector.replace(/\s+/g, "");
@@ -599,15 +626,18 @@ function renderProjects(){
       "<li><span class='k'>" + esc(i.key) + "</span><span>" + esc(i.summary) +
       " <span class='muted'>(" + i.points + " pts, " + esc(i.assignee) + ")</span></span></li>").join("");
 
-    /* Points completed this week, then in small text the epic's total: "13 of 100". A
-       customer card's total covers every epic its work that week sat under. */
-    const total = it.kind === "customer" ? p.epic_total : p.total;
-    const stats = stat(p.done + (total ? '<span class="of-total">of ' + fmtNum(total) + "</span>" : ""));
+    /* Points completed this week, then in small text the points that were scheduled into
+       this week's sprint: "14 of 16". Completed can beat scheduled (work pulled in
+       mid-sprint, or carried in from an earlier one), so it is shown as it is, never
+       capped. Nothing scheduled reads "-" rather than "of 0". */
+    const sched = p.committed || 0;
+    const tip = p.done + " pts completed this week, " + (sched ? sched + " pts scheduled in the sprint" : "none scheduled in the sprint");
+    const stats = stat(p.done + '<span class="of-total">' + (sched ? "of " + fmtNum(sched) : "-") + "</span>");
 
     return '<div class="proj" data-code="' + esc(it.code) + '">' +
       '<h3><span class="name sector ' + sc + '">' + esc(it.name) + "</span></h3>" +
-      '<div class="stats">' + stats + "</div>" +
-      '<div class="proj-body"><div class="field"><label>Next sprint</label>' +
+      '<div class="stats" title="' + esc(tip) + '">' + stats + "</div>" +
+      '<div class="proj-body"><div class="field"><label>Next sprint goal</label>' +
         '<ul class="goals" data-goals="1"></ul></div>' +
       (items ? '<details class="done-list"><summary>' + p.issues_done +
         (p.issues_done === 1 ? " item" : " items") + " completed</summary><ul>" + items + "</ul></details>" : "") +
@@ -619,6 +649,18 @@ function renderProjects(){
     const projs = w.projects.filter((p) => p.sector === row.sector && active(p));
     let items = [];
     if (row.by === "project"){
+      /* Customers ticked in the Customers picker always get a card, so a quiet sprint
+         still has somewhere to write their next goal. A customer with nothing in this
+         week's pull gets a blank one: 0 completed, none scheduled. */
+      const shown = new Set(projs.map((p) => p.code));
+      const known = allCustomers();
+      PINNED.forEach((code) => {
+        if (shown.has(code)) return;
+        const p = w.projects.find((x) => x.code === code && x.sector === row.sector) ||
+          { code, name:known.get(code) || code, sector:row.sector, done:0, committed:0,
+            issues_done:0, done_items:[] };
+        projs.push(p);
+      });
       items = projs.map((p) => ({ kind:"customer", code:p.code, name:p.name, src:p,
                                   sector:p.sector }));
       items.sort((a, b) => (b.src.done - a.src.done) ||
@@ -652,13 +694,92 @@ function renderProjects(){
       card.classList.add("sel");
     });
     buildGoalList(card.querySelector("[data-goals]"), asGoals(note(code).next),
-      "For next sprint", (goals) => {
+      "Add a goal for next sprint", (goals) => {
         const cur = noteFor(code);
         cur.next = goals;
         delete cur.carried;      // flag from older notes; nothing reads it any more
         queueSave();
       });
   });
+}
+
+/* ===================================================== customer picker */
+
+/* Every customer seen anywhere in the pull, code -> name, the newest name winning. */
+function allCustomers(){
+  const m = new Map();
+  (DATA && DATA.weeks || []).forEach((w) => (w.projects || []).forEach((p) => {
+    if (p.sector === "Customer") m.set(p.code, p.name);
+  }));
+  return m;
+}
+
+function renderCustPicker(){
+  const known = allCustomers();
+  PINNED.forEach((c) => { if (!known.has(c)) known.set(c, c); });   // ticked, since gone from Jira
+  const list = [...known].sort((a, b) => a[1].localeCompare(b[1]));
+  $("custCount").textContent = PINNED.size || "";
+  $("custMenu").innerHTML =
+    '<div class="cm-head">Ticked customers get a card every sprint, even with no points. ' +
+      "Everyone sees the same list.</div>" +
+    '<div class="cm-list">' + (list.length ? list.map(([code, name]) =>
+      '<label><input type="checkbox" value="' + esc(code) + '"' + (PINNED.has(code) ? " checked" : "") +
+      ">" + esc(name) + "</label>").join("") : '<div class="muted" style="padding:8px 6px">No customers in the Jira pull yet.</div>') +
+    "</div>" +
+    '<div class="cm-foot"><span>' + PINNED.size + " of " + list.length + " ticked</span>" +
+      '<button class="cm-clear" id="custClear"' + (PINNED.size ? "" : " disabled") + ">Clear all</button></div>";
+
+  $("custMenu").querySelectorAll("input").forEach((el) => {
+    el.onchange = () => {
+      if (el.checked) PINNED.add(el.value); else PINNED.delete(el.value);
+      pinnedChanged();
+    };
+  });
+  $("custClear").onclick = () => { PINNED.clear(); pinnedChanged(); };
+}
+
+function pinnedChanged(){
+  const scroll = $("custMenu").querySelector(".cm-list").scrollTop;
+  renderCustPicker();
+  $("custMenu").querySelector(".cm-list").scrollTop = scroll;
+  if (DATA && DATA.weeks && DATA.weeks.length) renderProjects();
+  savePinned();
+}
+
+async function savePinned(){
+  const codes = [...PINNED];
+  try{ localStorage.setItem("retroCustomers", JSON.stringify(codes)); }catch(e){}
+  if (!ONLINE) return;
+  try{
+    const r = await fetch("/api/retro/customers", {
+      method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ codes })
+    });
+    if (signedOut(r)) return;
+    const j = await r.json();
+    if (j.error) flash("Could not save the customer list: " + esc(j.error), "err");
+  }catch(e){
+    flash("Could not save the customer list to Abacus, so kept a copy in this browser.", "err");
+  }
+}
+
+async function loadPinned(){
+  if (ONLINE){
+    try{
+      const r = await fetch("/api/retro/customers", { cache:"no-store" });
+      if (signedOut(r)) return;
+      const j = await r.json();
+      PINNED = new Set(Array.isArray(j.codes) ? j.codes : []);
+      return;
+    }catch(e){ /* fall through to the browser copy */ }
+  }
+  try{ PINNED = new Set(JSON.parse(localStorage.getItem("retroCustomers") || "[]")); }
+  catch(e){ PINNED = new Set(); }
+}
+
+function setCustMenu(open){
+  $("custMenu").hidden = !open;
+  $("custBtn").setAttribute("aria-expanded", String(open));
+  if (open) renderCustPicker();
 }
 
 /* The notes for a week. A week with nothing saved yet starts as a copy of the last week
@@ -894,8 +1015,18 @@ async function boot(){
   }catch(e){ ONLINE = false; }
 
   await loadNotes();
+  await loadPinned();
   weekIdx = defaultWeekIndex();
   render();
+  renderCustPicker();
+
+  $("custBtn").onclick = (e) => { e.stopPropagation(); setCustMenu($("custMenu").hidden); };
+  document.addEventListener("click", (e) => {
+    if (!$("custMenu").hidden && !e.target.closest("#custPick")) setCustMenu(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("custMenu").hidden){ setCustMenu(false); $("custBtn").focus(); }
+  });
 
   $("syncBtn").onclick = sync;
   $("printBtn").onclick = () => window.print();
@@ -912,7 +1043,7 @@ async function boot(){
     if (idx >= 0){ weekIdx = idx; render(); }
   };
   document.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+    if (["TEXTAREA", "SELECT", "INPUT"].includes(e.target.tagName)) return;
     if (e.key === "ArrowLeft"  && weekIdx > 0){ weekIdx--; render(); }
     if (e.key === "ArrowRight" && weekIdx < DATA.weeks.length - 1){ weekIdx++; render(); }
   });

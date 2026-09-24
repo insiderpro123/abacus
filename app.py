@@ -51,7 +51,7 @@ _load_local_env()
 from models import (
     init_db, SessionLocal,
     Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask,
-    Sprint, SprintHistory, WpJiraLink, RetroSnapshot, RetroNote,
+    Sprint, SprintHistory, WpJiraLink, RetroSnapshot, RetroNote, RetroSetting,
 )
 import jira_client
 import jamie_client
@@ -1761,6 +1761,34 @@ def api_retro_notes_save():
         else:
             s.add(RetroNote(week_start=week, entry=json.dumps(entry, ensure_ascii=False), saved_at=now))
     return jsonify({"ok": True, "saved_at": now.isoformat(timespec="seconds") + "Z"})
+
+
+@app.route("/api/retro/customers", methods=["GET", "POST"])
+def api_retro_customers():
+    """The customers ticked in the page's Customers picker: a list of Jira project codes
+    that get a card every sprint, even one with no points. One list, shared by everyone.
+    POST {codes: [...]} replaces it."""
+    if request.method == "POST":
+        body = request.get_json(silent=True)
+        codes = body.get("codes") if isinstance(body, dict) else None
+        if not isinstance(codes, list):
+            return jsonify({"error": "Expected {codes: [...]}."}), 400
+        codes = sorted({str(c).strip()[:32] for c in codes if str(c).strip()})
+        now = datetime.utcnow()
+        with SessionLocal.begin() as s:
+            row = s.get(RetroSetting, "customers")
+            if row:
+                row.value, row.saved_at = json.dumps(codes), now
+            else:
+                s.add(RetroSetting(key="customers", value=json.dumps(codes), saved_at=now))
+        return jsonify({"ok": True, "codes": codes})
+    with SessionLocal() as s:
+        row = s.get(RetroSetting, "customers")
+    try:
+        codes = json.loads(row.value) if row else []
+    except ValueError:
+        codes = []
+    return jsonify({"codes": codes if isinstance(codes, list) else []})
 
 
 # --------------------------------------------------------------------------- #

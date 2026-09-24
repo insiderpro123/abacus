@@ -222,6 +222,16 @@ class RetroNote(Base):
     saved_at = Column(DateTime, default=datetime.utcnow)
 
 
+class RetroSetting(Base):
+    """A Sprint Retro page setting that holds across every week, shared by everyone, e.g.
+    "customers" = JSON list of the Jira project codes that always get a card. Kept apart
+    from retro_note, which is one row per week."""
+    __tablename__ = "retro_setting"
+    key = Column(String(64), primary_key=True)
+    value = Column(Text, nullable=False, default="")
+    saved_at = Column(DateTime, default=datetime.utcnow)
+
+
 def _ensure_columns():
     """Lightweight migration: add columns that were introduced after the table
     was first created (so an existing SQLite/Postgres DB gains them without a wipe)."""
