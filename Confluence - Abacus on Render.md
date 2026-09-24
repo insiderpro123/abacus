@@ -109,7 +109,7 @@ Every change saves immediately; a "✓ Saved" note appears top-right.
 ## Admin notes (for whoever maintains it)
 
 **Change the team password**
-1. Render dashboard → **abacus-tracker** service → **Environment**.
+1. Render dashboard → **insiderpro-process** service → **Environment**.
 2. Edit **`APP_PASSWORD`** → **Save changes** (redeploys in ~1 min).
 3. To also force everyone to re-login, change **`SECRET_KEY`** to any new value too.
 
@@ -119,8 +119,11 @@ Every change saves immediately; a "✓ Saved" note appears top-right.
 
 **Free-tier limits to be aware of**
 - The web app **sleeps after ~15 min idle** (slow first load, then fast).
-- The **free database expires after ~30 days**. Before then, upgrade the Render Postgres to a
-  paid plan (~£5/month, permanent + backups) or recreate and re-seed it.
+- The database is on the paid **Basic-256mb** plan (permanent, with backups), so it does not
+  expire. `render.yaml` must say the same plan, or a blueprint sync fails.
+
+**Secrets set by hand** on the service's Environment tab (never in the code or `render.yaml`):
+`APP_PASSWORD`, `JIRA_API_TOKEN` and `JAMIE_API_KEY` (meeting notes).
 
 **Re-seed / reset the data from the master Excel** (rarely needed)
 - Run `import_data.py --yes` locally with the database's External URL set as `DATABASE_URL`.

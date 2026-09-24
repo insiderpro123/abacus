@@ -34,5 +34,8 @@ services:
         value: "team@insiderpro.co.uk"
       - key: JIRA_API_TOKEN
         sync: false          # set this yourself in the Render dashboard (read-only token)
+      # Jamie (meeting notes). A secret set by hand; the code has no fallback key.
+      - key: JAMIE_API_KEY
+        sync: false          # set this yourself in the Render dashboard
       - key: PYTHON_VERSION
         value: "3.12.6"

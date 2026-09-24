@@ -7,9 +7,9 @@ GET requests, so this app can never modify or delete anything in Jamie.
 A customer is linked to a Jamie "tag" (the tag NAME, e.g. "DMU"). meetings.list
 accepts a `tag` filter by name, which returns exactly that customer's meetings.
 
-The API key is read from the JAMIE_API_KEY environment variable, with a local
-fallback so it runs out-of-the-box on this machine. NOTE: rotate the fallback key
-and set JAMIE_API_KEY properly before transferring this software to anyone else.
+The API key is read ONLY from the JAMIE_API_KEY environment variable: set it on the
+Render service's Environment tab, and in .env (not committed) for local runs. There is
+no fallback in the code any more; one used to sit here and so reached GitHub.
 """
 
 import json
@@ -18,10 +18,7 @@ import os
 import requests
 
 BASE_URL = os.environ.get("JAMIE_BASE_URL", "https://beta-api.meetjamie.ai")
-API_KEY = os.environ.get(
-    "JAMIE_API_KEY",
-    "jk_9f3149457743d7f0ef523d2ed584043f67b04ea845bad7e0a5c0a2b5d32577a6",
-)
+API_KEY = os.environ.get("JAMIE_API_KEY", "").strip()
 
 
 class JamieError(Exception):
@@ -34,6 +31,8 @@ def is_configured():
 
 def jamie_get(path, trpc_input=None, params=None, timeout=30):
     """Issue a READ-ONLY GET request to Jamie and unwrap the tRPC envelope."""
+    if not API_KEY:
+        raise JamieError("Jamie is not connected: set JAMIE_API_KEY on the server.")
     url = f"{BASE_URL}{path}"
     headers = {"x-api-key": API_KEY, "accept": "application/json"}
     query = dict(params or {})
