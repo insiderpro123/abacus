@@ -96,6 +96,16 @@ select.weeksel{font-family:'Inter';font-weight:600;font-size:15px;color:var(--in
 .tile.total{background:var(--grad-dark);border-color:transparent;color:#fff;box-shadow:var(--shadow-md)}
 .tile.total .lbl{color:var(--slate-on-dark)}
 .tile.total .val{color:#fff;font-size:42px}
+/* Completed against scheduled: "81 of 84", then a bar that fills to the share done with
+   the undone part grey, and the percentage at its right-hand end. */
+.tile .val .of-sched{font-family:'Inter';font-size:15px;font-weight:600;color:var(--slate-light);margin-left:6px}
+.tile.total .val .of-sched{color:var(--slate-on-dark)}
+.pbar-row{display:flex;align-items:center;gap:10px;margin-top:10px}
+.pbar{flex:1;height:8px;border-radius:999px;background:#E3E8EF;display:flex;overflow:hidden}
+.pbar i{display:block;height:100%}
+.tile.total .pbar{background:rgba(255,255,255,.2)}
+.pbar-pct{font-family:'Sora';font-size:15px;font-weight:700;min-width:42px;text-align:right}
+.tile.total .pbar-pct{color:#fff}
 
 /* ===================================================== cards */
 .card{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-sm);
@@ -474,16 +484,38 @@ function renderWeekBar(){
 function renderTiles(){
   const w = DATA.weeks[weekIdx];
 
-  /* Points done per sector, then the week's total. Just the label and the number. */
+  /* Points done per sector, then the week's total, each against the points scheduled into
+     the sprint: the same pair as the project cards ("14 of 16"). The bar fills to the
+     share completed and the rest is grey. Done can beat scheduled (work pulled in mid-sprint
+     or carried over), which caps at a full bar and 100%. */
   const key = { "Customer":"c-customer", "Marketing":"c-marketing", "Process and Ops":"c-ops" };
-  const tiles = SECTORS.map((s) => ({
-    cls:key[s], lbl:s, val:(w.by_category[s] || {}).done || 0
-  }));
-  tiles.push({ cls:"total", lbl:"Total completed", val:w.done });
+  const pctOf = (done, sched) => sched ? Math.min(100, Math.round(done / sched * 100)) : (done ? 100 : 0);
+  const cat = (s) => w.by_category[s] || {};
 
-  $("tiles").innerHTML = tiles.map((t) =>
-    '<div class="tile ' + t.cls + '"><div class="lbl">' + esc(t.lbl) + '</div>' +
-    '<div class="val">' + t.val + "</div></div>").join("");
+  const tiles = SECTORS.map((s) => {
+    const done = cat(s).done || 0, sched = cat(s).committed || 0;
+    const pct = pctOf(done, sched);
+    return { cls:key[s], lbl:s, done, sched, pct,
+             segs:[{ w:pct, c:SECTOR_VAR[s], t:s + ": " + done + " of " + sched + " pts" }] };
+  });
+
+  /* The total's bar is the three colours side by side, each as its share of everything
+     scheduled, so the grey left over is the week's undone work. */
+  const tDone = tiles.reduce((n, t) => n + t.done, 0);
+  const tSched = tiles.reduce((n, t) => n + t.sched, 0);
+  const base = Math.max(tSched, tDone, 1);
+  tiles.push({ cls:"total", lbl:"Total completed", done:w.done, sched:tSched, pct:pctOf(tDone, tSched),
+    segs:tiles.map((t, i) => ({ w:t.done / base * 100, c:SECTOR_VAR[SECTORS[i]], t:t.lbl + ": " + t.done + " pts" })) });
+
+  $("tiles").innerHTML = tiles.map((t) => {
+    const undone = Math.max(0, t.sched - t.done);
+    const tip = t.done + " of " + t.sched + " scheduled pts completed" + (undone ? ", " + undone + " not done" : "");
+    return '<div class="tile ' + t.cls + '" title="' + esc(tip) + '"><div class="lbl">' + esc(t.lbl) + "</div>" +
+      '<div class="val">' + t.done + '<span class="of-sched">' + (t.sched ? "of " + fmtNum(t.sched) : "-") + "</span></div>" +
+      '<div class="pbar-row"><div class="pbar" role="img" aria-label="' + t.pct + '% completed">' +
+        t.segs.map((g) => g.w > 0 ? '<i style="width:' + g.w.toFixed(2) + "%;background:" + g.c + '" title="' + esc(g.t) + '"></i>' : "").join("") +
+      '</div><span class="pbar-pct">' + t.pct + "%</span></div></div>";
+  }).join("");
 }
 
 /* Click a legend entry to filter the chart to it; click again to drop the filter.
