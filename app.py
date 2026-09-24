@@ -172,8 +172,8 @@ def _backfill_task_points():
 
 
 _backfill_task_points()
-# (Outcome wording is now edited via /admin/settings; the one-off patch_outcomes.py
-#  remains as a manual tool. No startup force here - it would overwrite edits.)
+# (Outcome wording is edited via /admin/settings. No startup force here - it would
+#  overwrite edits.)
 
 # --------------------------------------------------------------------------- #
 # Status helpers (unchanged meaning from the Excel version)
