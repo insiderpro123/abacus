@@ -1,27 +1,22 @@
 {# The strip across the very top of the home page, Abacus, the Sprint Retro and Meeting Notes.
    Include with  {% set nav_active = "home" %},  "abacus",  "retro"  or  "notes"  first. Styles are inline
-   and self-contained because the pages carry different stylesheets. #}
-{% from '_icons.html' import icon %}
+   and self-contained because the two pages carry different stylesheets. #}
 <nav class="ip-nav" aria-label="Insider Pro dashboards">
   <a href="/" class="ip-nav-tab{% if nav_active == 'home' %} is-on{% endif %}"
-     {% if nav_active == 'home' %}aria-current="page"{% endif %}>{{ icon('home', 16) }}Home</a>
+     {% if nav_active == 'home' %}aria-current="page"{% endif %}>⌂ Home</a>
   <a href="/abacus" class="ip-nav-tab{% if nav_active == 'abacus' %} is-on{% endif %}"
-     {% if nav_active == 'abacus' %}aria-current="page"{% endif %}>{{ icon('abacus', 16) }}Abacus</a>
+     {% if nav_active == 'abacus' %}aria-current="page"{% endif %}>▦ Abacus</a>
   <a href="/sprint-retro" class="ip-nav-tab{% if nav_active == 'retro' %} is-on{% endif %}"
-     {% if nav_active == 'retro' %}aria-current="page"{% endif %}>{{ icon('retro', 16) }}Sprint Retro</a>
+     {% if nav_active == 'retro' %}aria-current="page"{% endif %}>🏁 Sprint Retro</a>
   <a href="/meeting-notes" class="ip-nav-tab{% if nav_active == 'notes' %} is-on{% endif %}"
-     {% if nav_active == 'notes' %}aria-current="page"{% endif %}>{{ icon('notes', 16) }}Meeting Notes</a>
+     {% if nav_active == 'notes' %}aria-current="page"{% endif %}>📝 Meeting Notes</a>
 </nav>
 <style>
-  .ip-nav{display:flex;gap:6px;align-items:center;padding:7px 24px;background:#0B2A4A;overflow-x:auto;
+  .ip-nav{display:flex;gap:6px;align-items:center;padding:7px 24px;background:#0B2A4A;
     font-family:'Inter',system-ui,-apple-system,'Segoe UI',Arial,sans-serif}
-  .ip-nav-tab{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
-    color:#B8C9DE;text-decoration:none;font-size:14px;font-weight:600;line-height:1;
+  .ip-nav-tab{color:#B8C9DE;text-decoration:none;font-size:14px;font-weight:600;line-height:1;
     padding:8px 14px;border-radius:999px;transition:background .12s,color .12s}
-  .ip-nav-tab .ip-icon{flex:none;opacity:.85}
   .ip-nav-tab:hover{color:#fff;background:rgba(255,255,255,.1)}
   .ip-nav-tab.is-on{color:#0B2A4A;background:#fff}
-  .ip-nav-tab.is-on .ip-icon{opacity:1;color:#1663C7}
-  @media (max-width:640px){.ip-nav{padding:7px 12px}.ip-nav-tab{padding:8px 11px}}
   @media print{.ip-nav{display:none}}
 </style>
