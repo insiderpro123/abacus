@@ -1,0 +1,18 @@
+{# The strip across the very top of Abacus and the Sprint Retro page that links the two.
+   Include with  {% set nav_active = "abacus" %}  or  "retro"  first. Styles are inline
+   and self-contained because the two pages carry different stylesheets. #}
+<nav class="ip-nav" aria-label="Insider Pro dashboards">
+  <a href="/" class="ip-nav-tab{% if nav_active == 'abacus' %} is-on{% endif %}"
+     {% if nav_active == 'abacus' %}aria-current="page"{% endif %}>▦ Abacus</a>
+  <a href="/sprint-retro" class="ip-nav-tab{% if nav_active == 'retro' %} is-on{% endif %}"
+     {% if nav_active == 'retro' %}aria-current="page"{% endif %}>🏁 Sprint Retro</a>
+</nav>
+<style>
+  .ip-nav{display:flex;gap:6px;align-items:center;padding:7px 24px;background:#0B2A4A;
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI',Arial,sans-serif}
+  .ip-nav-tab{color:#B8C9DE;text-decoration:none;font-size:14px;font-weight:600;line-height:1;
+    padding:8px 14px;border-radius:999px;transition:background .12s,color .12s}
+  .ip-nav-tab:hover{color:#fff;background:rgba(255,255,255,.1)}
+  .ip-nav-tab.is-on{color:#0B2A4A;background:#fff}
+  @media print{.ip-nav{display:none}}
+</style>

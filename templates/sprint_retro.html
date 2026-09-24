@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if is_test %}[TEST] {% endif %}Insider Pro · Sprint Retro Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='ip-logo.svg') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===================================================== Insider Pro brand tokens
+   Shared with Marketing - Dashboard tracker so the two dashboards read as one set. */
+:root{
+  --ink:#0B2A4A; --ink-800:#113456; --ink-700:#1C4570; --ink-deep:#0E3A63;
+  --blue:#1663C7; --blue-600:#2B74D6; --blue-300:#4C9DF0;
+  --teal:#12B5A5; --teal-600:#0E9C8E;
+  --paper:#F6F9FD; --paper-2:#EEF4FB; --white:#FFFFFF;
+  --line:#DDE6F1; --slate:#4A5B70; --slate-light:#6B7B91;
+  --priority:#E0A32E; --danger:#D6453C; --good:#2E9E5B;
+  --r-sm:10px; --r-md:16px; --r-lg:24px;
+  --shadow-sm:0 2px 8px rgba(11,42,74,.08);
+  --shadow-md:0 8px 24px rgba(11,42,74,.13);
+  --shadow-blue:0 8px 22px rgba(22,99,199,.26);
+  --grad-brand:linear-gradient(120deg,var(--blue) 0%,var(--blue-600) 55%,var(--teal) 100%);
+  --grad-dark:linear-gradient(135deg,#0B2A4A 0%,#0E3A63 55%,#113456 100%);
+  --slate-on-dark:#B8C9DE;
+
+  /* Category colours lifted from the Abacus points dashboard so the chart he already
+     knows looks identical here. (abacus on render/static/style.css) */
+  --cat-customer:#2a78d6; --cat-marketing:#eb6834; --cat-ops:#1baf7a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  color:var(--ink); background:var(--paper); -webkit-font-smoothing:antialiased;
+  padding-bottom:60px;
+}
+h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif}
+.wrap{max-width:1500px;margin:0 auto;padding:0 24px}
+
+/* ===================================================== top bar */
+.topbar{background:#fff;position:sticky;top:0;z-index:50;box-shadow:var(--shadow-sm);border-bottom:1px solid var(--line)}
+.topbar-inner{max-width:1500px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:14px}
+.brand img{height:34px;width:auto;display:block}
+.brand .divider{width:1px;height:30px;background:var(--line)}
+.brand .title{display:flex;flex-direction:column;line-height:1.15}
+.brand .t1{font-family:'Sora';font-weight:700;font-size:19px;color:var(--ink)}
+.brand .t2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate-light);font-weight:600}
+.spacer{flex:1}
+
+.btn{font-family:'Inter';font-weight:600;font-size:15px;border:none;cursor:pointer;border-radius:999px;
+     padding:10px 18px;display:inline-flex;align-items:center;gap:8px;transition:box-shadow .15s,background .15s}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--grad-brand);color:#fff;box-shadow:var(--shadow-blue)}
+.btn-primary:hover{box-shadow:0 10px 26px rgba(22,99,199,.34)}
+.btn-primary:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+.btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
+.btn-ghost:hover{border-color:var(--blue-300)}
+.sync-meta{font-size:13.5px;color:var(--slate-light);text-align:right;line-height:1.35}
+.sync-meta b{display:block;font-size:14px;color:var(--ink);font-weight:600}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinning{display:inline-block;animation:spin .9s linear infinite}
+
+/* Sync progress: an indeterminate stripe along the bottom edge of the top bar.
+   Jira's search endpoint pages by token and never reports a total, so there is no
+   honest percentage to show - only that the pull is still in flight. */
+.syncbar{height:3px;background:var(--paper-2);overflow:hidden;opacity:0;transition:opacity .2s}
+.syncbar.on{opacity:1}
+.syncbar i{display:block;height:100%;width:40%;border-radius:999px;background:var(--grad-brand)}
+.syncbar.on i{animation:slide 1.15s cubic-bezier(.65,0,.35,1) infinite}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+@media (prefers-reduced-motion:reduce){
+  .syncbar.on i{animation:none;width:100%}
+}
+
+/* ===================================================== week picker */
+.weekbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:18px 0 4px}
+.weekbar h1{font-size:26px;font-weight:700}
+.navbtn{width:38px;height:38px;padding:0;justify-content:center;font-size:17px}
+select.weeksel{font-family:'Inter';font-weight:600;font-size:15px;color:var(--ink);background:#fff;
+  border:1px solid var(--line);border-radius:999px;padding:9px 14px;box-shadow:var(--shadow-sm);cursor:pointer}
+
+/* ===================================================== tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px;margin:16px 0 8px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;box-shadow:var(--shadow-sm);
+      border-top:3px solid var(--blue)}
+.tile .lbl{font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--slate-light);font-weight:700}
+.tile .val{font-family:'Sora';font-size:38px;font-weight:700;line-height:1.15;margin-top:5px}
+.tile.c-customer{border-top-color:var(--cat-customer)} .tile.c-customer .lbl{color:var(--cat-customer)}
+.tile.c-marketing{border-top-color:var(--cat-marketing)} .tile.c-marketing .lbl{color:var(--cat-marketing)}
+.tile.c-ops{border-top-color:var(--cat-ops)} .tile.c-ops .lbl{color:var(--cat-ops)}
+
+/* The week's total. Deliberately unlike the three category tiles beside it. */
+.tile.total{background:var(--grad-dark);border-color:transparent;color:#fff;box-shadow:var(--shadow-md)}
+.tile.total .lbl{color:var(--slate-on-dark)}
+.tile.total .val{color:#fff;font-size:42px}
+
+/* ===================================================== cards */
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow-sm);
+      padding:20px 22px;margin:18px 0}
+.card-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.card-head h2{font-size:19px;font-weight:700}
+.card-head .hint{font-size:13.5px;color:var(--slate-light)}
+.card-head .spacer{flex:1}
+.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:var(--slate);
+  cursor:pointer;user-select:none;padding:3px 9px;border-radius:999px;border:1px solid transparent;
+  transition:opacity .12s,background .12s,border-color .12s}
+.legend span:hover{background:var(--paper-2)}
+.legend span.on{border-color:var(--line);background:var(--paper-2)}
+.legend span.off{opacity:.34}
+.legend i{width:13px;height:3px;border-radius:2px;display:block}
+.chk{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--slate);font-weight:500;cursor:pointer;user-select:none}
+
+/* ===================================================== weekly stacked bar chart
+   Same technique as the Abacus modal: a column-reverse flex stack of divs whose
+   height is a share of the tallest week. No chart library. */
+.chart{display:flex;align-items:flex-end;gap:5px;margin-top:18px;overflow-x:auto;padding-bottom:4px}
+.hist-col{flex:1 1 0;min-width:21px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
+.hist-stack{width:100%;height:210px;display:flex;flex-direction:column-reverse;justify-content:flex-start;
+            position:relative}
+/* The bar itself, only as tall as its points. The selected-week outline goes on this, not
+   on the full-height stack, or a short week reads as an empty box. */
+.hist-fill{width:100%;display:flex;flex-direction:column-reverse;border-radius:4px 4px 0 0;overflow:hidden}
+.hist-seg{width:100%;transition:filter .12s}
+.hist-zero{width:100%;height:2px;background:#c9ced6;align-self:flex-end}
+.hist-col:hover .hist-seg{filter:brightness(1.12)}
+.hist-xlabel{font-size:11px;color:var(--slate-light);font-weight:600;white-space:nowrap}
+.hist-total{font-size:12px;font-weight:700;color:var(--slate);min-height:16px}
+.hist-col.sel .hist-xlabel{color:var(--blue);font-weight:800}
+.hist-col.sel .hist-fill{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px 4px 0 0}
+/* A full financial year is up to 53 bars rather than a dozen. Thin everything down so
+   they still fit the card rather than starting a scrollbar inside it. */
+.chart.dense{gap:3px}
+.chart.dense .hist-col{min-width:14px}
+.chart.dense .hist-total{visibility:hidden}
+.chart.dense .hist-xlabel.skip{visibility:hidden}
+/* A dd/mm label is wider than a packed column. Give it no width of its own so it centres
+   over its bar and spills into the hidden neighbour's space, instead of widening every
+   column (hidden labels still take up room) and pushing the chart into a scrollbar. */
+.chart.dense .hist-xlabel{width:0;display:flex;justify-content:center}
+.chart.dense{padding-left:10px;padding-right:10px}   /* room for the first and last label */
+.chart.dense .hist-col.sel .hist-xlabel{visibility:visible}
+
+/* ===================================================== tables */
+table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14.5px}
+th{text-align:right;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--slate-light);
+   font-weight:700;padding:0 9px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+th.l,td.l{text-align:left}
+td{padding:9px;border-bottom:1px solid var(--paper-2);text-align:right;vertical-align:middle}
+tbody tr:hover{background:var(--paper-2)}
+tr.tot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none;background:var(--paper-2)}
+.person{font-weight:600;color:var(--ink)}
+.big{font-family:'Sora';font-weight:700;font-size:17px}
+.of{font-size:12.5px;color:var(--slate-light);display:block;margin-top:1px}
+.mini{height:8px;border-radius:4px;background:var(--paper-2);display:flex;overflow:hidden;min-width:90px}
+.mini i{display:block;height:100%}
+.muted{color:var(--slate-light)}
+
+/* ===================================================== project cards */
+.projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:16px}
+.proj{border:1px solid var(--line);border-radius:var(--r-md);padding:15px 16px;background:var(--white);
+      border-left:4px solid var(--line);cursor:pointer;transition:background .12s,border-color .12s}
+/* A clicked card: a light tint and a thin border in its row's colour. */
+.r-customer  .proj.sel{background:rgba(42,120,214,.14);border-color:var(--cat-customer)}
+.r-ops       .proj.sel{background:rgba(27,175,122,.15);border-color:var(--cat-ops)}
+.r-marketing .proj.sel{background:rgba(235,104,52,.14);border-color:var(--cat-marketing)}
+.proj.sel .goals{background:#fff}
+.proj h3{font-size:14.5px;font-weight:700;display:flex;align-items:flex-start;gap:8px;line-height:1.3}
+/* The card's name is the coloured pill (it used to be plain text beside a sector badge).
+   Same tint and colour as the old badge, a little larger so it still reads as the title. */
+.proj h3 .name{font-size:13.5px;line-height:1.35;letter-spacing:.07em;padding:5px 12px;border-radius:14px}
+/* Cards share row tracks with their neighbours (subgrid): title, number, then the rest. The
+   title track is as tall as the tallest title on that line of cards and no taller, so the
+   numbers line up without leaving a gap on lines where every name fits on one line. */
+.sector-row .projects{row-gap:0}
+.sector-row .proj{display:grid;grid-row:span 3;grid-template-rows:subgrid;row-gap:0;margin-bottom:14px}
+.proj .sector{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;padding:2px 8px;border-radius:999px}
+.sector.s-Customer{background:rgba(42,120,214,.12);color:var(--cat-customer)}
+.sector.s-Marketing{background:rgba(235,104,52,.13);color:#c1521f}
+.sector.s-ProcessandOps{background:rgba(27,175,122,.13);color:#12855c}
+.proj .stats{display:flex;gap:16px;margin:13px 0 14px;flex-wrap:wrap}
+.proj .stat .n{font-family:'Sora';font-size:28px;font-weight:700;line-height:1}
+.proj .stat .k{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--slate-light);font-weight:700;margin-top:3px}
+.field{margin-top:9px}
+.field label{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--slate-light);font-weight:700}
+/* Goals are a bullet list. Each bullet is a textarea that grows to fit its own text and
+   never scrolls, so the card gets taller as goals are added instead of hiding them. */
+.goals{list-style:none;margin-top:5px;border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:5px 9px;background:var(--paper)}
+.goals:focus-within{border-color:var(--blue-300);background:#fff}
+.goals li{display:flex;align-items:flex-start;gap:9px;padding:2px 0}
+.goals li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--blue-300);
+  margin-top:9px;flex:none}
+.goals li.empty::before{background:var(--line)}
+.goals textarea{flex:1;border:none;background:transparent;resize:none;overflow:hidden;
+  font-family:'Inter';font-size:14.5px;line-height:1.5;color:var(--ink);padding:1px 0;
+  min-height:0;display:block}
+.goals textarea:focus{outline:none}
+.goals textarea::placeholder{color:var(--slate-light)}
+.gx{opacity:0;border:none;background:transparent;color:var(--slate-light);cursor:pointer;
+  font-size:15px;line-height:1;padding:0 2px;flex:none;transition:opacity .12s}
+.goals li:hover .gx{opacity:1}
+.gx:hover{color:var(--danger)}
+@media print{ .goals{border:none;background:#fff;padding:0} .goals li.empty{display:none} }
+.field label .sub-lbl{text-transform:none;letter-spacing:0;font-weight:500;color:var(--slate-light);margin-left:6px}
+
+/* Project summary runs as three rows: Customer, Operations, Marketing. */
+.sector-row{margin-top:20px;padding-left:14px;border-left:4px solid var(--line)}
+.sector-row:first-child{margin-top:12px}
+.sector-row.r-customer{border-left-color:var(--cat-customer)}
+.sector-row.r-ops{border-left-color:var(--cat-ops)}
+.sector-row.r-marketing{border-left-color:var(--cat-marketing)}
+.row-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.row-head h3{font-size:16px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.r-customer .row-head h3{color:var(--cat-customer)}
+.r-ops .row-head h3{color:#12855c}
+.r-marketing .row-head h3{color:#c1521f}
+.sector-row .projects{margin-top:10px}
+.stat .of-total{font-family:'Inter';font-size:14.5px;font-weight:600;color:var(--slate-light);margin-left:5px}
+.sector-row .row-empty{font-size:14px;color:var(--slate-light);padding:8px 0 2px}
+details.done-list{margin-top:10px}
+details.done-list summary{font-size:13px;color:var(--slate-light);cursor:pointer;font-weight:600}
+details.done-list ul{margin:8px 0 0 2px;list-style:none;font-size:13.5px;line-height:1.45;color:var(--slate)}
+details.done-list li{padding:4px 0;display:flex;gap:9px}
+details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
+
+/* ===================================================== notices */
+.notice{border-radius:var(--r-sm);padding:11px 15px;font-size:14px;margin:14px 0;border:1px solid}
+.notice.warn{background:#FFF8E8;border-color:#F0DCAE;color:#7A5A12}
+.notice.err{background:#FDECEA;border-color:#F3C6C2;color:#9B2C22}
+.notice.info{background:var(--paper-2);border-color:var(--line);color:var(--slate)}
+.empty{text-align:center;padding:46px 20px;color:var(--slate-light);font-size:15.5px}
+
+/* ===================================================== print */
+@media print{
+  @page{size:A4 landscape;margin:11mm}
+  body{background:#fff;padding:0}
+  .topbar{position:static;box-shadow:none}
+  .no-print,.navbtn,select.weeksel{display:none!important}
+  .card{break-inside:avoid;box-shadow:none;border-color:#ccc}
+  .proj{break-inside:avoid}
+  .field textarea{border:none;background:#fff;padding:2px 0;resize:none}
+  .projects{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+{% include '_test_banner.html' %}
+{% set nav_active = "retro" %}{% include '_nav.html' %}
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <img src="{{ url_for('static', filename='ip-logo.svg') }}" alt="Insider Pro">
+      <div class="divider"></div>
+      <div class="title">
+        <span class="t1">Sprint Retro Dashboard</span>
+        <span class="t2">Jira · points completed</span>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="sync-meta" id="syncMeta"></div>
+    <button class="btn btn-primary no-print" id="syncBtn"><span id="syncIcon">⟳</span> Sync from Jira</button>
+    <button class="btn btn-ghost no-print" id="printBtn" title="Print or save as PDF">🖨</button>
+  </div>
+  <div class="syncbar no-print" id="syncBar"><i></i></div>
+</div>
+
+<div class="wrap">
+  <div id="alerts"></div>
+
+  <div class="weekbar">
+    <button class="btn btn-ghost navbtn no-print" id="prevWk" title="Previous week">‹</button>
+    <button class="btn btn-ghost navbtn no-print" id="nextWk" title="Next week">›</button>
+    <h1 id="wkTitle"></h1>
+    <div class="spacer"></div>
+    <select class="weeksel no-print" id="weekSel"></select>
+    <button class="btn btn-ghost no-print" id="latestBtn">Latest sprint</button>
+  </div>
+
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Project summary</h2>
+      <span class="hint" id="notesHint"></span>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Points completed by week</h2>
+      <span class="hint" id="chartHint"></span>
+      <div class="spacer"></div>
+      <div class="legend" id="legend"></div>
+      <select class="weeksel no-print" id="fySel" title="UK financial year, 6 April to 5 April"></select>
+    </div>
+    <div class="chart" id="chart"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Workload by assignee</h2>
+    </div>
+    <div style="overflow-x:auto"><table id="people"></table></div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+const SECTORS = ["Customer", "Marketing", "Process and Ops"];
+const SECTOR_VAR = {
+  "Customer": "var(--cat-customer)",
+  "Marketing": "var(--cat-marketing)",
+  "Process and Ops": "var(--cat-ops)"
+};
+
+let DATA   = null;           // the stored Jira pull, fetched from /api/retro/data at boot
+let NOTES  = { weeks: {} };
+let ONLINE = false;          // is the local server there? decides Sync + where notes go
+let weekIdx = 0;
+/* Categories picked in the legend. Empty means no filter, i.e. show all three. */
+let picked = new Set();
+let saveTimer = null;
+
+const $  = (id) => document.getElementById(id);
+const fmtNum = (n) => Number(n || 0).toLocaleString("en-GB");
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
+  (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+/* "2026-09-22" -> "22/09". Sliced from the string, never via Date (see the BST note below). */
+const ddmm = (iso) => iso.slice(8, 10) + "/" + iso.slice(5, 7);
+
+function fmtDate(iso){
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-GB", { day:"numeric", month:"short" });
+}
+function fmtWhen(iso){
+  if (!iso) return "never";
+  const d = new Date(iso);
+  if (isNaN(d)) return "never";
+  return d.toLocaleDateString("en-GB",{day:"numeric",month:"short"}) + " " +
+         d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+}
+
+/* ===================================================== UK financial year
+   6 April to 5 April. A week belongs to the financial year holding its Wednesday,
+   which is the year owning most of its Monday-Friday working days whichever weekday
+   6 April lands on. The week has to go one side or the other: the payload carries
+   week totals and no per-issue dates, so points cannot be split across the boundary.
+
+   These all work on "YYYY-MM-DD" strings, which sort chronologically, and build new
+   ones from local date parts. Nothing here may use toISOString(), which converts to
+   UTC and so lands a day early through BST - and 6 April is inside BST. */
+
+const FY_MONTH_DAY = "-04-06";
+
+function isoAdd(iso, n){
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  const p = (x) => String(x).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+function isoDiffDays(a, b){
+  return Math.round((Date.parse(a + "T00:00:00Z") - Date.parse(b + "T00:00:00Z")) / 86400000);
+}
+/* The financial year is named by the calendar year it opens in: 2026 means FY 26/27. */
+function fyOfDate(iso){
+  const y = +iso.slice(0, 4);
+  return iso >= y + FY_MONTH_DAY ? y : y - 1;
+}
+function fyOfWeek(w){ return fyOfDate(isoAdd(w.start, 2)); }          // its Wednesday
+function fyLabel(fy){ return "FY " + String(fy).slice(2) + "/" + String(fy + 1).slice(2); }
+
+/* Monday of financial week 1: the Monday of the week containing 6 April, pushed on a
+   week when that week's Wednesday still falls in the outgoing year. */
+function fyWeekOne(fy){
+  const start = fy + FY_MONTH_DAY;
+  const dow = (new Date(start + "T00:00:00").getDay() + 6) % 7;      // 0 = Monday
+  const mon = isoAdd(start, -dow);
+  return isoAdd(mon, 2) >= start ? mon : isoAdd(mon, 7);
+}
+/* Numbered from the year's own week 1, never from the position in the array, so a
+   history too short to reach April still numbers its weeks correctly. */
+function fyWeekNo(w){ return isoDiffDays(w.start, fyWeekOne(fyOfWeek(w))) / 7 + 1; }
+/* The last Monday-Friday week that has finished. What you look at on a Monday. */
+/* Built from local date parts. It used toISOString(), which converts to UTC, so between
+   midnight and 1am in BST a Monday read as Sunday and jumped back two weeks, not one. */
+function lastCompleteMonday(){
+  const t = new Date();
+  const p = (x) => String(x).padStart(2, "0");
+  const today = t.getFullYear() + "-" + p(t.getMonth() + 1) + "-" + p(t.getDate());
+  const dow = (t.getDay() + 6) % 7;                 // 0 = Monday
+  return isoAdd(today, -dow - 7);
+}
+function defaultWeekIndex(){
+  if (!DATA || !DATA.weeks.length) return 0;
+  const target = lastCompleteMonday();
+  let idx = DATA.weeks.findIndex((w) => w.start === target);
+  if (idx >= 0) return idx;
+  for (let i = DATA.weeks.length - 1; i >= 0; i--){       // else newest finished week
+    if (DATA.weeks[i].start <= target) return i;
+  }
+  return DATA.weeks.length - 1;
+}
+
+/* ===================================================== rendering */
+
+function render(){
+  if (!DATA || !DATA.weeks || !DATA.weeks.length){
+    $("tiles").innerHTML = "";
+    $("chart").innerHTML = '<div class="empty">No Jira data yet. Press <b>Sync from Jira</b> to pull it in.</div>';
+    $("people").innerHTML = ""; $("rows").innerHTML = "";
+    renderMeta(); return;
+  }
+  weekIdx = Math.max(0, Math.min(weekIdx, DATA.weeks.length - 1));
+  renderWeekBar(); renderTiles(); renderLegend(); renderChart();
+  renderPeople(); renderProjects();
+  renderMeta();
+}
+
+/* Several sprints run in parallel each week (ISP Sprint NN, Marketing, ODM, Process & Ops).
+   Lead with the numbered ISP one where there is one - that is what people call the sprint. */
+function sprintTitle(w){
+  const names = w.sprint_names || [];
+  if (!names.length) return "Week commencing " + fmtDate(w.start);
+  const main = names.find((n) => /ISP Sprint/i.test(n));
+  return main || names[0];
+}
+function renderWeekBar(){
+  const w = DATA.weeks[weekIdx];
+  $("wkTitle").textContent = sprintTitle(w);
+
+  const sel = $("weekSel");
+  sel.innerHTML = DATA.weeks.map((x, i) =>
+    '<option value="' + i + '"' + (i === weekIdx ? " selected" : "") + ">" +
+    esc(sprintTitle(x)) + "  ·  " + x.done + " pts</option>").reverse().join("");
+  $("prevWk").disabled = weekIdx === 0;
+  $("nextWk").disabled = weekIdx === DATA.weeks.length - 1;
+}
+
+function renderTiles(){
+  const w = DATA.weeks[weekIdx];
+
+  /* Points done per sector, then the week's total. Just the label and the number. */
+  const key = { "Customer":"c-customer", "Marketing":"c-marketing", "Process and Ops":"c-ops" };
+  const tiles = SECTORS.map((s) => ({
+    cls:key[s], lbl:s, val:(w.by_category[s] || {}).done || 0
+  }));
+  tiles.push({ cls:"total", lbl:"Total completed", val:w.done });
+
+  $("tiles").innerHTML = tiles.map((t) =>
+    '<div class="tile ' + t.cls + '"><div class="lbl">' + esc(t.lbl) + '</div>' +
+    '<div class="val">' + t.val + "</div></div>").join("");
+}
+
+/* Click a legend entry to filter the chart to it; click again to drop the filter.
+   Picking a second entry adds it, so you can compare two. */
+function renderLegend(){
+  $("legend").innerHTML = SECTORS.map((s) => {
+    const cls = !picked.size ? "" : (picked.has(s) ? "on" : "off");
+    return '<span class="' + cls + '" data-cat="' + esc(s) + '" title="' +
+      (picked.has(s) ? "Stop showing only " + esc(s) : "Show only " + esc(s)) + '">' +
+      '<i style="background:' + SECTOR_VAR[s] + '"></i>' + esc(s) + "</span>";
+  }).join("");
+
+  $("legend").querySelectorAll("span").forEach((el) => {
+    el.onclick = () => {
+      const cat = el.dataset.cat;
+      if (picked.has(cat)) picked.delete(cat); else picked.add(cat);
+      if (picked.size === SECTORS.length) picked.clear();   // all three picked = no filter
+      renderLegend(); renderChart();
+    };
+  });
+}
+
+/* The chart shows one UK financial year at a time. The year is taken from the week you
+   are looking at rather than held as its own state, so the selected bar is always inside
+   the chart however you got there. */
+function renderChart(){
+  const fy = fyOfWeek(DATA.weeks[weekIdx]);
+  const weeks = DATA.weeks.filter((w) => fyOfWeek(w) === fy);
+  const shown = SECTORS.filter((s) => !picked.size || picked.has(s));
+  const totalOf = (w) => shown.reduce((n, s) => n + ((w.by_category[s] || {}).done || 0), 0);
+  const max = Math.max(1, ...weeks.map(totalOf));
+  const H = 210;
+  const dense = weeks.length > 26;
+
+  renderFySel(fy);
+
+  /* The Jira pull only reaches back HISTORY_DAYS, so a financial year is usually part
+     shown. Say where it really starts rather than letting it read as a whole year. */
+  const firstShown = weeks.length ? fyWeekNo(weeks[0]) : 1;
+  const short = firstShown > 1 ? "  ·  history starts " + weeks[0].label : "";
+  $("chartHint").textContent = fyLabel(fy) +
+    (picked.size ? "  ·  showing " + shown.join(" + ") + " only" : "") + short;
+
+  $("chart").className = "chart" + (dense ? " dense" : "");
+  $("chart").innerHTML = weeks.map((w) => {
+    const total = totalOf(w);
+    const wkNo = fyWeekNo(w);
+    const segs = shown.map((s) => {
+      const v = (w.by_category[s] || {}).done || 0;
+      if (!v) return "";
+      return '<div class="hist-seg" style="height:' + ((v / max) * H).toFixed(1) + "px;background:" +
+        SECTOR_VAR[s] + '" title="' + esc(s) + ": " + v + " pts · " + esc(w.label) + '"></div>';
+    }).join("");
+    const idx = DATA.weeks.indexOf(w);
+    /* Packed in tight the 10px labels collide, so show every other one. Anchored to the
+       financial week number, not the array, so they do not shuffle as history grows. */
+    const skip = dense && wkNo % 2 === 0 ? " skip" : "";
+    const xlabel = ddmm(w.start);                  // week commencing, dd/mm
+    return '<div class="hist-col' + (idx === weekIdx ? " sel" : "") + '" data-i="' + idx + '" ' +
+      'title="' + esc(sprintTitle(w)) + " · " + total + ' pts">' +
+      '<div class="hist-total">' + (total || "") + "</div>" +
+      '<div class="hist-stack"><div class="hist-fill">' + (segs || '<div class="hist-zero"></div>') +
+        "</div></div>" +
+      '<div class="hist-xlabel' + skip + '">' + xlabel + "</div></div>";
+  }).join("");
+
+  $("chart").querySelectorAll(".hist-col").forEach((el) => {
+    el.onclick = () => { weekIdx = +el.dataset.i; render(); };
+  });
+}
+
+/* Financial years present in the data, newest first, like the week picker above it. */
+function renderFySel(fy){
+  const years = [...new Set(DATA.weeks.map(fyOfWeek))].sort((a, b) => b - a);
+  $("fySel").innerHTML = years.map((y) =>
+    '<option value="' + y + '"' + (y === fy ? " selected" : "") + ">" +
+    esc(fyLabel(y)) + "</option>").join("");
+}
+
+function renderPeople(){
+  const w = DATA.weeks[weekIdx];
+  const people = w.people.filter((p) => p.done > 0 || p.committed > 0);
+  if (!people.length){ $("people").innerHTML = '<tbody><tr><td class="l muted">Nobody logged work this week.</td></tr></tbody>'; return; }
+
+  const head = "<thead><tr><th class='l'>Person</th>" +
+    SECTORS.map((s) => "<th>" + esc(s) + "</th>").join("") +
+    "<th>Completed</th><th class='l'>Split</th></tr></thead>";
+
+  const rows = people.map((p) => {
+    const cells = SECTORS.map((s) => {
+      const c = p.by_category[s] || { done:0, committed:0 };
+      if (!c.done && !c.committed) return '<td class="muted">·</td>';
+      const carried = c.done > c.committed;
+      return '<td' + (carried ? ' title="Finished more than this sprint held - carried-over work"' : "") +
+        ">" + (c.done || 0) + '<span class="of">' + (c.committed || 0) + " in sprint</span></td>";
+    }).join("");
+
+    const split = SECTORS.map((s) => {
+      const v = (p.by_category[s] || {}).done || 0;
+      return v ? '<i style="width:' + (v / Math.max(1, p.done)) * 100 + "%;background:" + SECTOR_VAR[s] + '"></i>' : "";
+    }).join("");
+
+    return "<tr><td class='l person'>" + esc(p.name) + "</td>" + cells +
+      '<td class="big">' + p.done + "</td>" +
+      '<td class="l"><div class="mini">' + split + "</div></td></tr>";
+  }).join("");
+
+  /* The total row is points completed only. Its "in sprint" figures were removed on request. */
+  const totCells = SECTORS.map((s) => "<td>" + ((w.by_category[s] || {}).done || 0) + "</td>").join("");
+  const tot = "<tr class='tot'><td class='l'>Total</td>" + totCells +
+    "<td>" + w.done + "</td><td></td></tr>";
+
+  $("people").innerHTML = head + "<tbody>" + rows + tot + "</tbody>";
+}
+
+/* The project summary is three rows. Operations and Marketing are one Jira project each,
+   so a card per project would leave each row a single card: they split by epic instead. */
+const ROWS = [
+  { sector:"Customer",        cls:"r-customer",  title:"Customer",   by:"project" },
+  { sector:"Process and Ops", cls:"r-ops",       title:"Operations", by:"epic" },
+  { sector:"Marketing",       cls:"r-marketing", title:"Marketing",  by:"epic" }
+];
+
+function renderProjects(){
+  const w = DATA.weeks[weekIdx];
+  const wk = weekEntry(w.start);
+  const note = (code) => (wk.projects || {})[code] || {};
+  const active = (x) => x.done > 0 || x.committed > 0;
+
+  const stat = (n) => '<div class="stat"><div class="n">' + n + "</div></div>";
+
+  /* One card. A customer card is a project; an Operations or Marketing card is one epic.
+     Both show the points completed this week, as a bare number, of the epic total. Completed means resolved inside this Monday-Friday week, so work finished
+     earlier and still sitting in this sprint is never counted again. */
+  const card = (it) => {
+    const p = it.src;
+    const sc = "s-" + it.sector.replace(/\s+/g, "");
+    const items = (p.done_items || []).map((i) =>
+      "<li><span class='k'>" + esc(i.key) + "</span><span>" + esc(i.summary) +
+      " <span class='muted'>(" + i.points + " pts, " + esc(i.assignee) + ")</span></span></li>").join("");
+
+    /* Points completed this week, then in small text the epic's total: "13 of 100". A
+       customer card's total covers every epic its work that week sat under. */
+    const total = it.kind === "customer" ? p.epic_total : p.total;
+    const stats = stat(p.done + (total ? '<span class="of-total">of ' + fmtNum(total) + "</span>" : ""));
+
+    return '<div class="proj" data-code="' + esc(it.code) + '">' +
+      '<h3><span class="name sector ' + sc + '">' + esc(it.name) + "</span></h3>" +
+      '<div class="stats">' + stats + "</div>" +
+      '<div class="proj-body"><div class="field"><label>Next sprint</label>' +
+        '<ul class="goals" data-goals="1"></ul></div>' +
+      (items ? '<details class="done-list"><summary>' + p.issues_done +
+        (p.issues_done === 1 ? " item" : " items") + " completed</summary><ul>" + items + "</ul></details>" : "") +
+      "</div></div>";
+  };
+
+
+  $("rows").innerHTML = ROWS.map((row) => {
+    const projs = w.projects.filter((p) => p.sector === row.sector && active(p));
+    let items = [];
+    if (row.by === "project"){
+      items = projs.map((p) => ({ kind:"customer", code:p.code, name:p.name, src:p,
+                                  sector:p.sector }));
+      items.sort((a, b) => (b.src.done - a.src.done) ||
+        (b.src.committed - a.src.committed) || a.name.localeCompare(b.name));
+    } else {
+      projs.forEach((p) => (p.epics || []).filter(active).forEach((e) => items.push({
+        kind:"epic", code:e.key, name:e.epic ? e.name : "Not under an epic", src:e,
+        sector:p.sector
+      })));
+      items.sort((a, b) => (b.src.done - a.src.done) ||
+        (b.src.committed - a.src.committed) || a.name.localeCompare(b.name));
+    }
+
+    /* Every card in the row shows. Nothing is pinned and nothing folds away. */
+    const body = items.length
+      ? '<div class="projects">' + items.map(card).join("") + "</div>"
+      : '<div class="row-empty">No activity this sprint.</div>';
+
+    return '<div class="sector-row ' + row.cls + '"><div class="row-head"><h3>' + esc(row.title) +
+      "</h3></div>" + body + "</div>";
+  }).join("");
+
+  $("rows").querySelectorAll(".proj").forEach((card) => {
+    const code = card.dataset.code;
+    /* Click a card to highlight it, one at a time. Clicking it again clears it, except
+       when the click is in its goals or item list, so typing never switches it off. */
+    card.addEventListener("click", (e) => {
+      const onControl = e.target.closest("textarea, button, summary, details.done-list ul");
+      if (card.classList.contains("sel")){ if (!onControl) card.classList.remove("sel"); return; }
+      $("rows").querySelectorAll(".proj.sel").forEach((c) => c.classList.remove("sel"));
+      card.classList.add("sel");
+    });
+    buildGoalList(card.querySelector("[data-goals]"), asGoals(note(code).next),
+      "For next sprint", (goals) => {
+        const cur = noteFor(code);
+        cur.next = goals;
+        delete cur.carried;      // flag from older notes; nothing reads it any more
+        queueSave();
+      });
+  });
+}
+
+/* The notes for a week. A week with nothing saved yet starts as a copy of the last week
+   that does have something, so you edit rather than retype every Monday.
+
+   That copy is held in memory and never written until somebody actually edits it. */
+function weekEntry(weekStart){
+  if (NOTES.weeks[weekStart]) return NOTES.weeks[weekStart];
+
+  const prior = Object.keys(NOTES.weeks).filter((k) => k < weekStart).sort().pop();
+  const seeded = { projects:{} };
+  if (prior){
+    const src = NOTES.weeks[prior] || {};
+    Object.keys(src.projects || {}).forEach((code) => {
+      const goals = asGoals((src.projects[code] || {}).next);
+      if (goals.length) seeded.projects[code] = { next: goals };
+    });
+  }
+  NOTES.weeks[weekStart] = seeded;
+  return seeded;
+}
+
+/* ===================================================== goal bullet lists */
+
+/* Goals are stored as an array of strings. Older notes held one newline-separated string,
+   so accept both. */
+function asGoals(v){
+  if (Array.isArray(v)) return v.filter((x) => String(x).trim());
+  return String(v || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+}
+
+function growTextarea(t){
+  t.style.height = "auto";
+  t.style.height = Math.max(18, t.scrollHeight) + "px";
+}
+
+/* Fills `ul` with one editable bullet per goal, plus a blank one to type into.
+   Enter starts a new bullet, Backspace on an empty one removes it, and every bullet
+   grows to fit. onChange gets the non-empty goals back. */
+function buildGoalList(ul, goals, placeholder, onChange){
+  ul.innerHTML = "";
+
+  const commit = () => onChange([...ul.querySelectorAll("textarea")]
+    .map((t) => t.value.trim()).filter(Boolean));
+
+  const ensureBlank = () => {
+    const last = ul.lastElementChild;
+    if (!last || last.querySelector("textarea").value.trim()) addRow("", false);
+  };
+
+  function addRow(text, focus){
+    const li = document.createElement("li");
+    li.innerHTML = '<textarea rows="1"></textarea>' +
+                   '<button class="gx no-print" title="Remove" tabindex="-1">&times;</button>';
+    const ta = li.querySelector("textarea");
+    ta.value = text || "";
+    ta.placeholder = placeholder;
+    li.classList.toggle("empty", !ta.value.trim());
+
+    ta.addEventListener("input", () => {
+      growTextarea(ta);
+      li.classList.toggle("empty", !ta.value.trim());
+      ensureBlank();
+      commit();
+    });
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter"){
+        e.preventDefault();
+        const next = li.nextElementSibling;
+        if (next && !next.querySelector("textarea").value.trim()){
+          next.querySelector("textarea").focus();
+        } else {
+          const row = addRow("", true);
+          ul.insertBefore(row, li.nextSibling);
+          row.querySelector("textarea").focus();
+        }
+      } else if (e.key === "Backspace" && !ta.value && ul.children.length > 1){
+        e.preventDefault();
+        const prev = li.previousElementSibling;
+        li.remove();
+        if (prev){
+          const pt = prev.querySelector("textarea");
+          pt.focus(); pt.setSelectionRange(pt.value.length, pt.value.length);
+        }
+        ensureBlank(); commit();
+      }
+    });
+    li.querySelector(".gx").onclick = () => { li.remove(); ensureBlank(); commit(); };
+
+    ul.appendChild(li);
+    growTextarea(ta);
+    if (focus) ta.focus();
+    return li;
+  }
+
+  goals.forEach((g) => addRow(g, false));
+  addRow("", false);                               // always one blank to type into
+  requestAnimationFrame(() => ul.querySelectorAll("textarea").forEach(growTextarea));
+}
+
+function noteFor(code){
+  const wk = weekEntry(DATA.weeks[weekIdx].start);
+  wk.projects = wk.projects || {};
+  return wk.projects[code] || (wk.projects[code] = {});
+}
+
+function renderMeta(){
+  const when = DATA ? fmtWhen(DATA.generated_at) : "never";
+  $("syncMeta").innerHTML = "<b>Synced " + esc(when) + "</b>" +
+    (ONLINE ? "live from Jira" : "cannot reach Abacus");
+  $("syncBtn").disabled = !ONLINE;
+  $("syncBtn").title = ONLINE ? "Pull the latest from Jira" : "Abacus is not responding - reload the page";
+}
+
+function flash(msg, kind){
+  const el = document.createElement("div");
+  el.className = "notice " + (kind || "info");
+  el.innerHTML = msg;
+  $("alerts").prepend(el);
+  if (kind !== "err") setTimeout(() => el.remove(), 6000);
+}
+
+/* ===================================================== notes: server first, browser as backup */
+
+function queueSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNotes, 700);
+}
+
+async function saveNotes(){
+  const key = DATA.weeks[weekIdx].start;
+  try{ localStorage.setItem("retroNotes", JSON.stringify(NOTES)); }catch(e){}
+  if (!ONLINE) return;
+  try{
+    const r = await fetch("/api/retro/notes", {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ week:key, entry:NOTES.weeks[key] })
+    });
+    if (signedOut(r)) return;
+    const j = await r.json();
+    if (j.error) flash("Could not save notes: " + esc(j.error), "err");
+    else $("notesHint").textContent = "Saved " + fmtWhen(j.saved_at) + ".";
+  }catch(e){
+    flash("Could not save notes to Abacus, so kept a copy in this browser.", "err");
+  }
+}
+
+async function loadNotes(){
+  if (ONLINE){
+    try{
+      const r = await fetch("/api/retro/notes");
+      if (signedOut(r)) return;
+      const j = await r.json();
+      NOTES = (j && j.weeks) ? j : { weeks:{} };
+      return;
+    }catch(e){ /* fall through to the browser copy */ }
+  }
+  try{
+    const raw = localStorage.getItem("retroNotes");
+    NOTES = raw ? JSON.parse(raw) : { weeks:{} };
+  }catch(e){ NOTES = { weeks:{} }; }
+  NOTES.weeks = NOTES.weeks || {};
+}
+
+/* ===================================================== sync */
+
+/* An expired Abacus login answers the API with 401. Send the person to sign in again
+   rather than showing an empty dashboard. */
+function signedOut(r){
+  if (r.status === 401){ window.location.href = "/login"; return true; }
+  return false;
+}
+
+async function fetchData(){
+  const r = await fetch("/api/retro/data", { cache:"no-store" });
+  if (signedOut(r)) return null;
+  const j = await r.json();
+  return (j && Array.isArray(j.weeks)) ? j : null;
+}
+
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+/* The pull runs in the background on the server (it takes ~30s, which is longer than a
+   web request may safely wait), so start it, then poll until the stored pull changes.
+   Watching the data's own timestamp as well as the status means it still finishes
+   correctly if the server runs more than one worker and the status call lands on another. */
+async function sync(){
+  const btn = $("syncBtn"), icon = $("syncIcon");
+  btn.disabled = true; icon.className = "spinning";
+  $("syncBar").classList.add("on");
+  try{
+    const before = DATA ? DATA.generated_at : null;
+    const r = await fetch("/api/retro/sync", { method:"POST" });
+    if (signedOut(r)) return;
+    const started = (await r.json()).started_at;
+
+    let fresh = null, err = null;
+    for (let i = 0; i < 90 && !fresh && !err; i++){          // give up after 3 minutes
+      await sleep(2000);
+      const s = await (await fetch("/api/retro/sync", { cache:"no-store" })).json();
+      if (s.started_at === started && !s.running){
+        if (s.error) err = s.error;
+        else fresh = await fetchData();
+      } else if (s.started_at !== started){
+        const d = await fetchData();
+        if (d && d.generated_at !== before) fresh = d;
+      }
+    }
+    if (err){ flash("Jira sync failed: " + esc(err), "err"); return; }
+    if (!fresh){ flash("The Jira sync is taking longer than usual. Reload the page in a minute to see it.", "err"); return; }
+
+    const keepWeek = DATA && DATA.weeks.length ? DATA.weeks[weekIdx].start : null;
+    DATA = fresh;
+    const found = keepWeek ? DATA.weeks.findIndex((w) => w.start === keepWeek) : -1;
+    weekIdx = found >= 0 ? found : defaultWeekIndex();
+    render();
+    flash("Pulled " + DATA.counts.completed_issues + " resolved items from Jira in " +
+          DATA.elapsed_seconds + "s.", "info");
+  }catch(e){
+    flash("Could not reach Abacus. Check your connection and try again.", "err");
+  }finally{
+    btn.disabled = !ONLINE; icon.className = "";
+    $("syncBar").classList.remove("on");     // clears on the error path too
+  }
+}
+
+/* ===================================================== boot */
+
+async function boot(){
+  try{
+    DATA = await fetchData();
+    ONLINE = true;
+  }catch(e){ ONLINE = false; }
+
+  await loadNotes();
+  weekIdx = defaultWeekIndex();
+  render();
+
+  $("syncBtn").onclick = sync;
+  $("printBtn").onclick = () => window.print();
+  $("prevWk").onclick = () => { if (weekIdx > 0){ weekIdx--; render(); } };
+  $("nextWk").onclick = () => { if (weekIdx < DATA.weeks.length - 1){ weekIdx++; render(); } };
+  $("weekSel").onchange = (e) => { weekIdx = +e.target.value; render(); };
+  $("latestBtn").onclick = () => { weekIdx = defaultWeekIndex(); render(); };
+  /* Jump to the last week of the chosen financial year. Same move as clicking a bar,
+     which is what keeps the rest of the page in step with the chart. */
+  $("fySel").onchange = (e) => {
+    const fy = +e.target.value;
+    let idx = -1;
+    DATA.weeks.forEach((w, i) => { if (fyOfWeek(w) === fy) idx = i; });
+    if (idx >= 0){ weekIdx = idx; render(); }
+  };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+    if (e.key === "ArrowLeft"  && weekIdx > 0){ weekIdx--; render(); }
+    if (e.key === "ArrowRight" && weekIdx < DATA.weeks.length - 1){ weekIdx++; render(); }
+  });
+}
+
+boot();
+</script>
+</body>
+</html>

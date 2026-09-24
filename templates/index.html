@@ -8,6 +8,7 @@
 </head>
 <body>
   {% include '_test_banner.html' %}
+  {% set nav_active = "abacus" %}{% include '_nav.html' %}
   <main>
     <header class="pagehead">
       <span id="sync" class="sync"></span>
@@ -25,8 +26,7 @@
       <div class="controls-right">
         <div class="control-actions">
           <button class="linkbtn sync-all-jira" id="sync-all-jira" title="Review and apply Jira status changes across all pushed work packages">⟳ Sync all pushed items from Jira</button>
-          <button class="linkbtn" id="view-history" title="Jira points dashboard - last 12 weeks">📊 Jira Points Dashboard</button>
-          <a class="linkbtn" href="/admin/settings" title="Settings: edit the 12 steps, customer logins, refresh, sign out">⚙ Settings</a>
+          <button class="linkbtn" id="view-history" title="Jira points dashboard - last 12 weeks">📊 Jira Points Dashboard</button>          <a class="linkbtn" href="/admin/settings" title="Settings: edit the 12 steps, customer logins, refresh, sign out">⚙ Settings</a>
         </div>
         <div class="legend">
           <span><i class="sw done"></i>Complete</span>

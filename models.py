@@ -203,6 +203,25 @@ class StaffUser(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class RetroSnapshot(Base):
+    """The Sprint Retro page's last Jira pull (retro_pull.build()), stored as JSON. Kept in
+    the database because Render's disk is wiped on every restart. Only the newest row is
+    read; older rows are deleted when a new one is saved."""
+    __tablename__ = "retro_snapshot"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    generated_at = Column(DateTime, default=datetime.utcnow)
+    payload = Column(Text, nullable=False)
+
+
+class RetroNote(Base):
+    """The Sprint Retro page's typed notes for one retro week ("Next sprint" goals per
+    card), keyed by the week's Monday. entry is the page's own JSON for that week."""
+    __tablename__ = "retro_note"
+    week_start = Column(String(10), primary_key=True)  # ISO Monday "YYYY-MM-DD"
+    entry = Column(Text, nullable=False, default="{}")
+    saved_at = Column(DateTime, default=datetime.utcnow)
+
+
 def _ensure_columns():
     """Lightweight migration: add columns that were introduced after the table
     was first created (so an existing SQLite/Postgres DB gains them without a wipe)."""

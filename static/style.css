@@ -630,13 +630,20 @@ textarea.text-input { resize: vertical; min-height: 44px; line-height: 1.4; }
 /* modal header actions (Sync button next to the close ✕) */
 .head-actions { display: inline-flex; align-items: center; gap: 12px; }
 
-/* stacked bar chart: one bar per week, 3 category segments stacked from the baseline */
-.hist-plot { display: flex; align-items: flex-end; gap: 6px; overflow-x: auto; padding-bottom: 2px; border-bottom: 1px solid var(--line); }
-.hist-col { display: flex; flex-direction: column; align-items: center; min-width: 30px; flex: 1 0 auto; }
-.hist-stack { width: 24px; display: flex; flex-direction: column-reverse; justify-content: flex-start; gap: 2px; border-radius: 4px 4px 0 0; overflow: hidden; }
+/* stacked bar chart: one bar per week, 3 category segments stacked from the
+   baseline. The bars sit flush - the columns share the plot width 2px apart (up
+   to a sane bar width, then the row centres) and the segments inside a bar
+   touch, so a week reads as one solid stack. */
+.hist-plot { display: flex; align-items: flex-end; gap: 2px; overflow-x: auto; padding: 0 10px 2px; border-bottom: 1px solid var(--line);
+  justify-content: center; justify-content: safe center; }   /* safe: falls back to flex-start when the row has to scroll */
+.hist-col { display: flex; flex-direction: column; align-items: center; min-width: 12px; max-width: 46px; flex: 1 1 0; }
+.hist-stack { width: 100%; display: flex; flex-direction: column-reverse; justify-content: flex-start; border-radius: 3px 3px 0 0; overflow: hidden; }
 .hist-seg { width: 100%; }
 .hist-seg:hover { filter: brightness(1.08); }
+.hist-seg.is-zero { height: 2px; background: #c9ced6; }
 .hist-xlabel { font-size: 9.5px; color: var(--muted); margin-top: 5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* thinned x labels keep their slot so every bar keeps the same baseline */
+.hist-xlabel.is-hidden { visibility: hidden; }
 
 /* KPI tiles */
 .kpi-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; }

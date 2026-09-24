@@ -14,9 +14,11 @@ Prod:   gunicorn app:app         (Render sets DATABASE_URL, SECRET_KEY, APP_PASS
 """
 
 import hmac
+import json
 import os
 import re
 import secrets
+import threading
 from datetime import datetime
 
 from flask import (
@@ -50,11 +52,12 @@ _load_local_env()
 from models import (
     init_db, SessionLocal,
     Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask, Customer, StaffUser,
-    Sprint, SprintHistory, WpJiraLink,
+    Sprint, SprintHistory, WpJiraLink, RetroSnapshot, RetroNote,
 )
 import jira_client
 import jamie_client
 import jira_sync
+import retro_pull
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
@@ -1893,6 +1896,100 @@ def api_update_guidance():
     if changed:
         _mark_saved()
     return jsonify({"ok": True, "changed": changed, "pending": 0})
+
+
+# --------------------------------------------------------------------------- #
+# Sprint Retro page (/sprint-retro). The Monday retro dashboard, originally a local app
+# (Process - Sprint Retro Dashboard\03 Live). Staff-only via _require_login like every
+# page. The Jira pull and the typed notes live in the database, because Render's disk
+# does not survive a restart.
+# --------------------------------------------------------------------------- #
+_RETRO_SYNC = {"running": False, "error": None, "finished_at": None, "started_at": None}
+_RETRO_LOCK = threading.Lock()
+
+
+@app.route("/sprint-retro")
+def sprint_retro():
+    return render_template("sprint_retro.html")
+
+
+@app.route("/api/retro/data")
+def api_retro_data():
+    """The newest stored Jira pull, or {} before the first sync."""
+    with SessionLocal() as s:
+        row = s.query(RetroSnapshot).order_by(RetroSnapshot.id.desc()).first()
+    if not row:
+        return jsonify({})
+    return app.response_class(row.payload, mimetype="application/json")
+
+
+def _retro_sync_worker():
+    """Runs off the request thread: a pull takes ~30s, which is gunicorn's default worker
+    timeout, so doing it inside the request would risk the worker being killed mid-sync."""
+    try:
+        payload = retro_pull.build()
+        body = json.dumps(payload)
+        with SessionLocal.begin() as s:
+            s.add(RetroSnapshot(payload=body))
+            s.flush()
+            newest = s.query(RetroSnapshot.id).order_by(RetroSnapshot.id.desc()).first()[0]
+            s.query(RetroSnapshot).filter(RetroSnapshot.id != newest).delete(synchronize_session=False)
+        _RETRO_SYNC["error"] = None
+    except retro_pull.JiraError as e:
+        _RETRO_SYNC["error"] = str(e)                  # Jira's own words, e.g. 401 check the token
+    except Exception as e:                             # noqa: BLE001 - surface anything
+        _RETRO_SYNC["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        _RETRO_SYNC["running"] = False
+        _RETRO_SYNC["finished_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+@app.route("/api/retro/sync", methods=["GET", "POST"])
+def api_retro_sync():
+    """POST starts a pull in the background (one at a time); GET reports its progress."""
+    if request.method == "POST":
+        with _RETRO_LOCK:
+            if not _RETRO_SYNC["running"]:
+                _RETRO_SYNC.update(running=True, error=None,
+                                   started_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+                threading.Thread(target=_retro_sync_worker, daemon=True).start()
+    return jsonify(dict(_RETRO_SYNC))
+
+
+@app.route("/api/retro/notes", methods=["GET"])
+def api_retro_notes_get():
+    """Every week's notes, in the shape the local dashboard's notes file uses."""
+    with SessionLocal() as s:
+        rows = s.query(RetroNote).all()
+    weeks, newest = {}, None
+    for r in rows:
+        try:
+            weeks[r.week_start] = json.loads(r.entry or "{}")
+        except ValueError:
+            continue
+        if r.saved_at and (newest is None or r.saved_at > newest):
+            newest = r.saved_at
+    return jsonify({"weeks": weeks, "saved_at": newest.isoformat(timespec="seconds") if newest else None})
+
+
+@app.route("/api/retro/notes", methods=["POST"])
+def api_retro_notes_save():
+    """Save one week's notes: {week: "YYYY-MM-DD", entry: {...}}."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "Expected a JSON object."}), 400
+    week = str(body.get("week") or "")
+    entry = body.get("entry")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", week) or not isinstance(entry, dict):
+        return jsonify({"error": "Nothing to save."}), 400
+    now = datetime.utcnow()
+    with SessionLocal.begin() as s:
+        row = s.get(RetroNote, week)
+        if row:
+            row.entry, row.saved_at = json.dumps(entry, ensure_ascii=False), now
+        else:
+            s.add(RetroNote(week_start=week, entry=json.dumps(entry, ensure_ascii=False), saved_at=now))
+    return jsonify({"ok": True, "saved_at": now.isoformat(timespec="seconds") + "Z"})
 
 
 # --------------------------------------------------------------------------- #

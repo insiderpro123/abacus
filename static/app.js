@@ -2258,6 +2258,21 @@ function openHistory() {
   loadData();
 }
 
+// The bars fill the plot width, so with many weeks the "nn/52" labels are wider
+// than their column. Re-hide them off the measured column width (the markup ships
+// with a count-based guess, which stands if the plot has not been laid out yet).
+function thinXLabels(plot) {
+  if (!plot) return;
+  const colsEls = [...plot.children];
+  const pitch = colsEls.length ? colsEls[0].getBoundingClientRect().width + 2 : 0;
+  if (pitch <= 0) return;                       // not laid out - keep the guess
+  const step = Math.max(1, Math.ceil(30 / pitch));
+  colsEls.forEach((c, i) => {
+    const lab = c.querySelector(".hist-xlabel");
+    if (lab) lab.classList.toggle("is-hidden", (colsEls.length - 1 - i) % step !== 0);
+  });
+}
+
 function kpiTile(label, val, sub) {
   return `<div class="kpi-tile"><div class="kpi-label">${esc(label)}</div>
     <div class="kpi-val">${esc(val)}</div><div class="kpi-sub">${esc(sub)}</div></div>`;
@@ -2300,22 +2315,30 @@ function renderHistory(body, data) {
   // ---- stacked bar chart: one bar per week, the 3 categories stacked ----
   const CHART_H = 200;
   const maxTotal = Math.max(1, ...shown.map(total));
-  const cols = shown.map((w) => {
+  // the bars fill the plot width, so once there are many weeks the x labels no
+  // longer fit side by side - show every nth, always keeping the newest week
+  const labelStep = Math.max(1, Math.ceil(shown.length / 20));
+  const cols = shown.map((w, i) => {
     const segs = cats.map((c) => {
       const v = done(w, c);
       if (v <= 0) return "";
       return `<div class="hist-seg" style="height:${(v / maxTotal * CHART_H).toFixed(1)}px;background:${CAT_VAR[c]}"
         title="${esc(c)}: ${v} pts · week ${isoWeek(w.start)}"></div>`;
     }).join("");
+    // a week with nothing completed keeps a baseline tick, so it reads as a zero
+    // rather than as a hole now that the bars sit flush
+    const stack = segs || `<div class="hist-seg is-zero"></div>`;
     return `<div class="hist-col" title="Week ${isoWeek(w.start)} (${esc(w.label)}) · ${total(w)} pts total">
-      <div class="hist-stack" style="height:${CHART_H}px">${segs}</div>
-      <div class="hist-xlabel">${isoWeek(w.start)}/52</div>
+      <div class="hist-stack" style="height:${CHART_H}px">${stack}</div>
+      <div class="hist-xlabel${(shown.length - 1 - i) % labelStep ? " is-hidden" : ""}">${isoWeek(w.start)}/52</div>
     </div>`;
   }).join("");
-  body.appendChild(el("div", "hist-chart",
+  const chart = el("div", "hist-chart",
     `<div class="hist-ymax">Points completed per week · peak ${maxTotal}</div>
      <div class="hist-plot">${cols}</div>
-     <div class="hist-xaxis-title">week of year</div>`));
+     <div class="hist-xaxis-title">week of year</div>`);
+  body.appendChild(chart);
+  thinXLabels(chart.querySelector(".hist-plot"));
 
   // ---- table (newest first, per category) ----
   const trs = [];
