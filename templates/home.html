@@ -44,8 +44,9 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
         transition:box-shadow .15s,border-color .15s,transform .15s}
 .choice::before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:var(--grad-brand)}
 .choice:hover,.choice:focus-visible{box-shadow:var(--shadow-md);border-color:var(--blue-300);transform:translateY(-2px);outline:none}
-.icon{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:28px;
-      background:#EEF4FB}
+/* Icon tile: the same icon as the nav strip, on the strip's navy (was an emoji on pale blue). */
+.icon{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;color:#fff;
+      background:var(--ink);box-shadow:0 6px 16px rgba(11,42,74,.22)}
 .choice h2{font-size:22px;font-weight:700}
 .choice p{font-size:15px;line-height:1.5;color:var(--slate)}
 .go{margin-top:auto;font-weight:600;font-size:15px;color:var(--blue)}
@@ -65,6 +66,7 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 <body>
 {% include '_test_banner.html' %}
 {% set nav_active = "home" %}{% include '_nav.html' %}
+{% from '_icons.html' import icon %}
 
 <div class="topbar">
   <div class="topbar-inner">
@@ -84,19 +86,19 @@ h1,h2{font-family:'Sora','Inter',sans-serif}
 
   <div class="choices">
     <a class="choice" href="{{ url_for('index') }}">
-      <span class="icon" aria-hidden="true">▦</span>
+      <span class="icon">{{ icon('abacus', 28) }}</span>
       <h2>Abacus</h2>
       <p>Work-package progress across the 12-step delivery framework, with Jira points and sync.</p>
       <span class="go">Open Abacus →</span>
     </a>
     <a class="choice" href="{{ url_for('sprint_retro') }}">
-      <span class="icon" aria-hidden="true">🏁</span>
+      <span class="icon">{{ icon('retro', 28) }}</span>
       <h2>Sprint Retro</h2>
       <p>Points completed each sprint, by project and sector, for the Monday retro.</p>
       <span class="go">Open Sprint Retro →</span>
     </a>
     <a class="choice" href="{{ url_for('meeting_notes') }}">
-      <span class="icon" aria-hidden="true">📝</span>
+      <span class="icon">{{ icon('notes', 28) }}</span>
       <h2>Meeting Notes</h2>
       <p>Every project's Jamie meeting notes in one place: overviews and key action items.</p>
       <span class="go">Open Meeting Notes →</span>
