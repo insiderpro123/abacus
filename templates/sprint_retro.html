@@ -478,8 +478,8 @@ function renderTiles(){
 
   /* Points done per sector, then the week's total, each against the points scheduled into
      the sprint: the same pair as the project cards ("14 of 16"). The bar fills to the
-     share completed and the rest is grey. Done can beat scheduled (work pulled in mid-sprint
-     or carried over), which caps at a full bar and 100%. */
+     share completed and the rest is grey. Done is always part of scheduled now (the Jira
+     sprint basis), but the cap at a full bar and 100% stays as a guard. */
   const key = { "Customer":"c-customer", "Marketing":"c-marketing", "Process and Ops":"c-ops" };
   const pctOf = (done, sched) => sched ? Math.min(100, Math.round(done / sched * 100)) : (done ? 100 : 0);
   const cat = (s) => w.by_category[s] || {};
@@ -640,9 +640,9 @@ function renderProjects(){
   const stat = (n) => '<div class="stat"><div class="n">' + n + "</div></div>";
 
   /* One card. A customer card is a project; an Operations or Marketing card is one epic.
-     Both show the points completed this week of the points scheduled in the sprint.
-     Completed means resolved inside this Monday-Friday week, so work finished earlier
-     and still sitting in this sprint is never counted again. */
+     Both show the points completed in this week's sprint of the points in it, the same
+     numbers as Jira's sprint view: in the sprint when it ended, and Done by the time it
+     was completed (see retro_pull.py). */
   const card = (it) => {
     const p = it.src;
     const sc = "s-" + it.sector.replace(/\s+/g, "");
@@ -650,12 +650,10 @@ function renderProjects(){
       "<li><span class='k'>" + esc(i.key) + "</span><span>" + esc(i.summary) +
       " <span class='muted'>(" + i.points + " pts, " + esc(i.assignee) + ")</span></span></li>").join("");
 
-    /* Points completed this week, then in small text the points that were scheduled into
-       this week's sprint: "14 of 16". Completed can beat scheduled (work pulled in
-       mid-sprint, or carried in from an earlier one), so it is shown as it is, never
-       capped. Nothing scheduled reads "-" rather than "of 0". */
+    /* Points completed in the sprint, then in small text the points that were in this
+       week's sprint: "14 of 16". Nothing scheduled reads "-" rather than "of 0". */
     const sched = p.committed || 0;
-    const tip = p.done + " pts completed this week, " + (sched ? sched + " pts scheduled in the sprint" : "none scheduled in the sprint");
+    const tip = p.done + " pts completed in the sprint, " + (sched ? sched + " pts in the sprint" : "none in the sprint");
     const stats = stat(p.done + '<span class="of-total">' + (sched ? "of " + fmtNum(sched) : "-") + "</span>");
 
     return '<div class="proj" data-code="' + esc(it.code) + '">' +
@@ -1024,7 +1022,7 @@ async function sync(){
     const found = keepWeek ? DATA.weeks.findIndex((w) => w.start === keepWeek) : -1;
     weekIdx = found >= 0 ? found : defaultWeekIndex();
     render();
-    flash("Pulled " + DATA.counts.completed_issues + " resolved items from Jira in " +
+    flash("Pulled " + DATA.counts.completed_issues + " completed sprint items from Jira in " +
           DATA.elapsed_seconds + "s.", "info");
   }catch(e){
     flash("Could not reach Abacus. Check your connection and try again.", "err");

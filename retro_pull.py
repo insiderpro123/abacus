@@ -23,20 +23,30 @@ EVERYTHING COMES FROM JIRA
     the same rule Abacus uses (see SECTOR_BY_PROJECT).
 
 WHAT "COMPLETED" MEANS HERE
-    A point counts towards a week when Jira's resolutiondate falls in that Monday-Friday
-    week. That is a real completion timestamp, so past weeks never change.
+    The same numbers Jira's own sprint view shows (Sam's call, 29 Sep 2026). A week is the
+    sprints that ran that week, and for each sprint:
 
-    Abacus does it differently: it reads each issue's CURRENT status and attributes it to
-    the issue's sprint. That rewrites history on every sync. The two will disagree; run
-    --reconcile to see by how much and why.
+      scheduled = every SCRUM-labelled ticket that was in the sprint when it ended, i.e. at
+                  any moment between its end date and the moment somebody pressed Complete
+      completed = those of them that were Done by the time it was completed
 
-    Some workflows close an issue without setting a resolution, which leaves resolutiondate
-    empty. Rather than drop that work, we use statuscategorychangedate (when its status moved
-    to Done), and only if that is missing too, the issue's sprint week. How often it happened
-    is counted in the payload.
+    Sprints here really run Monday evening to Monday evening, and last week's tickets are
+    usually closed on the Monday morning, so a ticket closed then counts in the sprint it
+    belonged to, not the new week. Unfinished tickets are often moved to the next sprint by
+    hand just before Complete is pressed, which wipes the old sprint off the ticket, so the
+    membership is rebuilt from the Sprint changelog rather than read off the sprint field.
+    Points are taken as they stood when the sprint was completed, so re-pointing a ticket
+    afterwards does not change a finished sprint. Past weeks therefore never change.
 
-    A point therefore only ever counts in the week the task was actually finished. Work that
-    was completed earlier and is still attached to a later sprint is never counted again.
+    Only tickets labelled SCRUM count (REQUIRE_LABEL), because that is the view the team
+    reads its sprint numbers from (the SCRUM CALL board filters on it). A ticket that lost
+    its label is left out, exactly as it is in that view.
+
+    A ticket Done in one sprint and then dragged into a later one only counts once, in the
+    sprint it was finished in. Tickets resolved outside any sprint are not counted at all.
+
+    Abacus does it differently again: it reads each issue's CURRENT status and attributes it
+    to the issue's latest sprint. Run --reconcile to compare.
 
 CREDENTIALS
     On Render: the JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN environment variables Abacus
@@ -80,6 +90,10 @@ SECTOR_BY_PROJECT = {
 # Filtered at the pull, so they stay out of the chart, the totals and the per-person table,
 # and never reappear after a sync. Remove a code from here to bring it back.
 EXCLUDE_PROJECTS = {"ODM"}
+
+# Only tickets carrying this label count, as on the SCRUM CALL board the team reads its
+# sprint numbers from. Set to None to count every ticket in a sprint.
+REQUIRE_LABEL = "SCRUM"
 
 HIGH_PRIORITIES = {"blocker", "highest", "high"}
 
@@ -181,6 +195,52 @@ class Jira:
             return r.json()
         except ValueError as e:
             raise JiraError("Jira returned a non-JSON response.") from e
+
+    def post(self, path, body):
+        """A read-only POST (bulk fetches take their arguments in the body)."""
+        if not self.configured:
+            raise JiraError("Jira is not configured - JIRA_API_TOKEN is not set.")
+        url = f"https://api.atlassian.com/ex/jira/{self.cloud_id()}{path}"
+        try:
+            r = self.session.post(url, json=body, auth=(self.email, self.token),
+                                  headers={"Accept": "application/json"}, timeout=TIMEOUT)
+        except requests.RequestException as e:
+            raise JiraError(f"Could not reach Jira: {e}") from e
+        if r.status_code >= 400:
+            raise JiraError(f"Jira returned {r.status_code}: {r.text[:200]}")
+        try:
+            return r.json()
+        except ValueError as e:
+            raise JiraError("Jira returned a non-JSON response.") from e
+
+    def changelogs(self, issue_ids, field_ids):
+        """{issue id: [(when, field id, from, to, fromString, toString)]}, oldest first."""
+        out = {}
+        for i in range(0, len(issue_ids), 1000):
+            token = None
+            while True:
+                body = {"issueIdsOrKeys": issue_ids[i:i + 1000], "fieldIds": field_ids,
+                        "maxResults": 10000}
+                if token:
+                    body["nextPageToken"] = token
+                data = self.post("/rest/api/3/changelog/bulkfetch", body)
+                for log in data.get("issueChangeLogs", []):
+                    rows = out.setdefault(str(log.get("issueId")), [])
+                    for h in log.get("changeHistories", []):
+                        when = parse_ts(h.get("created"))
+                        if not when:
+                            continue
+                        for item in h.get("items", []):
+                            fid = item.get("fieldId") or (
+                                SPRINT_FIELD if (item.get("field") or "").lower() == "sprint" else None)
+                            rows.append((when, fid, item.get("from"), item.get("to"),
+                                         item.get("fromString"), item.get("toString")))
+                token = data.get("nextPageToken")
+                if not token:
+                    break
+        for rows in out.values():
+            rows.sort(key=lambda r: r[0])
+        return out
 
     def story_point_fields(self):
         if self._sp_fields is not None:
@@ -335,6 +395,77 @@ def sprint_monday(fields):
     return h["monday"] if h else None
 
 
+def parse_ts(value):
+    """Jira timestamp ('2026-09-28T19:09:27.801Z', '...+0100', or epoch ms) -> aware datetime."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)) or str(value).isdigit():
+        return datetime.fromtimestamp(int(value) / 1000, timezone.utc)
+    s = str(value).replace("Z", "+00:00")
+    if len(s) > 5 and s[-5] in "+-" and s[-3] != ":":
+        s = s[:-2] + ":" + s[-2:]          # +0100 -> +01:00 for fromisoformat
+    try:
+        d = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def has_required_label(fields):
+    return REQUIRE_LABEL is None or REQUIRE_LABEL in (fields.get("labels") or [])
+
+
+def sprint_week(sp):
+    """The Monday of the week a sprint belongs to: the week holding the middle of the sprint.
+
+    Sprints start on a Monday evening, so the start date alone would do today, but a sprint
+    started early on a Friday would otherwise land in the week before.
+    """
+    start, end = parse_ts(sp.get("startDate")), parse_ts(sp.get("endDate"))
+    if start and end and end > start:
+        return monday_of((start + (end - start) / 2).date())
+    return monday_of(sp.get("startDate") or sp.get("endDate") or sp.get("completeDate"))
+
+
+def _sprint_ids(raw):
+    return {s.strip() for s in str(raw or "").split(",") if s.strip()}
+
+
+def in_sprint_between(fields, changes, sprint_id, a, b):
+    """Was the ticket in the sprint at any moment from a to b?
+
+    The sprint field only says where a ticket is now. Walking the Sprint changelog gives each
+    stretch of time and the sprints the ticket sat in during it.
+    """
+    sid = str(sprint_id)
+    moves = [c for c in changes if c[1] == SPRINT_FIELD]
+    now = {str(s.get("id")) for s in (fields.get(SPRINT_FIELD) or []) if isinstance(s, dict)}
+    since = None                                     # start of the current stretch
+    for when, _, frm, _, _, _ in moves:
+        if sid in _sprint_ids(frm) and (since is None or since <= b) and when >= a:
+            return True
+        since = when
+    return sid in now and (since is None or since <= b)
+
+
+def points_at(fields, changes, sp_fields, when):
+    """Story points as they stood at `when`: today's value with later edits undone."""
+    if when is None:
+        return points_of(fields, sp_fields)
+    past = dict(fields)
+    for at, fid, _, _, frm, _ in reversed(changes):
+        if at <= when:
+            break
+        if fid in sp_fields:
+            past[fid] = frm if frm not in ("", None) else None
+    return points_of(past, sp_fields)
+
+
+def finished_at(fields):
+    """When the ticket was finished: its resolution date, else its move to Done."""
+    return parse_ts(fields.get("resolutiondate") or fields.get("statuscategorychangedate"))
+
+
 # --------------------------------------------------------------------------- aggregation
 
 def _blank_week(monday):
@@ -428,23 +559,50 @@ def build(jira=None, history_days=HISTORY_DAYS):
     sp_fields = jira.story_point_fields()
 
     field_list = ",".join(
-        ["summary", "status", "assignee", "priority", "issuetype", "project",
+        ["summary", "status", "assignee", "priority", "issuetype", "project", "labels",
          "parent", "resolutiondate", "statuscategorychangedate", SPRINT_FIELD] + sp_fields
     )
 
-    # 1. What was genuinely finished, by resolution date.
-    completed = jira.search(
-        f"resolutiondate >= -{history_days}d ORDER BY resolutiondate DESC", field_list)
-
-    # 2. What was committed to each sprint. The proven query from Abacus's jira_sync.py.
-    committed = jira.search(
+    # Every ticket that has sat in a recent sprint. The proven query from Abacus's jira_sync.py.
+    # A ticket moved on to a later sprint is still found, through the sprint it is in now.
+    in_sprints = jira.search(
         f"(sprint in openSprints() OR (sprint in closedSprints() AND updated >= -{history_days}d))",
         field_list)
 
-    dropped = len(completed) + len(committed)
-    completed = [i for i in completed if not is_excluded(i.get("key", ""), i.get("fields") or {})]
-    committed = [i for i in committed if not is_excluded(i.get("key", ""), i.get("fields") or {})]
-    dropped -= len(completed) + len(committed)
+    dropped = len(in_sprints)
+    in_sprints = [i for i in in_sprints
+                  if not is_excluded(i.get("key", ""), i.get("fields") or {})
+                  and has_required_label(i.get("fields") or {})]
+    dropped -= len(in_sprints)
+
+    # Where each ticket has been, and what it was pointed at, over time.
+    history = jira.changelogs([str(i.get("id")) for i in in_sprints if i.get("id")],
+                              [SPRINT_FIELD] + sp_fields)
+
+    # Every closed or active sprint any of them has been in, straight off the sprint field.
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=history_days)).date()
+    all_sprints = {}
+    for it in in_sprints:
+        for s in ((it.get("fields") or {}).get(SPRINT_FIELD) or []):
+            if isinstance(s, dict) and s.get("id") is not None:
+                all_sprints[str(s["id"])] = s
+    runs = []
+    for s in all_sprints.values():
+        state = (s.get("state") or "").lower()
+        mon = sprint_week(s)
+        if state not in ("closed", "active") or not mon or mon < cutoff:
+            continue
+        completed_at = parse_ts(s.get("completeDate")) if state == "closed" else None
+        if state == "closed" and not completed_at:
+            continue
+        ended = parse_ts(s.get("endDate")) or completed_at
+        # A closed sprint holds what was in it from its end date to Complete; an active one
+        # holds what is in it now.
+        a, b = (min(ended, completed_at), completed_at) if completed_at else (now, now)
+        runs.append({"id": str(s["id"]), "name": (s.get("name") or "").strip(), "state": state,
+                     "monday": mon, "a": a, "b": b, "completed_at": completed_at})
+    runs.sort(key=lambda r: (r["b"], r["name"]))
 
     weeks = {}
     seen_people = {}
@@ -455,48 +613,28 @@ def build(jira=None, history_days=HISTORY_DAYS):
             weeks[monday.isoformat()] = _blank_week(monday)
         return weeks[monday.isoformat()]
 
-    def note_sprint(f):
-        h = home_sprint(f)
-        if h and h["name"]:
-            sprints.setdefault(h["monday"].isoformat(), {})[h["name"]] = h["state"]
-
-    # --- completed work: the bars, and each person's total for the week
+    # Oldest sprint first, so a ticket Done in one sprint and dragged into the next is only
+    # ever counted as completed in the sprint it was finished in.
     counted = set()
-    for it in completed:
-        key = it.get("key", "")
-        f = it.get("fields", {}) or {}
-        note_sprint(f)
-        mon = monday_of(f.get("resolutiondate"))
-        if not mon:
-            continue
-        counted.add(key)
-        _tally_done(week_for(mon), key, f, sp_fields, seen_people)
-
-    # --- done but with no resolution date: use the date its status moved to Done, which is
-    # just as real a completion timestamp. The sprint week is only a last resort: it was wrong
-    # for about a third of these, putting work in the week before it was actually finished.
-    for it in committed:
-        key = it.get("key", "")
-        f = it.get("fields", {}) or {}
-        note_sprint(f)
-        if key in counted or not is_done(f) or f.get("resolutiondate"):
-            continue
-        mon = monday_of(f.get("statuscategorychangedate")) or sprint_monday(f)
-        if not mon:
-            continue
-        counted.add(key)
-        wk = week_for(mon)
-        wk["no_resolution_date"] += 1
-        _tally_done(wk, key, f, sp_fields, seen_people)
-
-    # --- committed work: the denominator, plus open blockers and bugs
-    for it in committed:
-        key = it.get("key", "")
-        f = it.get("fields", {}) or {}
-        mon = sprint_monday(f)
-        if not mon:
-            continue
-        _tally_committed(week_for(mon), key, f, sp_fields, seen_people)
+    for run in runs:
+        wk = week_for(run["monday"])
+        sprints.setdefault(run["monday"].isoformat(), {})[run["name"]] = run["state"]
+        for it in in_sprints:
+            key = it.get("key", "")
+            f = it.get("fields", {}) or {}
+            changes = history.get(str(it.get("id")), [])
+            if key in counted or not in_sprint_between(f, changes, run["id"], run["a"], run["b"]):
+                continue
+            pts = points_at(f, changes, sp_fields, run["completed_at"])
+            fin = finished_at(f)
+            done = is_done(f) and (run["completed_at"] is None
+                                   or (fin is not None and fin <= run["completed_at"]))
+            _tally_committed(wk, key, f, pts, done, seen_people)
+            if done:
+                counted.add(key)
+                if not f.get("resolutiondate"):
+                    wk["no_resolution_date"] += 1
+                _tally_done(wk, key, f, pts, seen_people)
 
     ordered = [weeks[k] for k in sorted(weeks)]
     for wk in ordered:
@@ -537,7 +675,7 @@ def build(jira=None, history_days=HISTORY_DAYS):
 
     return {
         "generated_at": started.astimezone().isoformat(timespec="seconds"),
-        "basis": "resolutiondate",
+        "basis": "sprint",
         "history_days": history_days,
         "site": jira.base_url,
         "weeks": ordered,
@@ -548,8 +686,8 @@ def build(jira=None, history_days=HISTORY_DAYS):
         "excluded_projects": sorted(EXCLUDE_PROJECTS),
         "counts": {
             "excluded_issues": dropped,
-            "completed_issues": len(completed),
-            "committed_issues": len(committed),
+            "completed_issues": len(counted),
+            "committed_issues": len(in_sprints),
             "weeks": len(ordered),
             "no_resolution_date": sum(w["no_resolution_date"] for w in ordered),
         },
@@ -570,8 +708,7 @@ def _latest_sprint_week(weeks):
     return {"week_start": best["start"], "names": best["sprint_names"]}
 
 
-def _tally_done(wk, key, f, sp_fields, seen_people):
-    pts = points_of(f, sp_fields)
+def _tally_done(wk, key, f, pts, seen_people):
     code, name, sector = project_of(key, f)
     acct, person_name = assignee_of(f)
     seen_people[acct] = person_name
@@ -605,14 +742,12 @@ def _tally_done(wk, key, f, sp_fields, seen_people):
         slot["done_items"].append(item)
 
 
-def _tally_committed(wk, key, f, sp_fields, seen_people):
-    pts = points_of(f, sp_fields)
+def _tally_committed(wk, key, f, pts, done, seen_people):
     code, name, sector = project_of(key, f)
     acct, person_name = assignee_of(f)
     seen_people[acct] = person_name
     priority = ((f.get("priority") or {}).get("name") or "").strip().lower()
     issue_type = ((f.get("issuetype") or {}).get("name") or "").strip().lower()
-    done = is_done(f)
 
     wk["committed"] += pts
     wk["issues_committed"] += 1
@@ -730,45 +865,32 @@ def cmd_check():
 
 
 def cmd_reconcile(weeks_back=6):
-    """Show this tool's numbers next to Abacus's rule, so any gap is explainable."""
+    """This tool's sprint numbers per sector, next to the old finished-that-week count."""
     jira = Jira()
+    payload = build(jira)
     sp = jira.story_point_fields()
-    fields = ",".join(["summary", "status", "assignee", "priority", "issuetype", "project",
-                       "resolutiondate", SPRINT_FIELD] + sp)
-
-    completed = jira.search(f"resolutiondate >= -{HISTORY_DAYS}d ORDER BY resolutiondate DESC", fields)
-    committed = jira.search(
-        f"(sprint in openSprints() OR (sprint in closedSprints() AND updated >= -{HISTORY_DAYS}d))",
-        fields)
-
-    by_resolution, by_abacus = {}, {}
-    for it in completed:
+    fields = ",".join(["project", "labels", "resolutiondate"] + sp)
+    by_resolution = {}
+    for it in jira.search(f"resolutiondate >= -{HISTORY_DAYS}d", fields):
         f = it.get("fields", {}) or {}
+        if is_excluded(it.get("key", ""), f) or not has_required_label(f):
+            continue
         mon = monday_of(f.get("resolutiondate"))
         if mon:
-            by_resolution[mon] = by_resolution.get(mon, 0) + points_of(f, sp)
-    for it in committed:
-        f = it.get("fields", {}) or {}
-        if not is_done(f):
-            continue
-        mon = sprint_monday(f)
-        if mon:
-            by_abacus[mon] = by_abacus.get(mon, 0) + points_of(f, sp)
+            slot = by_resolution.setdefault(mon.isoformat(), {})
+            sector = project_of(it.get("key", ""), f)[2]
+            slot[sector] = slot.get(sector, 0) + points_of(f, sp)
 
-    last = _last_complete_monday()
-    mondays = [last - timedelta(days=7 * i) for i in range(weeks_back)][::-1]
-
-    print("\nPoints completed per week, two ways of counting")
-    print("  A = this dashboard   (Jira resolution date - when it was actually finished)")
-    print("  B = Abacus's rule    (current status, attributed to the issue's sprint week)\n")
-    print("  Week commencing        A      B    diff")
-    print("  " + "-" * 38)
-    for mon in mondays:
-        a = by_resolution.get(mon, 0)
-        b = by_abacus.get(mon, 0)
-        print(f"  {mon.isoformat()}  {a:5d}  {b:5d}  {b - a:+5d}")
-    print("\n  A never changes once a week has passed. B moves every time somebody")
-    print("  reopens or closes an old ticket, because it reads today's status.")
+    print("\nPoints completed of points in the sprint, per sector (as Jira's sprint view)")
+    print("  [n] = points resolved inside that Monday-Friday week instead (the old rule)\n")
+    for wk in payload["weeks"][-weeks_back:]:
+        old = by_resolution.get(wk["start"], {})
+        cells = []
+        for s in THE_SECTORS:
+            c = wk["by_category"][s]
+            cells.append(f"{s}: {c['done']} of {c['committed']} [{old.get(s, 0)}]")
+        print(f"  {wk['label']:18} " + "   ".join(cells))
+        print(f"  {'':18} sprints: " + ", ".join(wk["sprint_names"]))
     return 0
 
 
