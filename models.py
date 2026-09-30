@@ -7,7 +7,7 @@ import_data.py (the one-time Excel importer).
 Uses plain SQLAlchemy so it works identically with SQLite (local dev) and
 PostgreSQL (Render). The database is chosen by the DATABASE_URL env var:
   - unset            -> sqlite file  abacus.db  next to this module (local dev)
-  - postgres://...    -> normalised to postgresql:// and used as-is (Render)
+  - postgres://...    -> normalised to postgresql+psycopg2:// (Render)
 """
 
 import os
@@ -25,9 +25,12 @@ def _database_url():
     url = os.environ.get("DATABASE_URL", "").strip()
     if not url:
         return "sqlite:///" + os.path.join(HERE, "abacus.db")
-    # Render (and some hosts) hand out the legacy postgres:// scheme
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
+    # Render (and some hosts) hand out the legacy postgres:// scheme. Name the driver too:
+    # a bare postgresql:// means psycopg (v3) from SQLAlchemy 2.1 on, which is not installed,
+    # and every Render deploy from 29 Sep 2026 crashed on start until this said psycopg2.
+    for legacy in ("postgres://", "postgresql://"):
+        if url.startswith(legacy):
+            url = "postgresql+psycopg2://" + url[len(legacy):]
     return url
 
 
