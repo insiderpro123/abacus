@@ -201,9 +201,19 @@ tr.tot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none;ba
   padding:5px 9px;background:var(--paper)}
 .goals:focus-within{border-color:var(--blue-300);background:#fff}
 .goals li{display:flex;align-items:flex-start;gap:9px;padding:2px 0}
-.goals li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--blue-300);
-  margin-top:9px;flex:none}
-.goals li.empty::before{background:var(--line)}
+/* Each goal's bullet is a tick circle. Click it once the goal is done and the row goes
+   green; click it again to undo. The blank row at the end has nothing to tick. */
+.gtick{flex:none;width:18px;height:18px;margin-top:3px;padding:0;border-radius:50%;
+  border:2px solid var(--blue-300);background:#fff;cursor:pointer;display:grid;place-items:center;
+  color:transparent;font-size:11px;font-weight:800;line-height:1;
+  transition:background .12s,border-color .12s,color .12s}
+.gtick::after{content:"\2713"}
+.gtick:hover{border-color:var(--good);color:var(--good)}
+.gtick:disabled{border-color:var(--line);cursor:default;color:transparent}
+.goals li.done{background:rgba(46,158,91,.14);border-radius:8px;margin:1px -5px;padding:2px 5px}
+.goals li.done .gtick{background:var(--good);border-color:var(--good);color:#fff}
+.goals li.done textarea{color:#17703F}
+.goals li.done,.gtick{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .goals textarea{flex:1;border:none;background:transparent;resize:none;overflow:hidden;
   font-family:'Inter';font-size:14.5px;line-height:1.5;color:var(--ink);padding:1px 0;
   min-height:0;display:block}
@@ -717,10 +727,13 @@ function renderProjects(){
       $("rows").querySelectorAll(".proj.sel").forEach((c) => c.classList.remove("sel"));
       card.classList.add("sel");
     });
+    /* Ticked goals are kept as their text in `done`, beside `next`, so `next` stays the
+       plain list of strings every older copy of these notes uses. */
     buildGoalList(card.querySelector("[data-goals]"), asGoals(note(code).next),
-      "Add a goal for next sprint", (goals) => {
+      new Set(asGoals(note(code).done)), "Add a goal for next sprint", (goals, done) => {
         const cur = noteFor(code);
         cur.next = goals;
+        if (done.length) cur.done = done; else delete cur.done;
         delete cur.carried;      // flag from older notes; nothing reads it any more
         queueSave();
       });
@@ -809,7 +822,8 @@ function setCustMenu(open){
 }
 
 /* The notes for a week. A week with nothing saved yet starts as a copy of the last week
-   that does have something, so you edit rather than retype every Monday.
+   that does have something, so you edit rather than retype every Monday. Goals ticked
+   as done are left behind: only the unfinished ones carry into the new week.
 
    That copy is held in memory and never written until somebody actually edits it. */
 function weekEntry(weekStart){
@@ -820,7 +834,9 @@ function weekEntry(weekStart){
   if (prior){
     const src = NOTES.weeks[prior] || {};
     Object.keys(src.projects || {}).forEach((code) => {
-      const goals = asGoals((src.projects[code] || {}).next);
+      const p = src.projects[code] || {};
+      const finished = new Set(asGoals(p.done));
+      const goals = asGoals(p.next).filter((g) => !finished.has(g));
       if (goals.length) seeded.projects[code] = { next: goals };
     });
   }
@@ -844,30 +860,53 @@ function growTextarea(t){
 
 /* Fills `ul` with one editable bullet per goal, plus a blank one to type into.
    Enter starts a new bullet, Backspace on an empty one removes it, and every bullet
-   grows to fit. onChange gets the non-empty goals back. */
-function buildGoalList(ul, goals, placeholder, onChange){
+   grows to fit. Each bullet's tick circle marks it done (the goals in `done`, a Set of
+   goal texts). onChange gets the non-empty goals back, then the ticked ones. */
+function buildGoalList(ul, goals, done, placeholder, onChange){
   ul.innerHTML = "";
 
-  const commit = () => onChange([...ul.querySelectorAll("textarea")]
-    .map((t) => t.value.trim()).filter(Boolean));
+  const commit = () => {
+    const kept = [...ul.children]
+      .map((li) => ({ text:li.querySelector("textarea").value.trim(), done:li.classList.contains("done") }))
+      .filter((g) => g.text);
+    onChange(kept.map((g) => g.text), kept.filter((g) => g.done).map((g) => g.text));
+  };
 
   const ensureBlank = () => {
     const last = ul.lastElementChild;
-    if (!last || last.querySelector("textarea").value.trim()) addRow("", false);
+    if (!last || last.querySelector("textarea").value.trim()) addRow("", false, false);
   };
 
-  function addRow(text, focus){
+  function addRow(text, focus, isDone){
     const li = document.createElement("li");
-    li.innerHTML = '<textarea rows="1"></textarea>' +
+    li.innerHTML = '<button class="gtick" type="button"></button>' +
+                   '<textarea rows="1"></textarea>' +
                    '<button class="gx no-print" title="Remove" tabindex="-1">&times;</button>';
     const ta = li.querySelector("textarea");
+    const tick = li.querySelector(".gtick");
     ta.value = text || "";
     ta.placeholder = placeholder;
-    li.classList.toggle("empty", !ta.value.trim());
+
+    const setDone = (on) => {
+      li.classList.toggle("done", on);
+      tick.setAttribute("aria-pressed", String(on));
+      tick.title = on ? "Done. Click to mark it not done" : "Mark as done";
+      tick.setAttribute("aria-label", tick.title);
+    };
+    /* A blank bullet has nothing to tick, and emptying a ticked one clears its tick. */
+    const setEmpty = () => {
+      const empty = !ta.value.trim();
+      li.classList.toggle("empty", empty);
+      tick.disabled = empty;
+      if (empty && li.classList.contains("done")) setDone(false);
+    };
+    setDone(!!isDone);
+    setEmpty();
+    tick.onclick = () => { setDone(!li.classList.contains("done")); commit(); };
 
     ta.addEventListener("input", () => {
       growTextarea(ta);
-      li.classList.toggle("empty", !ta.value.trim());
+      setEmpty();
       ensureBlank();
       commit();
     });
@@ -878,7 +917,7 @@ function buildGoalList(ul, goals, placeholder, onChange){
         if (next && !next.querySelector("textarea").value.trim()){
           next.querySelector("textarea").focus();
         } else {
-          const row = addRow("", true);
+          const row = addRow("", true, false);
           ul.insertBefore(row, li.nextSibling);
           row.querySelector("textarea").focus();
         }
@@ -901,8 +940,8 @@ function buildGoalList(ul, goals, placeholder, onChange){
     return li;
   }
 
-  goals.forEach((g) => addRow(g, false));
-  addRow("", false);                               // always one blank to type into
+  goals.forEach((g) => addRow(g, false, done.has(g)));
+  addRow("", false, false);                        // always one blank to type into
   requestAnimationFrame(() => ul.querySelectorAll("textarea").forEach(growTextarea));
 }
 
@@ -930,26 +969,34 @@ function flash(msg, kind){
 
 /* ===================================================== notes: server first, browser as backup */
 
+/* The weeks edited since the last save. Noted when the edit happens, not when the save
+   fires, so ticking a goal and then stepping to another week still saves the right one. */
+const unsavedWeeks = new Set();
+
 function queueSave(){
+  unsavedWeeks.add(DATA.weeks[weekIdx].start);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNotes, 700);
 }
 
 async function saveNotes(){
-  const key = DATA.weeks[weekIdx].start;
+  const keys = [...unsavedWeeks];
+  unsavedWeeks.clear();
   try{ localStorage.setItem("retroNotes", JSON.stringify(NOTES)); }catch(e){}
   if (!ONLINE) return;
-  try{
-    const r = await fetch("/api/retro/notes", {
-      method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ week:key, entry:NOTES.weeks[key] })
-    });
-    if (signedOut(r)) return;
-    const j = await r.json();
-    if (j.error) flash("Could not save notes: " + esc(j.error), "err");
-    else $("notesHint").textContent = "Saved " + fmtWhen(j.saved_at) + ".";
-  }catch(e){
-    flash("Could not save notes to Abacus, so kept a copy in this browser.", "err");
+  for (const key of keys){
+    try{
+      const r = await fetch("/api/retro/notes", {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ week:key, entry:NOTES.weeks[key] })
+      });
+      if (signedOut(r)) return;
+      const j = await r.json();
+      if (j.error) flash("Could not save notes: " + esc(j.error), "err");
+      else $("notesHint").textContent = "Saved " + fmtWhen(j.saved_at) + ".";
+    }catch(e){
+      flash("Could not save notes to Abacus, so kept a copy in this browser.", "err");
+    }
   }
 }
 
