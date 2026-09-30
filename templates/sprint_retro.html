@@ -59,19 +59,21 @@ h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinning{display:inline-block;animation:spin .9s linear infinite}
 
-/* Sync progress: an indeterminate stripe along the bottom edge of the top bar.
-   Jira's search endpoint pages by token and never reports a total, so there is no
-   honest percentage to show - only that the pull is still in flight. */
+/* Sync progress: a bar along the bottom edge of the top bar that fills left to right.
+   Jira never reports how far through a pull it is, so the fill is timed against how long
+   the last pull took (see syncEstimate), with the seconds left counting down beside the
+   Sync button. It holds just short of the end if a pull runs long, and only reaches the
+   end when the new figures are in. */
 /* Laid over the bar's bottom edge rather than below it, so this bar stays the same
    height as every other page's. */
-.syncbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--paper-2);overflow:hidden;
-  opacity:0;transition:opacity .2s}
+.syncbar{position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--paper-2);overflow:hidden;
+  opacity:0;transition:opacity .25s}
 .syncbar.on{opacity:1}
-.syncbar i{display:block;height:100%;width:40%;border-radius:999px;background:var(--grad-brand)}
-.syncbar.on i{animation:slide 1.15s cubic-bezier(.65,0,.35,1) infinite}
-@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+.syncbar i{display:block;height:100%;width:0;border-radius:0 999px 999px 0;background:var(--grad-brand);
+  transition:width .25s linear}
+.sync-meta .left{font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){
-  .syncbar.on i{animation:none;width:100%}
+  .syncbar i{transition:none}
 }
 
 /* ===================================================== week picker */
@@ -1051,12 +1053,52 @@ function pullIsStale(){
   return isNaN(t) || Date.now() - t > AUTO_SYNC_AFTER_MS;
 }
 
+/* How long a sync should take, in seconds: what the last one took in this browser, start to
+   finish, else the server's own time for the stored pull plus the polling on top. */
+function syncEstimate(){
+  let secs = NaN;
+  try{ secs = parseFloat(localStorage.getItem("retroSyncSecs")); }catch(e){}
+  if (!(secs > 0) && DATA && DATA.elapsed_seconds) secs = DATA.elapsed_seconds + 3;
+  return Math.max(8, secs > 0 ? secs : 35);
+}
+
+/* Fills the bar left to right and counts down beside the button. Returns a stop function
+   that runs the bar to the end (done) or just clears it (failed). */
+function startProgress(){
+  const bar = $("syncBar"), fill = bar.querySelector("i"), meta = $("syncMeta");
+  const est = syncEstimate(), t0 = Date.now();
+  const tick = () => {
+    const s = (Date.now() - t0) / 1000;
+    fill.style.width = (Math.min(s / est, 0.97) * 100) + "%";
+    const left = Math.ceil(est - s);
+    meta.innerHTML = "<b>Syncing from Jira</b><span class='left'>" +
+      (left > 0 ? "about " + left + "s left" : "almost done...") + "</span>";
+  };
+  fill.style.width = "0";
+  bar.classList.add("on");
+  tick();
+  const timer = setInterval(tick, 250);
+  return (ok) => {
+    clearInterval(timer);
+    if (ok){
+      try{ localStorage.setItem("retroSyncSecs", String(Math.round((Date.now() - t0) / 100) / 10)); }catch(e){}
+      fill.style.width = "100%";
+    }
+    setTimeout(() => {
+      bar.classList.remove("on");
+      setTimeout(() => { fill.style.width = "0"; }, 300);
+    }, ok ? 450 : 0);
+    renderMeta();
+  };
+}
+
 async function sync(quiet){
   if (syncing) return;
   syncing = true;
   const btn = $("syncBtn"), icon = $("syncIcon");
   btn.disabled = true; icon.className = "spinning";
-  $("syncBar").classList.add("on");
+  const stopProgress = startProgress();
+  let ok = false;
   try{
     const before = DATA ? DATA.generated_at : null;
     const r = await fetch("/api/retro/sync", { method:"POST" });
@@ -1078,6 +1120,7 @@ async function sync(quiet){
     if (err){ flash("Jira sync failed: " + esc(err), "err"); return; }
     if (!fresh){ flash("The Jira sync is taking longer than usual. Reload the page in a minute to see it.", "err"); return; }
 
+    ok = true;
     const keepWeek = DATA && DATA.weeks.length ? DATA.weeks[weekIdx].start : null;
     DATA = fresh;
     const found = keepWeek ? DATA.weeks.findIndex((w) => w.start === keepWeek) : -1;
@@ -1090,7 +1133,7 @@ async function sync(quiet){
   }finally{
     syncing = false;
     btn.disabled = !ONLINE; icon.className = "";
-    $("syncBar").classList.remove("on");     // clears on the error path too
+    stopProgress(ok);                        // clears on the error path too
   }
 }
 
