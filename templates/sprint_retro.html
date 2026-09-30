@@ -429,22 +429,24 @@ function fyWeekOne(fy){
 /* Numbered from the year's own week 1, never from the position in the array, so a
    history too short to reach April still numbers its weeks correctly. */
 function fyWeekNo(w){ return isoDiffDays(w.start, fyWeekOne(fyOfWeek(w))) / 7 + 1; }
-/* The last Monday-Friday week that has finished. What you look at on a Monday. */
+/* The Monday of the week you are in: the page opens on the current sprint (Sam, 30 Sep
+   2026; it used to open on the last finished week). A Saturday or Sunday still counts as
+   the week just gone, which is the sprint Complete has not been pressed on yet. */
 /* Built from local date parts. It used toISOString(), which converts to UTC, so between
-   midnight and 1am in BST a Monday read as Sunday and jumped back two weeks, not one. */
-function lastCompleteMonday(){
+   midnight and 1am in BST a Monday read as Sunday and jumped back a week. */
+function thisMonday(){
   const t = new Date();
   const p = (x) => String(x).padStart(2, "0");
   const today = t.getFullYear() + "-" + p(t.getMonth() + 1) + "-" + p(t.getDate());
   const dow = (t.getDay() + 6) % 7;                 // 0 = Monday
-  return isoAdd(today, -dow - 7);
+  return isoAdd(today, -dow);
 }
 function defaultWeekIndex(){
   if (!DATA || !DATA.weeks.length) return 0;
-  const target = lastCompleteMonday();
+  const target = thisMonday();
   let idx = DATA.weeks.findIndex((w) => w.start === target);
   if (idx >= 0) return idx;
-  for (let i = DATA.weeks.length - 1; i >= 0; i--){       // else newest finished week
+  for (let i = DATA.weeks.length - 1; i >= 0; i--){       // else the newest week before it
     if (DATA.weeks[i].start <= target) return i;
   }
   return DATA.weeks.length - 1;
