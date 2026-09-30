@@ -1039,7 +1039,21 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
    web request may safely wait), so start it, then poll until the stored pull changes.
    Watching the data's own timestamp as well as the status means it still finishes
    correctly if the server runs more than one worker and the status call lands on another. */
-async function sync(){
+let syncing = false;
+
+/* The page opens on the stored pull, which is only as fresh as the last sync. So when it is
+   older than this, the page syncs by itself on opening (and on coming back to the tab), and
+   the current sprint reads the same as the Jira backlog does at that moment. A finished
+   sprint is fixed at the moment Complete was pressed, so syncing never moves it. */
+const AUTO_SYNC_AFTER_MS = 5 * 60 * 1000;
+function pullIsStale(){
+  const t = DATA ? Date.parse(DATA.generated_at) : NaN;
+  return isNaN(t) || Date.now() - t > AUTO_SYNC_AFTER_MS;
+}
+
+async function sync(quiet){
+  if (syncing) return;
+  syncing = true;
   const btn = $("syncBtn"), icon = $("syncIcon");
   btn.disabled = true; icon.className = "spinning";
   $("syncBar").classList.add("on");
@@ -1069,11 +1083,12 @@ async function sync(){
     const found = keepWeek ? DATA.weeks.findIndex((w) => w.start === keepWeek) : -1;
     weekIdx = found >= 0 ? found : defaultWeekIndex();
     render();
-    flash("Pulled " + DATA.counts.completed_issues + " completed sprint items from Jira in " +
-          DATA.elapsed_seconds + "s.", "info");
+    if (!quiet) flash("Pulled " + DATA.counts.completed_issues + " completed sprint items from Jira in " +
+                      DATA.elapsed_seconds + "s.", "info");
   }catch(e){
     flash("Could not reach Abacus. Check your connection and try again.", "err");
   }finally{
+    syncing = false;
     btn.disabled = !ONLINE; icon.className = "";
     $("syncBar").classList.remove("on");     // clears on the error path too
   }
@@ -1101,7 +1116,11 @@ async function boot(){
     if (e.key === "Escape" && !$("custMenu").hidden){ setCustMenu(false); $("custBtn").focus(); }
   });
 
-  $("syncBtn").onclick = sync;
+  $("syncBtn").onclick = () => sync(false);
+  if (ONLINE && pullIsStale()) sync(true);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && ONLINE && pullIsStale()) sync(true);
+  });
   $("printBtn").onclick = () => window.print();
   $("prevWk").onclick = () => { if (weekIdx > 0){ weekIdx--; render(); } };
   $("nextWk").onclick = () => { if (weekIdx < DATA.weeks.length - 1){ weekIdx++; render(); } };
