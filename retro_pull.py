@@ -45,6 +45,12 @@ WHAT "COMPLETED" MEANS HERE
     A ticket Done in one sprint and then dragged into a later one only counts once, in the
     sprint it was finished in. Tickets resolved outside any sprint are not counted at all.
 
+    Sprints not started yet are included too, from this week up to FUTURE_WEEKS ahead, so
+    the page can open this week's sprint before Start is pressed on Monday evening and goals
+    can be written into the next ones. Like an active sprint they hold what is in them now.
+    Jira only finds their tickets through futureSprints() (openSprints() is the active ones
+    only), and the ISP ones carry no dates, so their week is read off the name instead.
+
     Abacus does it differently again: it reads each issue's CURRENT status and attributes it
     to the issue's latest sprint. Run --reconcile to compare.
 
@@ -55,6 +61,7 @@ CREDENTIALS
 
 import json
 import os
+import re
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -69,6 +76,10 @@ ABACUS_ENV = HERE / ".." / ".." / "Process - Abacus" / "02 Working" / "abacus on
 TIMEOUT = 30    # seconds per request
 _PAGE = 100     # Jira's maximum page size
 HISTORY_DAYS = 190
+
+# Sprints not started yet, counted in weeks after this one: this week plus two (Sam, 5 Oct
+# 2026). Further ahead they are left out, though Jira holds ISP sprints well into next year.
+FUTURE_WEEKS = 2
 
 # Jira names the story-point field differently in company- and team-managed projects.
 _SP_FIELD_NAMES = ("story points", "story point estimate")
@@ -265,6 +276,19 @@ class Jira:
                 break
         return issues
 
+    def future_sprints(self, board_id):
+        """Every not-yet-started sprint on a board, empty ones included (JQL cannot see those)."""
+        sprints, start = [], 0
+        while True:
+            data = self.get(f"/rest/agile/1.0/board/{board_id}/sprint",
+                            params={"state": "future", "startAt": start, "maxResults": 50})
+            page = data.get("values", [])
+            sprints += page
+            start += len(page)
+            if data.get("isLast", True) or not page:
+                break
+        return sprints
+
 
 # --------------------------------------------------------------------------- field helpers
 
@@ -424,7 +448,32 @@ def sprint_week(sp):
     start, end = parse_ts(sp.get("startDate")), parse_ts(sp.get("endDate"))
     if start and end and end > start:
         return monday_of((start + (end - start) / 2).date())
-    return monday_of(sp.get("startDate") or sp.get("endDate") or sp.get("completeDate"))
+    return (monday_of(sp.get("startDate") or sp.get("endDate") or sp.get("completeDate"))
+            or name_week(sp.get("name")))
+
+
+_MONTHS = {m: i + 1 for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
+_NAME_DATE = re.compile(r"(\d{1,2})\s*([A-Za-z]{3,9})\.?\s*(\d{4}|\d{2})(?!\d)")
+
+
+def name_week(name):
+    """The Monday of the week a sprint's NAME gives, for sprints Jira holds no dates for.
+
+    Future ISP sprints are created in bulk with no dates, so 'ISP Sprint 28: 5-9 Oct 26'
+    only says when it runs in its name. The last 'day month year' in it is the end date,
+    which covers every format in use: '05 - 09 Oct26', '05Oct26 - 09Oct26',
+    '28 Sept-2 Oct 26', '28 Dec-1 Jan 27'. No date in the name gives None.
+    """
+    for day, month, year in reversed(_NAME_DATE.findall(name or "")):
+        mo = _MONTHS.get(month[:3].lower())
+        if not mo:
+            continue
+        y = int(year) + (2000 if len(year) == 2 else 0)
+        try:
+            return monday_of(date(y, mo, int(day)))
+        except ValueError:
+            continue
+    return None
 
 
 def _sprint_ids(raw):
@@ -563,10 +612,12 @@ def build(jira=None, history_days=HISTORY_DAYS):
          "parent", "resolutiondate", "statuscategorychangedate", SPRINT_FIELD] + sp_fields
     )
 
-    # Every ticket that has sat in a recent sprint. The proven query from Abacus's jira_sync.py.
+    # Every ticket that has sat in a recent sprint. The proven query from Abacus's jira_sync.py,
+    # plus futureSprints(), which openSprints() does not cover on this site.
     # A ticket moved on to a later sprint is still found, through the sprint it is in now.
     in_sprints = jira.search(
-        f"(sprint in openSprints() OR (sprint in closedSprints() AND updated >= -{history_days}d))",
+        f"(sprint in openSprints() OR sprint in futureSprints()"
+        f" OR (sprint in closedSprints() AND updated >= -{history_days}d))",
         field_list)
 
     dropped = len(in_sprints)
@@ -579,30 +630,47 @@ def build(jira=None, history_days=HISTORY_DAYS):
     history = jira.changelogs([str(i.get("id")) for i in in_sprints if i.get("id")],
                               [SPRINT_FIELD] + sp_fields)
 
-    # Every closed or active sprint any of them has been in, straight off the sprint field.
+    # Every sprint any of them has been in, straight off the sprint field.
     now = datetime.now(timezone.utc)
     cutoff = (now - timedelta(days=history_days)).date()
+    this_monday = monday_of(now.date())
+    horizon = this_monday + timedelta(weeks=FUTURE_WEEKS)
     all_sprints = {}
+    boards = set()
     for it in in_sprints:
         for s in ((it.get("fields") or {}).get(SPRINT_FIELD) or []):
             if isinstance(s, dict) and s.get("id") is not None:
                 all_sprints[str(s["id"])] = s
+                if (s.get("state") or "").lower() in ("active", "future") and s.get("boardId"):
+                    boards.add(s["boardId"])
+    # A sprint nobody has put a ticket in yet is on no ticket, so ask the boards in use for
+    # their future sprints too, or next week could have no name. Nice to have, not needed:
+    # if Jira refuses, the sprints found through tickets still stand.
+    for board in sorted(boards):
+        try:
+            for s in jira.future_sprints(board):
+                if s.get("id") is not None:
+                    all_sprints.setdefault(str(s["id"]), s)
+        except JiraError:
+            pass
     runs = []
     for s in all_sprints.values():
         state = (s.get("state") or "").lower()
         mon = sprint_week(s)
-        if state not in ("closed", "active") or not mon or mon < cutoff:
+        if state not in ("closed", "active", "future") or not mon or mon < cutoff:
+            continue
+        if state == "future" and not (this_monday <= mon <= horizon):
             continue
         completed_at = parse_ts(s.get("completeDate")) if state == "closed" else None
         if state == "closed" and not completed_at:
             continue
         ended = parse_ts(s.get("endDate")) or completed_at
-        # A closed sprint holds what was in it from its end date to Complete; an active one
-        # holds what is in it now.
+        # A closed sprint holds what was in it from its end date to Complete; an active or
+        # future one holds what is in it now.
         a, b = (min(ended, completed_at), completed_at) if completed_at else (now, now)
         runs.append({"id": str(s["id"]), "name": (s.get("name") or "").strip(), "state": state,
                      "monday": mon, "a": a, "b": b, "completed_at": completed_at})
-    runs.sort(key=lambda r: (r["b"], r["name"]))
+    runs.sort(key=lambda r: (r["b"], r["monday"], r["name"]))
 
     weeks = {}
     seen_people = {}
@@ -636,11 +704,25 @@ def build(jira=None, history_days=HISTORY_DAYS):
                     wk["no_resolution_date"] += 1
                 _tally_done(wk, key, f, pts, seen_people)
 
+    # This week and the FUTURE_WEEKS after it can always be opened, sprint or not, so there is
+    # somewhere to write their goals.
+    for n in range(FUTURE_WEEKS + 1):
+        week_for(this_monday + timedelta(weeks=n))
+
     ordered = [weeks[k] for k in sorted(weeks)]
     for wk in ordered:
         names = sprints.get(wk["start"], {})
         wk["sprint_names"] = sorted(names)
         wk["sprint_active"] = any(s == "active" for s in names.values())
+        # "future" = nothing that week has been started yet. A week with no sprint at all is
+        # future when it lies ahead and closed when it has gone.
+        states = set(names.values())
+        if "active" in states:
+            wk["sprint_state"] = "active"
+        elif states == {"future"} or (not states and wk["start"] >= this_monday.isoformat()):
+            wk["sprint_state"] = "future"
+        else:
+            wk["sprint_state"] = "closed"
         wk["people"] = sorted(wk["people"].values(),
                               key=lambda p: (-p["done"], p["name"].lower()))
         # Client work first, then Process and Ops, then Marketing.

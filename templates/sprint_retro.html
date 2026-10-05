@@ -54,6 +54,7 @@ h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif}
 .btn-primary:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 .btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
 .btn-ghost:hover{border-color:var(--blue-300)}
+.btn[hidden]{display:none}
 .sync-meta{font-size:13.5px;color:var(--slate-light);text-align:right;line-height:1.35}
 .sync-meta b{display:block;font-size:14px;color:var(--ink);font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -79,6 +80,11 @@ h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif}
 /* ===================================================== week picker */
 .weekbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:18px 0 4px}
 .weekbar h1{font-size:26px;font-weight:700}
+/* Beside the title: whether this week's sprint has been started in Jira yet. */
+.wk-state{font-size:13px;font-weight:700;padding:4px 11px;border-radius:999px;white-space:nowrap}
+.wk-state:empty{display:none}
+.wk-state.future{background:var(--paper-2);color:var(--slate);border:1px solid var(--line)}
+.wk-state.active{background:rgba(18,181,165,.13);color:var(--teal-600)}
 .navbtn{width:38px;height:38px;padding:0;justify-content:center;font-size:17px}
 select.weeksel{font-family:'Inter';font-weight:600;font-size:15px;color:var(--ink);background:#fff;
   border:1px solid var(--line);border-radius:999px;padding:9px 14px;box-shadow:var(--shadow-sm);cursor:pointer}
@@ -308,9 +314,10 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
     <button class="btn btn-ghost navbtn no-print" id="prevWk" title="Previous week">‹</button>
     <button class="btn btn-ghost navbtn no-print" id="nextWk" title="Next week">›</button>
     <h1 id="wkTitle"></h1>
+    <span class="wk-state" id="wkState"></span>
     <div class="spacer"></div>
     <select class="weeksel no-print" id="weekSel"></select>
-    <button class="btn btn-ghost no-print" id="latestBtn">Latest sprint</button>
+    <button class="btn btn-ghost no-print" id="latestBtn">This sprint</button>
   </div>
 
 
@@ -321,6 +328,7 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
       <h2>Project summary</h2>
       <span class="hint" id="notesHint"></span>
       <div class="spacer"></div>
+      <button class="btn btn-ghost no-print" id="pullBtn" hidden></button>
       <div class="cust-pick no-print" id="custPick">
         <button class="btn btn-ghost" id="custBtn" aria-haspopup="true" aria-expanded="false"
                 title="Choose which customers to show, even when they have no points">🏢 Customers<span class="cust-count" id="custCount"></span> ▾</button>
@@ -475,14 +483,24 @@ function sprintTitle(w){
   const main = names.find((n) => /ISP Sprint/i.test(n));
   return main || names[0];
 }
+/* Not started in Jira yet. This week's sprint is future until Start is pressed on Monday
+   evening, and the pull carries the next two as well (FUTURE_WEEKS in retro_pull.py). */
+const notStarted = (w) => w.sprint_state === "future";
+/* A week after the one you are in. Nothing in it can be completed yet. */
+const isAhead = (w) => w.start > thisMonday();
+
 function renderWeekBar(){
   const w = DATA.weeks[weekIdx];
   $("wkTitle").textContent = sprintTitle(w);
+  const st = notStarted(w) ? "future" : (w.sprint_state === "active" ? "active" : "");
+  $("wkState").className = "wk-state " + st;
+  $("wkState").textContent = st === "future" ? "Not started" : (st === "active" ? "In progress" : "");
 
   const sel = $("weekSel");
   sel.innerHTML = DATA.weeks.map((x, i) =>
     '<option value="' + i + '"' + (i === weekIdx ? " selected" : "") + ">" +
-    esc(sprintTitle(x)) + "  ·  " + x.done + " pts</option>").reverse().join("");
+    esc(sprintTitle(x)) + "  ·  " + (notStarted(x) ? "not started" : x.done + " pts") +
+    "</option>").reverse().join("");
   $("prevWk").disabled = weekIdx === 0;
   $("nextWk").disabled = weekIdx === DATA.weeks.length - 1;
 }
@@ -546,10 +564,11 @@ function renderLegend(){
 
 /* The chart shows one UK financial year at a time. The year is taken from the week you
    are looking at rather than held as its own state, so the selected bar is always inside
-   the chart however you got there. */
+   the chart however you got there. Weeks ahead of this one are left off: nothing in them
+   is completed yet, so there is no bar to select while you look at one. */
 function renderChart(){
   const fy = fyOfWeek(DATA.weeks[weekIdx]);
-  const weeks = DATA.weeks.filter((w) => fyOfWeek(w) === fy);
+  const weeks = DATA.weeks.filter((w) => fyOfWeek(w) === fy && !isAhead(w));
   const shown = SECTORS.filter((s) => !picked.size || picked.has(s));
   const totalOf = (w) => shown.reduce((n, s) => n + ((w.by_category[s] || {}).done || 0), 0);
   const max = Math.max(1, ...weeks.map(totalOf));
@@ -681,6 +700,11 @@ function renderProjects(){
   };
 
 
+  /* Cards with goals written for this week, Jira work or not, so pulled-across goals show in
+     a sprint that has hardly any tickets in yet. */
+  const withGoals = (sector) => Object.keys(wk.projects || {})
+    .filter((code) => asGoals(note(code).next).length && cardRow(code) === sector);
+
   $("rows").innerHTML = ROWS.map((row) => {
     let projs = w.projects.filter((p) => p.sector === row.sector && active(p));
     let items = [];
@@ -688,12 +712,14 @@ function renderProjects(){
       /* Nothing ticked in the Customers picker: every customer with work this sprint.
          Something ticked: only the ticked customers, each with a card even in a quiet
          sprint so there is somewhere to write their next goal. A customer with nothing
-         in this week's pull gets a blank one: 0 completed, none scheduled. */
+         in this week's pull gets a blank one: 0 completed, none scheduled. So does one
+         with goals written for this week. */
       if (PINNED.size) projs = projs.filter((p) => PINNED.has(p.code));
       const shown = new Set(projs.map((p) => p.code));
       const known = allCustomers();
-      PINNED.forEach((code) => {
+      [...PINNED, ...withGoals(row.sector)].forEach((code) => {
         if (shown.has(code)) return;
+        shown.add(code);
         const p = w.projects.find((x) => x.code === code && x.sector === row.sector) ||
           { code, name:known.get(code) || code, sector:row.sector, done:0, committed:0,
             issues_done:0, done_items:[] };
@@ -708,6 +734,13 @@ function renderProjects(){
         kind:"epic", code:e.key, name:e.epic ? e.name : "Not under an epic", src:e,
         sector:p.sector
       })));
+      const seen = new Set(items.map((it) => it.code));
+      const epics = allEpics();
+      withGoals(row.sector).forEach((code) => {
+        if (seen.has(code)) return;
+        items.push({ kind:"epic", code, name:epics.get(code).name, sector:row.sector,
+          src:{ key:code, done:0, committed:0, issues_done:0, done_items:[] } });
+      });
       items.sort((a, b) => (b.src.done - a.src.done) ||
         (b.src.committed - a.src.committed) || a.name.localeCompare(b.name));
     }
@@ -740,8 +773,10 @@ function renderProjects(){
         if (done.length) cur.done = done; else delete cur.done;
         delete cur.carried;      // flag from older notes; nothing reads it any more
         queueSave();
+        renderPullBtn();         // removing a pulled goal makes it pullable again
       });
   });
+  renderPullBtn();
 }
 
 /* ===================================================== customer picker */
@@ -751,6 +786,17 @@ function allCustomers(){
   const m = new Map();
   (DATA && DATA.weeks || []).forEach((w) => (w.projects || []).forEach((p) => {
     if (p.sector === "Customer") m.set(p.code, p.name);
+  }));
+  return m;
+}
+
+/* Every Operations and Marketing epic seen anywhere in the pull, key -> {name, sector},
+   so a card whose goals outlive its Jira work this week still has its name. */
+function allEpics(){
+  const m = new Map();
+  (DATA && DATA.weeks || []).forEach((w) => (w.projects || []).forEach((p) => {
+    if (p.sector === "Customer") return;
+    (p.epics || []).forEach((e) => m.set(e.key, { name:e.epic ? e.name : "Not under an epic", sector:p.sector }));
   }));
   return m;
 }
@@ -825,27 +871,74 @@ function setCustMenu(open){
   if (open) renderCustPicker();
 }
 
-/* The notes for a week. A week with nothing saved yet starts as a copy of the last week
-   that does have something, so you edit rather than retype every Monday. Goals ticked
-   as done are left behind: only the unfinished ones carry into the new week.
-
-   That copy is held in memory and never written until somebody actually edits it. */
+/* The notes for a week. A week with nothing saved yet starts blank, held in memory and
+   never written until somebody edits it. Last sprint's unfinished goals no longer copy
+   across by themselves (Sam, 5 Oct 2026): the Pull button brings them over. */
 function weekEntry(weekStart){
-  if (NOTES.weeks[weekStart]) return NOTES.weeks[weekStart];
+  if (!NOTES.weeks[weekStart]) NOTES.weeks[weekStart] = { projects:{} };
+  return NOTES.weeks[weekStart];
+}
 
-  const prior = Object.keys(NOTES.weeks).filter((k) => k < weekStart).sort().pop();
-  const seeded = { projects:{} };
-  if (prior){
-    const src = NOTES.weeks[prior] || {};
-    Object.keys(src.projects || {}).forEach((code) => {
-      const p = src.projects[code] || {};
-      const finished = new Set(asGoals(p.done));
-      const goals = asGoals(p.next).filter((g) => !finished.has(g));
-      if (goals.length) seeded.projects[code] = { next: goals };
-    });
-  }
-  NOTES.weeks[weekStart] = seeded;
-  return seeded;
+/* ===================================================== pull last sprint's unfinished goals */
+
+const hasGoals = (entry) => Object.values((entry || {}).projects || {}).some((p) => asGoals((p || {}).next).length);
+
+/* Where the Pull button takes goals from: the latest earlier week with any goals in it.
+   Usually last week; further back when last week was never written in. */
+function pullSourceWeek(weekStart){
+  return Object.keys(NOTES.weeks).filter((k) => k < weekStart && hasGoals(NOTES.weeks[k])).sort().pop() || null;
+}
+
+/* Which row a notes key belongs on, or null when the page has no card for it (the old
+   project-level ISPMKTG / ISPOPS2 priorities, say). Customers left out by the Customers
+   picker count as no card, so the button never pulls goals nobody can see. */
+function cardRow(code){
+  if (allCustomers().has(code)) return (!PINNED.size || PINNED.has(code)) ? "Customer" : null;
+  const e = allEpics().get(code);
+  return e ? e.sector : null;
+}
+
+/* {code: [goals]} for this week: last sprint's goals not ticked green and not already here. */
+function pullableGoals(){
+  const w = DATA.weeks[weekIdx];
+  const src = pullSourceWeek(w.start);
+  const out = { src, codes:{}, count:0 };
+  if (!src) return out;
+  const here = (NOTES.weeks[w.start] || {}).projects || {};
+  Object.entries(NOTES.weeks[src].projects || {}).forEach(([code, p]) => {
+    if (!cardRow(code)) return;
+    const finished = new Set(asGoals((p || {}).done));
+    const have = new Set(asGoals((here[code] || {}).next));
+    const goals = asGoals((p || {}).next).filter((g) => !finished.has(g) && !have.has(g));
+    if (goals.length){ out.codes[code] = goals; out.count += goals.length; }
+  });
+  return out;
+}
+
+function renderPullBtn(){
+  const btn = $("pullBtn");
+  const pull = pullableGoals();
+  btn.hidden = !pull.count;
+  if (!pull.count) return;
+  const w = DATA.weeks[weekIdx];
+  const lastWeek = pull.src === isoAdd(w.start, -7);
+  const from = lastWeek ? "last sprint" : "w/c " + fmtDate(pull.src);
+  const srcWeek = DATA.weeks.find((x) => x.start === pull.src);
+  btn.innerHTML = "↻ Pull " + pull.count + " unfinished " + (pull.count === 1 ? "goal" : "goals") + " from " + esc(from);
+  btn.title = "Goals from " + (srcWeek ? sprintTitle(srcWeek) : "w/c " + fmtDate(pull.src)) +
+    " that were not ticked green. Ticked ones stay behind.";
+}
+
+function pullGoals(){
+  const pull = pullableGoals();
+  if (!pull.count) return;
+  Object.entries(pull.codes).forEach(([code, goals]) => {
+    const cur = noteFor(code);
+    cur.next = asGoals(cur.next).concat(goals);
+  });
+  queueSave();
+  renderProjects();
+  flash("Pulled " + pull.count + " unfinished " + (pull.count === 1 ? "goal" : "goals") + " into this sprint.", "info");
 }
 
 /* ===================================================== goal bullet lists */
@@ -1043,17 +1136,10 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
    web request may safely wait), so start it, then poll until the stored pull changes.
    Watching the data's own timestamp as well as the status means it still finishes
    correctly if the server runs more than one worker and the status call lands on another. */
+/* The page opens on the stored pull and only syncs when the button is pressed. It used to
+   sync by itself on opening and on coming back to the tab; Sam asked for that to stop
+   (5 Oct 2026). "Synced ..." beside the button says how fresh the figures are. */
 let syncing = false;
-
-/* The page opens on the stored pull, which is only as fresh as the last sync. So when it is
-   older than this, the page syncs by itself on opening (and on coming back to the tab), and
-   the current sprint reads the same as the Jira backlog does at that moment. A finished
-   sprint is fixed at the moment Complete was pressed, so syncing never moves it. */
-const AUTO_SYNC_AFTER_MS = 5 * 60 * 1000;
-function pullIsStale(){
-  const t = DATA ? Date.parse(DATA.generated_at) : NaN;
-  return isNaN(t) || Date.now() - t > AUTO_SYNC_AFTER_MS;
-}
 
 /* How long a sync should take, in seconds: what the last one took in this browser, start to
    finish, else the server's own time for the stored pull plus the polling on top. */
@@ -1094,7 +1180,7 @@ function startProgress(){
   };
 }
 
-async function sync(quiet){
+async function sync(){
   if (syncing) return;
   syncing = true;
   const btn = $("syncBtn"), icon = $("syncIcon");
@@ -1123,13 +1209,16 @@ async function sync(quiet){
     if (!fresh){ flash("The Jira sync is taking longer than usual. Reload the page in a minute to see it.", "err"); return; }
 
     ok = true;
-    const keepWeek = DATA && DATA.weeks.length ? DATA.weeks[weekIdx].start : null;
+    /* Stay on the week you were looking at, unless that was this sprint by default: then
+       go to this sprint in the new pull, which may hold a week the old one did not. */
+    const had = DATA && DATA.weeks.length;
+    const keepWeek = had && weekIdx !== defaultWeekIndex() ? DATA.weeks[weekIdx].start : null;
     DATA = fresh;
     const found = keepWeek ? DATA.weeks.findIndex((w) => w.start === keepWeek) : -1;
     weekIdx = found >= 0 ? found : defaultWeekIndex();
     render();
-    if (!quiet) flash("Pulled " + DATA.counts.completed_issues + " completed sprint items from Jira in " +
-                      DATA.elapsed_seconds + "s.", "info");
+    flash("Pulled " + DATA.counts.completed_issues + " completed sprint items from Jira in " +
+          DATA.elapsed_seconds + "s.", "info");
   }catch(e){
     flash("Could not reach Abacus. Check your connection and try again.", "err");
   }finally{
@@ -1161,22 +1250,19 @@ async function boot(){
     if (e.key === "Escape" && !$("custMenu").hidden){ setCustMenu(false); $("custBtn").focus(); }
   });
 
-  $("syncBtn").onclick = () => sync(false);
-  if (ONLINE && pullIsStale()) sync(true);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && ONLINE && pullIsStale()) sync(true);
-  });
+  $("syncBtn").onclick = () => sync();
+  $("pullBtn").onclick = pullGoals;
   $("printBtn").onclick = () => window.print();
   $("prevWk").onclick = () => { if (weekIdx > 0){ weekIdx--; render(); } };
   $("nextWk").onclick = () => { if (weekIdx < DATA.weeks.length - 1){ weekIdx++; render(); } };
   $("weekSel").onchange = (e) => { weekIdx = +e.target.value; render(); };
   $("latestBtn").onclick = () => { weekIdx = defaultWeekIndex(); render(); };
-  /* Jump to the last week of the chosen financial year. Same move as clicking a bar,
-     which is what keeps the rest of the page in step with the chart. */
+  /* Jump to the last week of the chosen financial year that is not still ahead. Same move
+     as clicking a bar, which is what keeps the rest of the page in step with the chart. */
   $("fySel").onchange = (e) => {
     const fy = +e.target.value;
     let idx = -1;
-    DATA.weeks.forEach((w, i) => { if (fyOfWeek(w) === fy) idx = i; });
+    DATA.weeks.forEach((w, i) => { if (fyOfWeek(w) === fy && !isAhead(w)) idx = i; });
     if (idx >= 0){ weekIdx = idx; render(); }
   };
   document.addEventListener("keydown", (e) => {
