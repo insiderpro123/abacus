@@ -727,8 +727,6 @@ function renderProjects(){
       });
       items = projs.map((p) => ({ kind:"customer", code:p.code, name:p.name, src:p,
                                   sector:p.sector }));
-      items.sort((a, b) => (b.src.done - a.src.done) ||
-        (b.src.committed - a.src.committed) || a.name.localeCompare(b.name));
     } else {
       projs.forEach((p) => (p.epics || []).filter(active).forEach((e) => items.push({
         kind:"epic", code:e.key, name:e.epic ? e.name : "Not under an epic", src:e,
@@ -741,9 +739,13 @@ function renderProjects(){
         items.push({ kind:"epic", code, name:epics.get(code).name, sector:row.sector,
           src:{ key:code, done:0, committed:0, issues_done:0, done_items:[] } });
       });
-      items.sort((a, b) => (b.src.done - a.src.done) ||
-        (b.src.committed - a.src.committed) || a.name.localeCompare(b.name));
     }
+
+    /* A to Z by name in every row (Sam, 5 Oct 2026; they used to sort by points), so a card
+       sits in the same place every week. "Not under an epic" is not a name, so it goes last. */
+    const loose = (it) => it.kind === "epic" && String(it.code).endsWith(":none");
+    items.sort((a, b) => (loose(a) - loose(b)) ||
+      a.name.localeCompare(b.name, "en-GB", { sensitivity:"base" }));
 
     /* Every card in the row shows. Nothing is pinned and nothing folds away. */
     const body = items.length
