@@ -55,6 +55,10 @@ h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif}
 .btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
 .btn-ghost:hover{border-color:var(--blue-300)}
 .btn[hidden]{display:none}
+/* Pull button with nothing to pull: still there, greyed, with the reason in its tooltip. */
+#pullBtn:disabled{color:var(--slate-light);box-shadow:none;cursor:help}
+#pullBtn:disabled:hover{border-color:var(--line)}
+#pullBtn:disabled:active{transform:none}
 .sync-meta{font-size:13.5px;color:var(--slate-light);text-align:right;line-height:1.35}
 .sync-meta b{display:block;font-size:14px;color:var(--ink);font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -900,35 +904,62 @@ function cardRow(code){
   return e ? e.sector : null;
 }
 
-/* {code: [goals]} for this week: last sprint's goals not ticked green and not already here. */
+/* {code: [goals]} for this week: last sprint's goals not ticked green and not already here.
+   `left` counts what stays behind and why, so the button can say. */
 function pullableGoals(){
   const w = DATA.weeks[weekIdx];
   const src = pullSourceWeek(w.start);
-  const out = { src, codes:{}, count:0 };
+  const out = { src, codes:{}, count:0, left:{ green:0, here:0, hidden:0 } };
   if (!src) return out;
   const here = (NOTES.weeks[w.start] || {}).projects || {};
   Object.entries(NOTES.weeks[src].projects || {}).forEach(([code, p]) => {
-    if (!cardRow(code)) return;
+    const all = asGoals((p || {}).next);
+    if (!cardRow(code)){
+      if (allCustomers().has(code)) out.left.hidden += all.length;   // left out by the picker
+      return;
+    }
     const finished = new Set(asGoals((p || {}).done));
     const have = new Set(asGoals((here[code] || {}).next));
-    const goals = asGoals((p || {}).next).filter((g) => !finished.has(g) && !have.has(g));
+    const goals = all.filter((g) => {
+      if (finished.has(g)){ out.left.green++; return false; }
+      if (have.has(g)){ out.left.here++; return false; }
+      return true;
+    });
     if (goals.length){ out.codes[code] = goals; out.count += goals.length; }
   });
   return out;
 }
 
+/* Always on show. With nothing to pull it greys out and says why, rather than vanishing. */
 function renderPullBtn(){
   const btn = $("pullBtn");
   const pull = pullableGoals();
-  btn.hidden = !pull.count;
-  if (!pull.count) return;
   const w = DATA.weeks[weekIdx];
+  btn.hidden = false;
+  btn.disabled = !pull.count;
+  if (!pull.src){
+    btn.textContent = "↻ No goals in earlier sprints to pull";
+    btn.title = "Goals pulled across come from the last sprint with any goals written in it, and there is none before this one.";
+    return;
+  }
   const lastWeek = pull.src === isoAdd(w.start, -7);
   const from = lastWeek ? "last sprint" : "w/c " + fmtDate(pull.src);
   const srcWeek = DATA.weeks.find((x) => x.start === pull.src);
-  btn.innerHTML = "↻ Pull " + pull.count + " unfinished " + (pull.count === 1 ? "goal" : "goals") + " from " + esc(from);
-  btn.title = "Goals from " + (srcWeek ? sprintTitle(srcWeek) : "w/c " + fmtDate(pull.src)) +
-    " that were not ticked green. Ticked ones stay behind.";
+  const srcName = srcWeek ? sprintTitle(srcWeek) : "w/c " + fmtDate(pull.src);
+  const n = (k, one, many) => k + " " + (k === 1 ? one : many);
+  const why = [
+    pull.left.green  ? n(pull.left.green, "goal is ticked green", "goals are ticked green") : "",
+    pull.left.here   ? n(pull.left.here, "goal is already in this sprint", "goals are already in this sprint") : "",
+    pull.left.hidden ? n(pull.left.hidden, "goal is on a customer not ticked in Customers", "goals are on customers not ticked in Customers") : ""
+  ].filter(Boolean);
+  if (!pull.count){
+    btn.textContent = "✓ Nothing left to pull from " + from;
+    btn.title = "From " + srcName + ": " + (why.length ? why.join(", ") : "no goals on any card shown here") + ".";
+    return;
+  }
+  btn.textContent = "↻ Pull " + n(pull.count, "unfinished goal", "unfinished goals") + " from " + from;
+  btn.title = "Goals from " + srcName + " that were not ticked green. Ticked ones stay behind." +
+    (why.length ? " Left behind: " + why.join(", ") + "." : "");
 }
 
 function pullGoals(){
