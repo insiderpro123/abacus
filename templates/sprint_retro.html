@@ -1081,7 +1081,7 @@ function buildGoalList(ul, goals, done, placeholder, onChange){
       const on = !li.classList.contains("done");
       setDone(on);
       commit();
-      if (on) celebrateIfAllDone();
+      if (on) celebrateIfAllDone(ul);
     };
 
     ta.addEventListener("input", () => {
@@ -1127,17 +1127,21 @@ function buildGoalList(ul, goals, done, placeholder, onChange){
 
 /* ===================================================== all goals ticked: party */
 
-/* A bit of fun (Sam, 6 Oct 2026): ticking the last open "Next sprint goal" on the page
-   sets off ten seconds of fireworks and dancing, with sound. Only the tick that finishes
-   the set does it, so opening a week whose goals are all green already stays quiet. */
-function celebrateIfAllDone(){
-  const goals = [...$("rows").querySelectorAll(".goals li:not(.empty)")];
-  if (goals.length && goals.every((li) => li.classList.contains("done"))) celebrate();
+/* A bit of fun (Sam, 6 Oct 2026): ticking the last open "Next sprint goal" on a card
+   sets off ten seconds of fireworks and dancing, with sound. It was the last goal on the
+   whole page at first, which hardly ever happens, so Sam moved it to each card. Only the
+   tick that finishes a card does it, so opening a week whose goals are green stays quiet. */
+function celebrateIfAllDone(ul){
+  const goals = [...ul.querySelectorAll("li:not(.empty)")];
+  if (goals.length && goals.every((li) => li.classList.contains("done"))){
+    const name = ul.closest(".proj")?.querySelector("h3 .name")?.textContent.trim();
+    celebrate(name);
+  }
 }
 
 const PARTY_MS = 10000;
 
-function celebrate(){
+function celebrate(name){
   if (document.querySelector(".party")) return;
   const dancers = [["🕺","groove"], ["💃","shimmy"], ["🎉","twirl"], ["🕺","shimmy",1],
                    ["💃","groove",1], ["🥳","twirl"], ["🕺","groove"]];
@@ -1148,7 +1152,8 @@ function celebrate(){
     '<div class="party-ball"><span>🪩</span></div>' +
     '<div class="party-hint">Click anywhere to close</div>' +
     '<div class="party-msg"><div class="party-big">Every goal ticked!</div>' +
-      '<div class="party-sub">All next sprint goals done. Nice work, team 🎉</div></div>' +
+      '<div class="party-sub">' + (name ? "Every " + esc(name) + " goal is done." : "All next sprint goals done.") +
+      " Nice work, team 🎉</div></div>" +
     '<div class="party-dancers">' + dancers.map(([e, move, flip], i) =>
       '<span class="dancer d-' + move + '" style="animation-delay:' + (-i * 0.17).toFixed(2) + 's">' +
       (flip ? '<span class="flip">' + e + "</span>" : e) + "</span>").join("") + "</div>";
