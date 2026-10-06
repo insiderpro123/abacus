@@ -1290,32 +1290,57 @@ function partyAudio(ms){
   }catch(e){ return null; }
 }
 
-/* Everything is synthesised here, so there are no sound files to host. A 120 bpm disco
-   loop (kick, claps, hats, octave bass, an arpeggio) runs four bars, C G Am F, then lands
-   a big chord at 8 s as the final volley bursts and rings out under the fade. On top,
-   each rocket whistles as it climbs and each burst booms and crackles, panned to where it
-   is on screen. Takes any AudioContext, so an OfflineAudioContext can render it to test. */
+/* Everything is synthesised here, so there are no sound files to host. It is a winner's
+   fanfare (Sam asked for "more successful" and more clapping): brass plays a rising tune
+   over a 120 bpm groove (kick, hats, octave bass, brass stabs, a group clap on 2 and 4) for
+   four bars, C F C G, while a crowd claps along, more of them joining as it goes, with a
+   clap roll into the last beat. At 8 s it lands on a big C major chord as the final volley
+   bursts, fans whistle, and it rings out under the fade, all in a hall's echo. On top, each
+   rocket whistles as it climbs and each burst booms and crackles, panned to where it is on
+   screen. Takes any AudioContext, so an OfflineAudioContext can render it to test. */
 function partySound(ctx, ms){
-  const t0 = ctx.currentTime + 0.05, end = t0 + ms / 1000;
+  /* The slow part first. The noise, the hall and the crowd take over a tenth of a second
+     to write on a cold page, and setting up the notes about as long again, while the audio
+     clock keeps running. Every note is timed from t0, so t0 is read after the buffers and
+     a quarter second ahead, or the opening fanfare would be due before it was set up. */
+  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const nd = noise.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const hall = hallEcho(ctx, 1.8);
+  const claps = crowdClaps(ctx, ms / 1000);
+
+  const now = ctx.currentTime, t0 = now + 0.25, end = now + ms / 1000;
   const bus = ctx.createGain();
   const comp = ctx.createDynamicsCompressor();     // the finale's stacked booms would clip
   comp.threshold.value = -20; comp.knee.value = 10; comp.ratio.value = 10;
   comp.attack.value = 0.001; comp.release.value = 0.2;
-  bus.gain.setValueAtTime(0.65, t0);
+  bus.gain.setValueAtTime(0.65, now);
   bus.gain.setValueAtTime(0.65, end - 0.6);        // fades with the overlay
   bus.gain.linearRampToValueAtTime(0.0001, end);
   bus.connect(comp);
   comp.connect(ctx.destination);
 
-  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-  const nd = noise.getChannelData(0);
-  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const room = ctx.createConvolver();              // the hall: any sound can send some here
+  room.buffer = hall;
+  const roomOut = ctx.createGain();
+  roomOut.gain.value = 0.45;
+  room.connect(roomOut);
+  roomOut.connect(bus);
+  const toRoom = (node, wet) => {
+    if (!wet) return;
+    const send = ctx.createGain();
+    send.gain.value = wet;
+    node.connect(send);
+    send.connect(room);
+  };
+
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
   const rnd = (a, b) => a + Math.random() * (b - a);
 
   /* One note or hit: an oscillator (or noise when there is no `type`), an optional filter,
-     a quick attack and a decay to nothing over `dur`, panned, into the bus. */
-  function voice({ at, dur, type, freq, freqTo, filter, f, fTo, q = 1, vol, pan = 0, attack = 0.004 }){
+     a quick attack and a decay to nothing over `dur`, panned, into the bus, with `wet` of
+     it sent to the hall. */
+  function voice({ at, dur, type, freq, freqTo, filter, f, fTo, q = 1, vol, pan = 0, attack = 0.004, wet = 0 }){
     let src;
     if (type){
       src = ctx.createOscillator();
@@ -1346,42 +1371,116 @@ function partySound(ctx, ms){
       node.connect(p); node = p;
     }
     node.connect(bus);
+    toRoom(node, wet);
     if (type) src.start(at); else src.start(at, Math.random() * 0.5);
     src.stop(at + dur + 0.05);
   }
 
+  /* One brass note: two saws a few cents apart through a filter that opens on the attack,
+     the bite of a trumpet, then settles, with a little vibrato on held notes. */
+  function brass(at, dur, midi, vol, pan = 0){
+    const f = hz(midi), stop = at + dur + 0.15;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + 0.025);
+    g.gain.exponentialRampToValueAtTime(vol * 0.7, at + Math.min(0.2, dur));
+    g.gain.setValueAtTime(vol * 0.7, at + dur);
+    g.gain.exponentialRampToValueAtTime(0.0001, stop);
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass"; lp.Q.value = 1.5;
+    lp.frequency.setValueAtTime(f * 1.5, at);
+    lp.frequency.exponentialRampToValueAtTime(Math.min(10000, f * 8), at + 0.04);
+    lp.frequency.exponentialRampToValueAtTime(Math.min(7000, f * 4), at + 0.25);
+    lp.connect(g);
+    let wobble = null;
+    if (dur > 0.45){
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 5.5;
+      wobble = ctx.createGain();
+      wobble.gain.setValueAtTime(0, at);
+      wobble.gain.linearRampToValueAtTime(f * 0.006, at + 0.4);
+      lfo.connect(wobble);
+      lfo.start(at); lfo.stop(stop);
+    }
+    [-5, 5].forEach((cents) => {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.value = f;
+      o.detune.value = cents;
+      if (wobble) wobble.connect(o.frequency);
+      o.connect(lp);
+      o.start(at); o.stop(stop);
+    });
+    let node = g;
+    if (pan && ctx.createStereoPanner){
+      const p = ctx.createStereoPanner();
+      p.pan.value = pan;
+      g.connect(p); node = p;
+    }
+    node.connect(bus);
+    toRoom(node, 0.35);
+  }
+
   const kick = (t) => voice({ at:t, dur:0.32, type:"sine", freq:150, freqTo:42, vol:0.75 });
   const hat  = (t, v) => voice({ at:t, dur:0.05, filter:"highpass", f:7000, vol:v || 0.07 });
-  const clap = (t, v) => voice({ at:t, dur:0.16, filter:"bandpass", f:1500, q:0.8, vol:v || 0.28 });
+  /* A clap the way a few people make one together: three slaps a few ms apart, the last
+     one ringing a little longer. */
+  const clap = (t, v = 0.3, pan = 0) => [0, 0.008, 0.017].forEach((d, i) =>
+    voice({ at:t + d, dur:i < 2 ? 0.03 : 0.18, filter:"bandpass", f:rnd(1100, 1600), q:1.2,
+            vol:v, attack:0.001, pan, wet:0.3 }));
 
-  /* The loop. Each chord is a bass root (C2 etc.) and three tones for the arpeggio. */
+  /* The groove. Each chord is a bass root (C2 etc.) and the three notes of its brass stabs. */
   const BEAT = 0.5;
-  const CHORDS = [[36, 64, 67, 72], [43, 62, 67, 71], [45, 64, 69, 72], [41, 65, 69, 72]];
-  const ARP = [0, 1, 2, 3, 2, 1, 2, 3];
+  const CHORDS = [[36, 52, 55, 60], [41, 53, 57, 60], [36, 52, 55, 60], [43, 50, 55, 59]];
   CHORDS.forEach(([root, ...tones], bar) => {
     const b0 = t0 + bar * 4 * BEAT;
-    const notes = [...tones, tones[0] + 12];
     for (let beat = 0; beat < 4; beat++){
       const t = b0 + beat * BEAT;
-      const fill = bar === 3 && beat === 3;          // a clap roll into the big chord
       kick(t);
-      if (beat % 2 && !fill) clap(t);
+      if (beat % 2) clap(t, 0.32);
+      if (bar === 3){                                // the claps double up into the big chord
+        const roll = beat === 3 ? [0.25, 0.5, 0.75] : [0.5];
+        roll.forEach((d) => clap(t + d * BEAT, 0.14 + beat * 0.05));
+      }
       hat(t + BEAT / 2);
       voice({ at:t, dur:0.2, type:"sawtooth", freq:hz(root), filter:"lowpass", f:650, vol:0.15 });
       voice({ at:t + BEAT / 2, dur:0.2, type:"sawtooth", freq:hz(root + 12), filter:"lowpass", f:900, vol:0.13 });
-      if (fill) [0, 1, 2, 3].forEach((i) => clap(t + i * BEAT / 4, 0.14 + i * 0.07));
     }
-    for (let i = 0; i < 16; i++){
-      voice({ at:b0 + i * BEAT / 4, dur:0.11, type:"square", freq:hz(notes[ARP[i % 8]]),
-              filter:"lowpass", f:3000, vol:0.035, pan:(i % 2 ? 0.25 : -0.25) });
-    }
+    [0, 2.5].forEach((b) => tones.forEach((m, i) => brass(b0 + b * BEAT, 0.22, m, 0.02, (i - 1) * 0.4)));
   });
+
+  /* The fanfare, as [beat, beats long, note]: a call of three, up through the chord, and a
+     climb into the top C on the big hit. */
+  const TUNE = [[0, 1/3, 67], [1/3, 1/3, 67], [2/3, 1/3, 67], [1, 1.5, 72], [2.5, 0.5, 76], [3, 1, 79],
+                [4, 1.5, 81], [5.5, 0.5, 79], [6, 0.5, 77], [6.5, 0.5, 81], [7, 1, 84],
+                [8, 1.5, 79], [9.5, 0.5, 76], [10, 0.5, 72], [10.5, 0.5, 76], [11, 1, 79],
+                [12, 1, 83], [13, 0.5, 81], [13.5, 0.5, 83], [14, 1, 86],
+                [15, 1/3, 79], [15 + 1/3, 1/3, 81], [15 + 2/3, 1/3, 83]];
+  TUNE.forEach(([b, len, m]) => brass(t0 + b * BEAT, len * BEAT * (len < 0.5 ? 0.7 : 0.9), m, 0.06));
+
   const hit = t0 + 16 * BEAT;                        // 8 s in
   kick(hit);
-  voice({ at:hit, dur:1.8, filter:"highpass", f:5000, vol:0.12 });          // crash cymbal
-  [48, 55, 60, 64, 67, 72].forEach((m, i) =>
-    voice({ at:hit, dur:1.9, type:"sawtooth", freq:hz(m) * (1 + (i % 2 ? 0.003 : -0.003)),
-            filter:"lowpass", f:3500, fTo:500, vol:0.05, pan:(i / 5 - 0.5) * 0.8 }));
+  voice({ at:hit, dur:1.4, type:"sine", freq:90, freqTo:55, vol:0.5 });                // timpani
+  voice({ at:hit, dur:1.8, filter:"highpass", f:5000, vol:0.12, wet:0.4 });            // crash cymbal
+  [48, 55, 60, 64, 67, 72, 76].forEach((m, i) => brass(hit, 1.5, m, 0.03, (i / 6 - 0.5) * 0.8));
+  brass(hit, 1.6, 84, 0.07);                                                           // the top C
+  [[0.25, -0.6], [0.7, 0.5], [1.2, -0.2]].forEach(([d, pan]) => {                      // fans whistle
+    voice({ at:hit + d, dur:0.25, type:"sine", freq:1500, freqTo:2700, vol:0.04, attack:0.03, pan, wet:0.4 });
+    voice({ at:hit + d + 0.3, dur:0.5, type:"sine", freq:2700, freqTo:1600, vol:0.035, attack:0.02, pan, wet:0.4 });
+  });
+
+  /* The crowd: most of them clapping from the first beat, everyone by 6 s, loudest just
+     after the big chord, when it is as loud as the band. */
+  const crowd = ctx.createBufferSource();
+  crowd.buffer = claps;
+  const cg = ctx.createGain();
+  cg.gain.setValueAtTime(0.6, t0);
+  cg.gain.linearRampToValueAtTime(0.85, hit - 0.1);
+  cg.gain.linearRampToValueAtTime(1.3, hit + 0.4);
+  crowd.connect(cg);
+  cg.connect(bus);
+  toRoom(cg, 0.5);
+  crowd.start(t0);
 
   /* Fireworks, told about by fireworks(). x is 0 to 1 across the screen. */
   const panOf = (x) => (x * 2 - 1) * 0.8;
@@ -1407,6 +1506,50 @@ function partySound(ctx, ms){
       }catch(e){}
     }
   };
+}
+
+/* A crowd clapping, written straight into a buffer: forty people, each at their own pace
+   from their own seat, most from the start and the rest joining in by 6 s. Each
+   clap is a burst of noise rung through a hand-sized resonance, so no two sound alike. */
+function crowdClaps(ctx, secs){
+  const sr = ctx.sampleRate, n = Math.ceil(secs * sr), len = Math.round(0.05 * sr);
+  const buf = ctx.createBuffer(2, n, sr);
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  for (let p = 0; p < 40; p++){
+    const pan = rnd(-0.9, 0.9), gl = Math.cos((pan + 1) * Math.PI / 4), gr = Math.sin((pan + 1) * Math.PI / 4);
+    const w = 2 * Math.PI * rnd(800, 2400) / sr, alpha = Math.sin(w) / (2 * rnd(1.2, 3));
+    const b0 = alpha / (1 + alpha), a1 = -2 * Math.cos(w) / (1 + alpha), a2 = (1 - alpha) / (1 + alpha);
+    const decay = Math.exp(-1 / (rnd(0.006, 0.014) * sr));
+    const gap = 1 / rnd(3.2, 5.5), loud = rnd(0.4, 1);
+    for (let t = p < 24 ? rnd(0, 0.6) : rnd(0.6, 6); t < secs; t += gap * rnd(0.85, 1.15)){
+      const i0 = Math.round(t * sr);
+      let env = loud * rnd(0.7, 1), x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      for (let k = 0; k < len && i0 + k < n; k++){
+        const x = (Math.random() * 2 - 1) * env;
+        const y = b0 * (x - x2) - a1 * y1 - a2 * y2;   // band-pass
+        x2 = x1; x1 = x; y2 = y1; y1 = y;
+        L[i0 + k] += y * gl;
+        R[i0 + k] += y * gr;
+        env *= decay;
+      }
+    }
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
+  if (peak) for (let i = 0; i < n; i++){ L[i] /= peak; R[i] /= peak; }
+  return buf;
+}
+
+/* A hall's echo for the convolver: stereo noise dying away over `secs`. */
+function hallEcho(ctx, secs){
+  const n = Math.round(secs * ctx.sampleRate);
+  const buf = ctx.createBuffer(2, n, ctx.sampleRate);
+  for (let c = 0; c < 2; c++){
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
+  }
+  return buf;
 }
 
 function noteFor(code){
