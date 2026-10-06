@@ -1128,8 +1128,8 @@ function buildGoalList(ul, goals, done, placeholder, onChange){
 /* ===================================================== all goals ticked: party */
 
 /* A bit of fun (Sam, 6 Oct 2026): ticking the last open "Next sprint goal" on the page
-   sets off ten seconds of fireworks and dancing. Only the tick that finishes the set
-   does it, so opening a week whose goals are all green already stays quiet. */
+   sets off ten seconds of fireworks and dancing, with sound. Only the tick that finishes
+   the set does it, so opening a week whose goals are all green already stays quiet. */
 function celebrateIfAllDone(){
   const goals = [...$("rows").querySelectorAll(".goals li:not(.empty)")];
   if (goals.length && goals.every((li) => li.classList.contains("done"))) celebrate();
@@ -1155,13 +1155,15 @@ function celebrate(){
   document.body.appendChild(el);
 
   const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const stopFireworks = calm ? () => {} : fireworks(el.querySelector("canvas"), PARTY_MS - 1400);
+  const sound = partyAudio(PARTY_MS);
+  const stopFireworks = calm ? () => {} : fireworks(el.querySelector("canvas"), PARTY_MS - 1400, sound || {});
   const timers = [setTimeout(() => el.classList.add("out"), PARTY_MS - 600),
                   setTimeout(() => close(), PARTY_MS)];
   const onKey = (e) => { if (e.key === "Escape") close(); };
   function close(){
     timers.forEach(clearTimeout);
     stopFireworks();
+    if (sound) sound.stop();
     document.removeEventListener("keydown", onKey);
     el.remove();
   }
@@ -1171,8 +1173,9 @@ function celebrate(){
 
 /* Rockets rise from the bottom and burst at the top of their climb into sparks that drift
    down and fade, with a bigger volley near the end. Rockets stop after `launchMs`. Returns
-   a function that stops it. */
-function fireworks(canvas, launchMs){
+   a function that stops it. `on.launch(x, secs)` and `on.burst(x)` hear about each rocket,
+   x running 0 (left edge) to 1 (right), so the sound can follow it. */
+function fireworks(canvas, launchMs, on){
   const ctx = canvas.getContext("2d");
   const COLOURS = ["#4C9DF0", "#12B5A5", "#E0A32E", "#eb6834", "#ff5fa2", "#ffffff", "#8be9a0", "#c38bff"];
   const G = 900;                         // px/s² on a rocket
@@ -1190,10 +1193,13 @@ function fireworks(canvas, launchMs){
   }
   function launch(x){
     const peak = rnd(0.1, 0.42) * H;     // bursts in the top part, above the dancers
-    rockets.push({ x: x == null ? rnd(0.12, 0.88) * W : x, y: H + 8, vx: rnd(-40, 40),
-                   vy: -Math.sqrt(2 * G * (H + 8 - peak)), c: pick() });
+    const x0 = x == null ? rnd(0.12, 0.88) * W : x;
+    const vy = -Math.sqrt(2 * G * (H + 8 - peak));
+    rockets.push({ x: x0, y: H + 8, vx: rnd(-40, 40), vy, c: pick() });
+    if (on.launch) on.launch(x0 / W, -vy / G);    // climb time: it bursts as it stops rising
   }
   function burst(r){
+    if (on.burst) on.burst(r.x / W);
     const n = Math.round(rnd(70, 120));
     const ring = Math.random() < 0.35;   // some bursts are a clean ring, the rest a filled ball
     const two = Math.random() < 0.5 ? pick() : r.c;
@@ -1254,6 +1260,148 @@ function fireworks(canvas, launchMs){
   launch(); launch();
   raf = requestAnimationFrame(frame);
   return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", size); };
+}
+
+/* The party's sound, or null when the browser has none. Browsers only let a page make a
+   noise straight after a click, which is fine: the tick that sets the party off is one.
+   Sound is a nice extra, so any failure here just leaves the party silent. */
+function partyAudio(ms){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC();
+    if (ctx.state === "suspended") ctx.resume();
+    const s = partySound(ctx, ms);
+    s.stop = () => {
+      try{
+        const now = ctx.currentTime;
+        s.bus.gain.cancelScheduledValues(now);
+        s.bus.gain.setValueAtTime(s.bus.gain.value, now);
+        s.bus.gain.linearRampToValueAtTime(0, now + 0.12);   // a quick fade, never a click
+        setTimeout(() => { if (ctx.state !== "closed") ctx.close(); }, 250);
+      }catch(e){}
+    };
+    return s;
+  }catch(e){ return null; }
+}
+
+/* Everything is synthesised here, so there are no sound files to host. A 120 bpm disco
+   loop (kick, claps, hats, octave bass, an arpeggio) runs four bars, C G Am F, then lands
+   a big chord at 8 s as the final volley bursts and rings out under the fade. On top,
+   each rocket whistles as it climbs and each burst booms and crackles, panned to where it
+   is on screen. Takes any AudioContext, so an OfflineAudioContext can render it to test. */
+function partySound(ctx, ms){
+  const t0 = ctx.currentTime + 0.05, end = t0 + ms / 1000;
+  const bus = ctx.createGain();
+  const comp = ctx.createDynamicsCompressor();     // the finale's stacked booms would clip
+  comp.threshold.value = -20; comp.knee.value = 10; comp.ratio.value = 10;
+  comp.attack.value = 0.001; comp.release.value = 0.2;
+  bus.gain.setValueAtTime(0.65, t0);
+  bus.gain.setValueAtTime(0.65, end - 0.6);        // fades with the overlay
+  bus.gain.linearRampToValueAtTime(0.0001, end);
+  bus.connect(comp);
+  comp.connect(ctx.destination);
+
+  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const nd = noise.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  /* One note or hit: an oscillator (or noise when there is no `type`), an optional filter,
+     a quick attack and a decay to nothing over `dur`, panned, into the bus. */
+  function voice({ at, dur, type, freq, freqTo, filter, f, fTo, q = 1, vol, pan = 0, attack = 0.004 }){
+    let src;
+    if (type){
+      src = ctx.createOscillator();
+      src.type = type;
+      src.frequency.setValueAtTime(freq, at);
+      if (freqTo) src.frequency.exponentialRampToValueAtTime(freqTo, at + dur);
+    } else {
+      src = ctx.createBufferSource();
+      src.buffer = noise;
+      src.loop = true;
+    }
+    let node = src;
+    if (filter){
+      const bq = ctx.createBiquadFilter();
+      bq.type = filter; bq.Q.value = q;
+      bq.frequency.setValueAtTime(f, at);
+      if (fTo) bq.frequency.exponentialRampToValueAtTime(fTo, at + dur);
+      node.connect(bq); node = bq;
+    }
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    node.connect(g); node = g;
+    if (pan && ctx.createStereoPanner){
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      node.connect(p); node = p;
+    }
+    node.connect(bus);
+    if (type) src.start(at); else src.start(at, Math.random() * 0.5);
+    src.stop(at + dur + 0.05);
+  }
+
+  const kick = (t) => voice({ at:t, dur:0.32, type:"sine", freq:150, freqTo:42, vol:0.75 });
+  const hat  = (t, v) => voice({ at:t, dur:0.05, filter:"highpass", f:7000, vol:v || 0.07 });
+  const clap = (t, v) => voice({ at:t, dur:0.16, filter:"bandpass", f:1500, q:0.8, vol:v || 0.28 });
+
+  /* The loop. Each chord is a bass root (C2 etc.) and three tones for the arpeggio. */
+  const BEAT = 0.5;
+  const CHORDS = [[36, 64, 67, 72], [43, 62, 67, 71], [45, 64, 69, 72], [41, 65, 69, 72]];
+  const ARP = [0, 1, 2, 3, 2, 1, 2, 3];
+  CHORDS.forEach(([root, ...tones], bar) => {
+    const b0 = t0 + bar * 4 * BEAT;
+    const notes = [...tones, tones[0] + 12];
+    for (let beat = 0; beat < 4; beat++){
+      const t = b0 + beat * BEAT;
+      const fill = bar === 3 && beat === 3;          // a clap roll into the big chord
+      kick(t);
+      if (beat % 2 && !fill) clap(t);
+      hat(t + BEAT / 2);
+      voice({ at:t, dur:0.2, type:"sawtooth", freq:hz(root), filter:"lowpass", f:650, vol:0.15 });
+      voice({ at:t + BEAT / 2, dur:0.2, type:"sawtooth", freq:hz(root + 12), filter:"lowpass", f:900, vol:0.13 });
+      if (fill) [0, 1, 2, 3].forEach((i) => clap(t + i * BEAT / 4, 0.14 + i * 0.07));
+    }
+    for (let i = 0; i < 16; i++){
+      voice({ at:b0 + i * BEAT / 4, dur:0.11, type:"square", freq:hz(notes[ARP[i % 8]]),
+              filter:"lowpass", f:3000, vol:0.035, pan:(i % 2 ? 0.25 : -0.25) });
+    }
+  });
+  const hit = t0 + 16 * BEAT;                        // 8 s in
+  kick(hit);
+  voice({ at:hit, dur:1.8, filter:"highpass", f:5000, vol:0.12 });          // crash cymbal
+  [48, 55, 60, 64, 67, 72].forEach((m, i) =>
+    voice({ at:hit, dur:1.9, type:"sawtooth", freq:hz(m) * (1 + (i % 2 ? 0.003 : -0.003)),
+            filter:"lowpass", f:3500, fTo:500, vol:0.05, pan:(i / 5 - 0.5) * 0.8 }));
+
+  /* Fireworks, told about by fireworks(). x is 0 to 1 across the screen. */
+  const panOf = (x) => (x * 2 - 1) * 0.8;
+  return {
+    bus,
+    launch(x, secs){
+      try{
+        const at = ctx.currentTime, dur = Math.max(0.4, secs);
+        voice({ at, dur, type:"sine", freq:rnd(600, 900), freqTo:rnd(1700, 2300),
+                vol:0.025, attack:0.08, pan:panOf(x) });
+      }catch(e){}
+    },
+    burst(x){
+      try{
+        const at = ctx.currentTime, pan = panOf(x);
+        voice({ at, dur:0.5, type:"sine", freq:120, freqTo:38, vol:0.55, pan });               // thump
+        voice({ at, dur:1.3, filter:"lowpass", f:2600, fTo:180, vol:0.5, attack:0.003, pan }); // boom
+        const crackles = Math.round(rnd(8, 16));
+        for (let i = 0; i < crackles; i++){
+          voice({ at:at + rnd(0.25, 1.3), dur:0.03, filter:"highpass", f:3000,
+                  vol:rnd(0.05, 0.13), attack:0.001, pan:pan + rnd(-0.25, 0.25) });
+        }
+      }catch(e){}
+    }
+  };
 }
 
 function noteFor(code){
