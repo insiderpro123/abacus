@@ -333,7 +333,8 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
    stormier: it opens on a lightning strike, a crowd boos, whistles and starts throwing
    tomatoes, a REJECTED stamp slams down, a trombone sighs, and from 2 s the throwing never
    lets up. The splats stay where they land until the screen is covered, the crowd chants,
-   and one giant tomato finishes it off. Ten seconds. */
+   and one giant tomato finishes it off. Then silence: crickets, and a tumbleweed rolling
+   across the red. Thirteen seconds. */
 .party.boo{background:radial-gradient(ellipse at 50% 34%,rgba(58,70,88,.95) 0%,rgba(14,20,30,.97) 100%)}
 /* Everything that shakes when a tomato or the stamp hits. Inside it, back to front: the
    splats, the message and stamp (kept readable on top of them), the crowd, then tomatoes
@@ -398,6 +399,18 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
 .boo-final{position:absolute;left:16px;right:16px;top:50%;transform:translateY(-50%);text-align:center;
   font-family:'Sora','Inter',sans-serif;font-weight:800;font-size:clamp(30px,5.5vw,84px);line-height:1.1;color:#fff;
   text-shadow:0 4px 18px rgba(0,0,0,.35);animation:pop .5s .15s cubic-bezier(.2,1.6,.4,1) both}
+/* After the giant tomato (Sam asked for the crickets back): put on the page when it lands,
+   so these delays count from then. */
+.boo-crickets{position:absolute;left:16px;right:16px;bottom:24vh;text-align:center;font-style:italic;font-weight:500;
+  font-size:clamp(16px,1.7vw,22px);color:rgba(255,255,255,.85);text-shadow:0 2px 8px rgba(0,0,0,.3);
+  animation:party-in .8s 1.1s both}
+.tumble{position:absolute;left:0;bottom:6vh;width:clamp(72px,8.5vw,124px);animation:roll-across 2.9s 1.1s linear both}
+.tumble::after{content:"";position:absolute;left:18%;right:18%;bottom:-7px;height:8px;border-radius:50%;
+  background:rgba(0,0,0,.3);filter:blur(2px)}
+.tumble b{display:block;animation:hop .45s cubic-bezier(.25,.6,.5,1) infinite alternate}
+.tumble svg{display:block;width:100%;height:auto;animation:spin .9s linear infinite}
+@keyframes roll-across{from{transform:translateX(-110%)} to{transform:translateX(calc(100vw + 10%))}}
+@keyframes hop{to{transform:translateY(-35%)}}
 @media (prefers-reduced-motion:reduce){
   .boo-cloud,.boo-cloud span,.boo-big span,.boo-quip,.boo-crowd,.fan,.boo-stamp{animation:none}
   .boo-flash{display:none}
@@ -1284,7 +1297,7 @@ function cardTapped(card){
   else boo(name, open, goals.length);
 }
 
-const BOO_MS = 10000;
+const BOO_MS = 13000;
 /* Savage about the goals, never about anyone (Sam asked for it savage, and professional). */
 const BOO_QUIPS = [
   "The crowd has seen enough.",
@@ -1424,7 +1437,8 @@ function tomato(splats, fly, x, y, sound, shake, k){
 }
 
 /* The finale: one giant tomato straight at the middle of the screen, whose splat covers all
-   of it, message and stamp included, with one last line on top. */
+   of it, message and stamp included, with one last line on top. Then the crowd falls silent
+   and there is nothing but crickets and a tumbleweed rolling across the red. */
 function megaTomato(fly, sound, shake){
   const t = document.createElement("div");
   t.className = "tomato mega";
@@ -1439,7 +1453,8 @@ function megaTomato(fly, sound, shake){
     s.style.left = s.style.top = "50%";
     s.innerHTML = splatSVG(SPLAT_REDS[0], true);
     fly.appendChild(s);
-    fly.insertAdjacentHTML("beforeend", '<div class="boo-final">Next sprint, tick them.</div>');
+    fly.insertAdjacentHTML("beforeend", '<div class="boo-final">Next sprint, tick them.</div>' +
+      '<div class="boo-crickets">[crickets chirping]</div><div class="tumble"><b>' + tumbleSVG() + "</b></div>");
     shake(26);
     if (sound) sound.mega();
   }, { once:true });
@@ -1483,6 +1498,26 @@ function splatSVG(red, plain){
   return '<svg viewBox="0 0 100 100" aria-hidden="true"><g fill="' + red + '">' + bits + "</g>" +
     (plain ? "" : '<g fill="#F6D77A" opacity=".85">' + seeds + "</g>" +
       '<ellipse cx="41" cy="37" rx="10" ry="6" fill="#fff" opacity=".18"/>') + "</svg>";
+}
+
+/* A tumbleweed: a tangle of curved stems criss-crossing a ball, with twigs poking out of
+   it, in a pale and a dark brown, both of which show up on the red it rolls across. */
+function tumbleSVG(){
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const f = (n) => n.toFixed(1);
+  const at = (a, r) => f(50 + Math.cos(a) * r) + " " + f(50 + Math.sin(a) * r);
+  let s = "";
+  for (let i = 0; i < 22; i++){                                          // stems
+    const a = rnd(0, Math.PI * 2);
+    s += '<path d="M' + at(a, rnd(30, 44)) + " Q" + at(rnd(0, Math.PI * 2), rnd(0, 22)) + " " +
+         at(a + rnd(1.6, 4.4), rnd(30, 44)) + '" stroke="' + (i % 3 ? "#E2C391" : "#5E4021") +
+         '" stroke-width="' + f(rnd(1.6, 2.6)) + '"/>';
+  }
+  for (let i = 0; i < 9; i++){                                           // twigs
+    const a = rnd(0, Math.PI * 2);
+    s += '<path d="M' + at(a, rnd(34, 40)) + " L" + at(a + rnd(-0.2, 0.2), rnd(44, 49)) + '" stroke="#5E4021" stroke-width="1.6"/>';
+  }
+  return '<svg viewBox="0 0 100 100" aria-hidden="true"><g fill="none" stroke-linecap="round" opacity=".95">' + s + "</g></svg>";
 }
 
 /* Rain falling at a slant across the whole canvas. New drops stop after `untilMs` and the
@@ -1891,9 +1926,10 @@ function soundStage(ctx, ms, level, drive){
    and more savage"). It opens on a thunderclap. A big crowd boos all the way through, a few
    of them shouting, others whistling. They drop back for a trombone's classic wah wah wah
    waaah, its last note growling, then come back chanting BOO in time, stamping their feet,
-   until the giant tomato lands with a huge splat and they roar. Each tomato whooshes as it
-   flies and splats where it lands, panned to where it is on screen, and the stamp lands with
-   a thump. Timed to the overlay: the trombone's last note is when the letters sag. */
+   until the giant tomato lands with a huge splat and they roar, then fall silent, leaving
+   only two crickets. Each tomato whooshes as it flies and splats where it lands, panned to
+   where it is on screen, and the stamp lands with a thump. Timed to the overlay: the
+   trombone's last note is when the letters sag. */
 function booSound(ctx, ms){
   const { t0, bus, toRoom, voice } = soundStage(ctx, ms, 0.9, 1.6);
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
@@ -1974,7 +2010,7 @@ function booSound(ctx, ms){
     env.connect(sections[p % 4][high ? 1 : 0]);
     const v = throat(f0, 0.015, env);
     let t = t0 + rnd(0.05, 0.6);
-    const until = t0 + rnd(8.4, 9.2);
+    const until = t0 + rnd(7.6, 8.2);      // no new boo, nor its "B", once the giant tomato lands
     while (t < until){
       const len = rnd(0.7, 1.6), lvl = rnd(0.6, 1) * 0.5;
       v.o.frequency.setValueAtTime(f0 * 1.08, t);
@@ -2126,6 +2162,15 @@ function booSound(ctx, ms){
   [[2.2, 58], [2.7, 57], [3.2, 56]].forEach(([at, m]) => trombone(t0 + at, 0.42, m, 0.22));
   trombone(t0 + 3.7, 1.7, 55, 0.26, true);
 
+  /* Crickets: three quick pulses a chirp, every 0.6 to 0.8 s from `from` to `to`. */
+  const cricket = (from, to, freq, vol, p) => {
+    for (let t = from; t < to; t += rnd(0.6, 0.8)){
+      for (let k = 0; k < 3; k++){
+        voice({ at:t + k * 0.045, dur:0.03, type:"sine", freq, vol, attack:0.006, pan:p, wet:0.25 });
+      }
+    }
+  };
+
   /* Tomatoes, told about by tomato() and megaTomato(), and the stamp. x is 0 to 1 across
      the screen. */
   const panOf = (x) => (x * 2 - 1) * 0.8;
@@ -2149,13 +2194,23 @@ function booSound(ctx, ms){
         voice({ at, dur:0.07, filter:"highpass", f:1800, vol:big ? 0.3 : 0.16, attack:0.002, pan:p });  // flick
       }catch(e){}
     },
+    /* The giant tomato lands. Timed from when it does, like the caption and the tumbleweed:
+       the crowd roars, everyone else is silenced, and a second later the crickets start,
+       one near and one further off, until the overlay fades. */
     mega(){
       try{
         const at = ctx.currentTime;
         voice({ at, dur:0.9, type:"sine", freq:110, freqTo:28, vol:1 });                                   // thud
         voice({ at, dur:1.4, filter:"lowpass", f:3000, fTo:120, vol:1, attack:0.003, wet:0.5 });           // squelch
         voice({ at, dur:0.35, filter:"highpass", f:2000, fTo:5000, vol:0.5, attack:0.001, wet:0.3 });      // spatter
-        voice({ at:at + 0.05, dur:1.6, filter:"bandpass", f:900, q:0.6, vol:0.45, attack:0.3, wet:0.6 });  // the roar
+        voice({ at:at + 0.05, dur:1, filter:"bandpass", f:900, q:0.6, vol:0.45, attack:0.25, wet:0.6 });   // the roar
+        [crowd.gain, chant.gain].forEach((g) => {
+          if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(at);
+          else { g.cancelScheduledValues(at); g.setValueAtTime(g.value, at); }
+          g.linearRampToValueAtTime(0, at + 0.6);
+        });
+        cricket(at + 1.05, at + 4.2, 4400, 0.13, 0.35);
+        cricket(at + 1.4, at + 4.2, 3900, 0.065, -0.5);
       }catch(e){}
     },
     /* The crowd fills everything up to about 1 kHz, so the wet top end of a splat is what
