@@ -330,22 +330,34 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
 
 /* ===================================================== goals still open: boo
    The party's opposite, on five quick clicks on a card with goals still open. Same overlay,
-   gloomier: rain, a crowd booing and throwing tomatoes, a trombone, then the crowd leaves
-   and a tumbleweed rolls past to the sound of crickets. Nine seconds. */
+   stormier: it opens on a lightning strike, a crowd boos, whistles and pelts the screen with
+   tomatoes, a REJECTED stamp slams down, a trombone sighs, then the crowd leaves and a
+   tumbleweed rolls past to the sound of crickets. Nine seconds. */
 .party.boo{background:radial-gradient(ellipse at 50% 34%,rgba(58,70,88,.95) 0%,rgba(14,20,30,.97) 100%)}
-.boo .party-msg{top:36%}
+/* Everything that shakes when a tomato or the stamp hits. */
+.boo-stage{position:absolute;inset:0}
+.boo-flash{position:absolute;inset:0;background:#fff;pointer-events:none;animation:flash .7s .25s ease-out both}
+@keyframes flash{0%{opacity:0} 6%{opacity:.85} 16%{opacity:.1} 24%{opacity:.6} 45%,100%{opacity:0}}
+.boo .party-msg{top:34%}
 .boo .party-sub{margin-top:clamp(18px,3vw,40px)}     /* room for the letters to sag into */
+.boo-stamp{position:absolute;left:50%;top:63%;font-family:'Sora','Inter',sans-serif;font-weight:800;
+  font-size:clamp(26px,4.4vw,62px);letter-spacing:.08em;line-height:1;color:#F0533C;border:.11em solid #F0533C;
+  border-radius:.18em;padding:.14em .45em .1em;transform:translate(-50%,-50%) rotate(-9deg);opacity:.92;
+  pointer-events:none;animation:stamp .32s 1.5s cubic-bezier(.55,0,.8,.3) both}
+@keyframes stamp{from{transform:translate(-50%,-50%) rotate(-9deg) scale(3.2);opacity:0}}
 .boo-cloud{position:absolute;top:2vh;left:50%;animation:drift 3.4s ease-in-out infinite alternate}
 .boo-cloud span{display:block;font-size:clamp(54px,7vw,100px);line-height:1;animation:cloud-off 1s 4.8s ease-in forwards}
 @keyframes drift{from{transform:translateX(calc(-50% - 2.5vw))} to{transform:translateX(calc(-50% + 2.5vw))}}
 @keyframes cloud-off{to{transform:translateY(-180%);opacity:0}}
 @media (max-width:640px){ .boo-cloud{top:40px} }     /* below the close hint */
-.boo-big{font-family:'Sora','Inter',sans-serif;font-weight:800;font-size:clamp(48px,8.5vw,128px);line-height:1.05;
+.boo-big{font-family:'Sora','Inter',sans-serif;font-weight:800;font-size:clamp(56px,10.5vw,160px);line-height:1.05;
   filter:drop-shadow(0 6px 26px rgba(0,0,0,.45))}
-/* Each letter of "Boooo!" pops in, then sags on the trombone's last note. The "!" keels over. */
+/* Each letter of "BOOOO!" pops in, trembles with rage while the crowd boos, then sags on the
+   trombone's last note. The "!" keels over. */
 .boo-big span{display:inline-block;transform-origin:50% 85%;
-  background:linear-gradient(180deg,#F1F5FA 0%,#9DB0C6 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
-  animation:pop .6s cubic-bezier(.2,1.6,.4,1) both,sag 1.1s ease-in-out forwards}
+  background:linear-gradient(180deg,#FFE1DB 0%,#F26A55 55%,#C2321F 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:pop .6s cubic-bezier(.2,1.6,.4,1) both,tremble .07s linear infinite alternate,sag 1.1s ease-in-out forwards}
+@keyframes tremble{from{transform:translate(-1.5px,1px) rotate(-1.2deg)} to{transform:translate(1.5px,-1px) rotate(1.2deg)}}
 @keyframes sag{60%{transform:translateY(calc(var(--dy) * 1.25)) rotate(var(--rot))}
   to{transform:translateY(var(--dy)) rotate(var(--rot))}}
 .boo-quip{font-family:'Inter',sans-serif;font-style:italic;font-weight:500;font-size:clamp(14px,1.5vw,19px);
@@ -353,12 +365,12 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
 .boo-crowd{position:absolute;left:0;right:0;bottom:4vh;display:flex;justify-content:space-evenly;align-items:flex-end;
   animation:rise .7s .1s cubic-bezier(.2,1.3,.4,1) both,crowd-off .8s 4.9s ease-in forwards}
 @keyframes crowd-off{to{transform:translateY(170%)}}
-.fan{display:inline-block;font-size:clamp(30px,6vw,92px);line-height:1;transform-origin:50% 100%}
-.f-jab{animation:jab .5s ease-in-out infinite}
-.f-shake{animation:head-shake .7s ease-in-out infinite}
+.fan{display:inline-block;font-size:clamp(26px,5.4vw,88px);line-height:1;transform-origin:50% 100%}
+.f-jab{animation:jab .34s ease-in-out infinite}
+.f-shake{animation:head-shake .5s ease-in-out infinite}
 .f-sulk{animation:sulk 1.6s ease-in-out infinite alternate}
-@keyframes jab{0%,100%{transform:translateY(0) rotate(0)} 45%{transform:translateY(22%) rotate(-14deg)}}
-@keyframes head-shake{0%,100%{transform:rotate(0)} 25%{transform:rotate(-11deg)} 75%{transform:rotate(11deg)}}
+@keyframes jab{0%,100%{transform:translateY(0) rotate(0)} 45%{transform:translateY(30%) rotate(-18deg)}}
+@keyframes head-shake{0%,100%{transform:rotate(0)} 25%{transform:rotate(-13deg)} 75%{transform:rotate(13deg)}}
 @keyframes sulk{from{transform:rotate(-6deg) translateY(4%)} to{transform:rotate(6deg) translateY(0)}}
 /* A tomato flies up from the crowd, growing as it comes at the screen, and lands as a splat
    that slides down and fades. --sx is how far left or right of its target it was thrown from. */
@@ -381,8 +393,8 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
 @keyframes roll-across{from{transform:translateX(-110%)} to{transform:translateX(calc(100vw + 10%))}}
 @keyframes hop{to{transform:translateY(-35%)}}
 @media (prefers-reduced-motion:reduce){
-  .boo-cloud,.boo-cloud span,.boo-big span,.boo-quip,.boo-crowd,.fan,.boo-crickets{animation:none}
-  .tumble{display:none}
+  .boo-cloud,.boo-cloud span,.boo-big span,.boo-quip,.boo-crowd,.fan,.boo-crickets,.boo-stamp{animation:none}
+  .tumble,.boo-flash{display:none}
 }
 
 /* ===================================================== print */
@@ -1267,59 +1279,85 @@ function cardTapped(card){
 }
 
 const BOO_MS = 9000;
+/* Savage about the goals, never about anyone (Sam asked for it savage, and professional). */
 const BOO_QUIPS = [
-  "Tough crowd. Tick a few goals and they might come back.",
-  "The judges have conferred. It's a no from them.",
-  "Not quite the standing ovation we had in mind.",
-  "Goals don't tick themselves.",
-  "The fireworks are on standby until further notice.",
-  "Even the tumbleweed has somewhere better to be."
+  "The crowd has seen enough.",
+  "Bold of you to click on this card.",
+  "Ambitious goals. Shame about the ticking.",
+  "The tomatoes had a more productive sprint.",
+  "Somewhere, a Gantt chart is quietly weeping.",
+  "The judges have conferred. It's a no from all of them.",
+  "Call that a sprint? The crowd calls it a stroll.",
+  "Even the crickets expected more."
 ];
+const BOO_NO_GOALS = [
+  "No goals, no glory. Not even a little bit.",
+  "Hard to miss goals you never set. Impressive, really."
+];
+const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
 
 function boo(name, open, total){
   if (document.querySelector(".party")) return;
   const who = name ? esc(name) + " " : "";
-  const sub = !total ? "No " + who + "goals written for next sprint yet."
+  const sub = !total ? "No " + who + "goals written for next sprint."
     : total === 1 ? "The " + who + "goal is still open."
-    : open === total ? "None of the " + total + " " + who + "goals ticked yet."
+    : open === total ? "None of the " + total + " " + who + "goals ticked."
     : open + " of " + total + " " + who + "goals still open.";
-  const quip = !total ? "Hard to tick goals nobody has written."
-    : BOO_QUIPS[Math.floor(Math.random() * BOO_QUIPS.length)];
-  /* How far each letter of "Boooo!" tips and drops when it sags: [degrees, em]. */
+  const quip = pickOne(total ? BOO_QUIPS : BOO_NO_GOALS);
+  /* How far each letter of "BOOOO!" tips and drops when it sags: [degrees, em]. */
   const SAG = [[-6, 0.05], [9, 0.13], [-12, 0.2], [14, 0.16], [-9, 0.24], [98, 0.3]];
-  const fans = [["👎","jab"], ["😒","shake"], ["👎","jab"], ["🙄","sulk"], ["😤","shake"],
-                ["👎","jab"], ["😑","sulk"], ["👎","jab"]];
+  const fans = [["👎","jab"], ["😠","shake"], ["👎","jab"], ["🙄","sulk"], ["😤","shake"],
+                ["👎","jab"], ["😒","sulk"], ["👎","jab"], ["😠","shake"], ["👎","jab"]];
   const el = document.createElement("div");
   el.className = "party boo no-print";
   el.setAttribute("role", "status");
-  el.innerHTML = '<canvas></canvas><div class="boo-cloud"><span>🌧️</span></div>' +
-    '<div class="party-hint">Click anywhere to close</div>' +
-    '<div class="party-msg"><div class="boo-big">' + [..."Boooo!"].map((ch, i) =>
+  el.innerHTML = '<canvas></canvas><div class="boo-stage">' +
+    '<div class="boo-cloud"><span>⛈️</span></div>' +
+    '<div class="party-msg"><div class="boo-big">' + [..."BOOOO!"].map((ch, i) =>
       '<span style="--rot:' + SAG[i][0] + "deg;--dy:" + SAG[i][1] + "em;animation-delay:" +
-      (i * 0.06).toFixed(2) + "s," + (3.95 + i * 0.09).toFixed(2) + 's">' + ch + "</span>").join("") + "</div>" +
+      (i * 0.06).toFixed(2) + "s," + (0.6 + i * 0.06).toFixed(2) + "s," + (3.95 + i * 0.09).toFixed(2) + 's">' +
+      ch + "</span>").join("") + "</div>" +
       '<div class="party-sub">' + sub + "</div>" +
       '<div class="boo-quip">' + esc(quip) + "</div></div>" +
+    '<div class="boo-stamp">REJECTED</div>' +
     '<div class="boo-crowd">' + fans.map(([e, move], i) =>
-      '<span class="fan f-' + move + '" style="animation-delay:' + (-i * 0.13).toFixed(2) + 's">' + e + "</span>").join("") +
+      '<span class="fan f-' + move + '" style="animation-delay:' + (-i * 0.11).toFixed(2) + 's">' + e + "</span>").join("") +
       "</div>" +
     '<div class="boo-crickets">[crickets chirping]</div>' +
-    '<div class="tumble"><b>' + tumbleSVG() + "</b></div>";
+    '<div class="tumble"><b>' + tumbleSVG() + "</b></div></div>" +
+    '<div class="boo-flash"></div><div class="party-hint">Click anywhere to close</div>';
   document.body.appendChild(el);
 
   const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const sound = partyAudio(BOO_MS, booSound);
+  const stage = el.querySelector(".boo-stage");
+  /* A jolt of the whole scene, for a tomato or the stamp landing. */
+  const shake = (px) => {
+    if (calm || !stage.animate) return;
+    stage.animate([{ transform:"none" }, { transform:"translate(" + -px + "px," + px * 0.6 + "px)" },
+      { transform:"translate(" + px * 0.8 + "px," + -px * 0.7 + "px)" },
+      { transform:"translate(" + -px * 0.4 + "px," + px * 0.3 + "px)" }, { transform:"none" }],
+      { duration:280, easing:"ease-out" });
+  };
+  el.querySelector(".boo-stamp").addEventListener("animationend", () => {
+    shake(14);
+    if (sound) sound.stamp();
+  }, { once:true });
   const stopRain = calm ? () => {} : rain(el.querySelector("canvas"), 4700);
-  /* Four tomatoes while the crowd is booing, [ms, x, y] with x and y 0 to 1 across the
-     screen, two either side of the message and two lower down. */
-  const jitter = () => (Math.random() - 0.5) * 0.08;
-  const throws = calm ? [] : [[700, 0.24, 0.3], [1250, 0.76, 0.26], [1800, 0.36, 0.66], [2450, 0.66, 0.62]]
-    .map(([at, x, y]) => setTimeout(() => tomato(el, x + jitter(), y + jitter(), sound), at));
+  /* Eight tomatoes while the crowd boos, [ms, x, y] with x and y 0 to 1 across the screen:
+     either side of the message, one straight at the headline, then lower down and wide.
+     None lands on the line saying how many goals are open. */
+  const jitter = () => (Math.random() - 0.5) * 0.07;
+  const throws = calm ? [] : [[500, 0.22, 0.3], [800, 0.78, 0.26], [1100, 0.5, 0.22], [1450, 0.3, 0.68],
+    [1750, 0.7, 0.64], [2050, 0.12, 0.5], [2350, 0.88, 0.46], [2700, 0.44, 0.79]]
+    .map(([at, x, y]) => setTimeout(() => tomato(stage, x + jitter(), y + jitter(), sound, shake), at));
   showFor(el, BOO_MS, () => { throws.forEach(clearTimeout); stopRain(); if (sound) sound.stop(); });
 }
 
 /* One tomato thrown at the screen, landing at x, y (0 to 1 across it), where it turns into a
-   splat. The splat's sound waits for the tomato to land, so the two always line up. */
-function tomato(el, x, y, sound){
+   splat and jolts the scene. The splat's sound waits for the tomato to land, so the two
+   always line up. */
+function tomato(el, x, y, sound, shake){
   const t = document.createElement("div");
   t.className = "tomato";
   t.style.left = (x * 100).toFixed(1) + "%";
@@ -1331,6 +1369,7 @@ function tomato(el, x, y, sound){
   t.firstChild.addEventListener("animationend", () => {
     t.className = "splat";
     t.innerHTML = splatSVG();
+    shake(7);
     if (sound) sound.splat(x);
   }, { once:true });
 }
@@ -1408,8 +1447,8 @@ function rain(canvas, untilMs){
     canvas.width = W * dpr; canvas.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  const drop = (y) => ({ x: rnd(-0.05, 1.2) * W, y: y == null ? rnd(-0.25, 0) * H : y,
-                         v: rnd(900, 1400), len: rnd(10, 22), a: rnd(0.18, 0.45) });
+  const drop = (y) => ({ x: rnd(-0.05, 1.25) * W, y: y == null ? rnd(-0.25, 0) * H : y,
+                         v: rnd(1100, 1700), len: rnd(12, 28), a: rnd(0.2, 0.5) });
   function frame(now){
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -1433,7 +1472,7 @@ function rain(canvas, untilMs){
 
   size();
   window.addEventListener("resize", size);
-  const n = Math.round(Math.min(320, W * H / 7000));
+  const n = Math.round(Math.min(460, W * H / 4500));
   for (let i = 0; i < n; i++) drops.push(drop(rnd(0, 1) * H));     // already falling on the first frame
   raf = requestAnimationFrame(frame);
   return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", size); };
@@ -1707,8 +1746,10 @@ function partySound(ctx, ms){
    buffers, take over a tenth of a second to write on a cold page, and setting up the notes
    about as long again, while the audio clock keeps running. Every note is timed from t0, so
    t0 is read here, after the buffers, and a quarter second ahead, or the opening notes would
-   be due before they were set up. */
-function soundStage(ctx, ms, level){
+   be due before they were set up. With `drive`, the compressor's output is turned up by that
+   much into a soft clipper, which makes everything louder while the peaks stay under full
+   scale. The party has none. */
+function soundStage(ctx, ms, level, drive){
   const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const nd = noise.getChannelData(0);
   for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
@@ -1723,7 +1764,19 @@ function soundStage(ctx, ms, level){
   bus.gain.setValueAtTime(level, end - 0.6);       // fades with the overlay
   bus.gain.linearRampToValueAtTime(0.0001, end);
   bus.connect(comp);
-  comp.connect(ctx.destination);
+  if (drive){
+    const push = ctx.createGain(), clip = ctx.createWaveShaper(), curve = new Float32Array(2049);
+    push.gain.value = drive;
+    for (let i = 0; i < curve.length; i++){
+      const x = i / 1024 - 1;
+      curve[i] = 0.97 * Math.tanh(1.2 * x) / Math.tanh(1.2);
+    }
+    clip.curve = curve;
+    clip.oversample = "2x";
+    comp.connect(push); push.connect(clip); clip.connect(ctx.destination);
+  } else {
+    comp.connect(ctx.destination);
+  }
 
   const room = ctx.createConvolver();              // the hall: any sound can send some here
   room.buffer = hall;
@@ -1781,13 +1834,15 @@ function soundStage(ctx, ms, level){
   return { t0, bus, toRoom, voice };
 }
 
-/* The boo's sound, all synthesised like the party's. For the first three seconds a crowd
-   boos; as they give up, a trombone plays the classic wah wah wah waaah; once they have gone
-   there is nobody left but two crickets. Each tomato whooshes as it flies and splats where
-   it lands, panned to where it is on screen. Timed to the overlay: the trombone's last note
-   is when the letters sag, the crickets come in with the tumbleweed. */
+/* The boo's sound, all synthesised like the party's, and driven louder than it (Sam: "louder
+   and more savage"). It opens on a thunderclap. For the first three seconds a big crowd
+   boos, a few of them shouting, others whistling; as they give up, a trombone plays the
+   classic wah wah wah waaah, its last note growling; once they have gone there is nobody
+   left but two crickets. Each tomato whooshes as it flies and splats where it lands, panned
+   to where it is on screen, and the stamp lands with a thump. Timed to the overlay: the
+   trombone's last note is when the letters sag, the crickets come in with the tumbleweed. */
 function booSound(ctx, ms){
-  const { t0, bus, toRoom, voice } = soundStage(ctx, ms, 0.7);
+  const { t0, bus, toRoom, voice } = soundStage(ctx, ms, 0.9, 1.6);
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pan = (node, p) => {
@@ -1798,56 +1853,116 @@ function booSound(ctx, ms){
     return sp;
   };
 
-  /* The crowd: each person a buzz shaped into an "oo" by two formant filters, with their
-     own wobble, booing two or three times, every boo sliding down in pitch. Most give up
-     by 3 s; the last few hang on under the trombone until the crowd fades out at 4.6 s. */
-  const crowd = ctx.createGain();
-  crowd.gain.setValueAtTime(1, t0);
-  crowd.gain.setValueAtTime(1, t0 + 2.4);
-  crowd.gain.linearRampToValueAtTime(0.35, t0 + 3.4);
-  crowd.gain.linearRampToValueAtTime(0.0001, t0 + 4.6);
-  crowd.connect(bus);
-  toRoom(crowd, 0.5);
-  for (let p = 0; p < 26; p++){
-    const high = p % 5 > 2, f0 = high ? rnd(165, 230) : rnd(85, 135), lift = high ? 1.15 : 1;
+  /* Thunder with the lightning: a crack, a long low rumble, and a thump you feel. */
+  voice({ at:t0, dur:0.3, filter:"highpass", f:1800, vol:0.55, attack:0.001, wet:0.4 });
+  voice({ at:t0 + 0.02, dur:2.6, filter:"lowpass", f:900, fTo:60, q:0.7, vol:0.9, attack:0.02, wet:0.5 });
+  voice({ at:t0, dur:1.3, type:"sine", freq:70, freqTo:28, vol:0.6 });
+
+  /* One booing voice: a buzz shaped into an angry "oo" by two formant filters, with some raw
+     buzz left on top, into `env`. Returns the oscillator so its pitch can be moved. */
+  const throat = (f0, high, env, wobble, buzz) => {
+    const lift = high ? 1.15 : 1;
     const o = ctx.createOscillator();
     o.type = "sawtooth";
     const lfo = ctx.createOscillator();
     lfo.frequency.value = rnd(4.5, 6.5);
     const wob = ctx.createGain();
-    wob.gain.value = f0 * 0.015;
+    wob.gain.value = f0 * wobble;
     lfo.connect(wob);
     wob.connect(o.frequency);
-    const f1 = ctx.createBiquadFilter(), f2 = ctx.createBiquadFilter(), g2 = ctx.createGain();
+    const f1 = ctx.createBiquadFilter(), f2 = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter();
+    const g2 = ctx.createGain(), gb = ctx.createGain();
     f1.type = f2.type = "bandpass";
-    f1.frequency.value = rnd(290, 360) * lift; f1.Q.value = 4;
-    f2.frequency.value = rnd(800, 900) * lift; f2.Q.value = 6;
-    g2.gain.value = 0.35;
+    lp.type = "lowpass";
+    f1.frequency.value = rnd(300, 380) * lift; f1.Q.value = 3;
+    f2.frequency.value = rnd(820, 950) * lift; f2.Q.value = 4;
+    lp.frequency.value = 1600;
+    g2.gain.value = 0.45;
+    gb.gain.value = buzz;
+    o.connect(f1); o.connect(f2); o.connect(lp);
+    f1.connect(env); f2.connect(g2); g2.connect(env); lp.connect(gb); gb.connect(env);
+    return { o, lfo };
+  };
+  const start = (v, at, stop) => { v.o.start(at); v.lfo.start(at); v.o.stop(stop); v.lfo.stop(stop); };
+
+  /* The crowd: forty people booing two or three times each, every boo hitting hard on its
+     "B" and sliding down in pitch. Most give up by 3 s; the last few hang on under the
+     trombone until the crowd fades out at 4.8 s. */
+  const crowd = ctx.createGain();
+  crowd.gain.setValueAtTime(1, t0);
+  crowd.gain.setValueAtTime(1, t0 + 2.6);
+  crowd.gain.linearRampToValueAtTime(0.35, t0 + 3.6);
+  crowd.gain.linearRampToValueAtTime(0.0001, t0 + 4.8);
+  crowd.connect(bus);
+  toRoom(crowd, 0.5);
+  for (let p = 0; p < 40; p++){
+    const high = p % 10 > 6, f0 = high ? rnd(165, 235) : rnd(85, 140), where = rnd(-0.85, 0.85);
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, t0);
-    o.connect(f1); o.connect(f2);
-    f1.connect(env); f2.connect(g2); g2.connect(env);
-    pan(env, rnd(-0.85, 0.85)).connect(crowd);
-
-    let t = t0 + rnd(0, 0.7);
-    const until = t0 + (p < 18 ? rnd(2.2, 3) : rnd(3.2, 4.4));
+    pan(env, where).connect(crowd);
+    const v = throat(f0, high, env, 0.015, 0.12);
+    let t = t0 + rnd(0.05, 0.6);
+    const until = t0 + (p < 28 ? rnd(2.3, 3.1) : rnd(3.3, 4.5));
     while (t < until){
-      const len = rnd(0.9, 1.9), v = rnd(0.5, 1) * 0.5;
-      o.frequency.setValueAtTime(f0 * 1.06, t);
-      o.frequency.exponentialRampToValueAtTime(f0 * 0.88, t + len);
+      const len = rnd(0.7, 1.6), lvl = rnd(0.6, 1) * 0.5;
+      v.o.frequency.setValueAtTime(f0 * 1.08, t);
+      v.o.frequency.exponentialRampToValueAtTime(f0 * 0.86, t + len);
       env.gain.setValueAtTime(0, t);
-      env.gain.linearRampToValueAtTime(v, t + 0.18);
-      env.gain.setValueAtTime(v, t + len - 0.3);
+      env.gain.linearRampToValueAtTime(lvl, t + 0.07);
+      env.gain.setValueAtTime(lvl, t + len - 0.3);
       env.gain.linearRampToValueAtTime(0, t + len);
-      t += len + rnd(0.15, 0.45);
+      voice({ at:t, dur:0.05, filter:"lowpass", f:700, vol:0.04, attack:0.002, pan:where });   // the "B"
+      t += len + rnd(0.12, 0.4);
     }
-    o.start(t0); lfo.start(t0);
-    o.stop(t + 0.1); lfo.stop(t + 0.1);
+    start(v, t0, t + 0.1);
   }
+
+  /* The loudest few: short shouted BOOs, higher and rawer, that cut through the rest. */
+  [[0.35, 170, -0.5], [0.8, 210, 0.6], [1.3, 150, -0.1], [1.75, 230, 0.4], [2.15, 185, -0.7], [2.6, 160, 0.2]]
+    .forEach(([d, f0, where]) => {
+      const at = t0 + d, len = rnd(0.45, 0.65);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0, at);
+      env.gain.linearRampToValueAtTime(0.3, at + 0.03);
+      env.gain.setValueAtTime(0.3, at + len - 0.15);
+      env.gain.linearRampToValueAtTime(0, at + len);
+      const out = pan(env, where);
+      out.connect(bus);
+      toRoom(out, 0.3);
+      const v = throat(f0, true, env, 0.02, 0.22);
+      v.o.frequency.setValueAtTime(f0 * 1.12, at);
+      v.o.frequency.exponentialRampToValueAtTime(f0 * 0.82, at + len);
+      start(v, at, at + len + 0.05);
+    });
+
+  /* Whistles of disapproval from the stands, shrill and long. */
+  [[0.4, 1.1, 3200, -0.6], [0.9, 1.4, 2800, 0.55], [1.6, 0.9, 3500, -0.2], [2.0, 1.3, 3000, 0.7], [2.6, 0.8, 3300, -0.4]]
+    .forEach(([d, dur, f, where]) => {
+      const at = t0 + d;
+      const o = ctx.createOscillator(), lfo = ctx.createOscillator(), vib = ctx.createGain(), g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f * 0.9, at);
+      o.frequency.exponentialRampToValueAtTime(f, at + 0.06);
+      o.frequency.setValueAtTime(f, at + dur - 0.18);
+      o.frequency.exponentialRampToValueAtTime(f * 0.78, at + dur);
+      lfo.frequency.value = 7;
+      vib.gain.value = f * 0.008;
+      lfo.connect(vib); vib.connect(o.frequency);
+      g.gain.setValueAtTime(0, at);
+      g.gain.linearRampToValueAtTime(0.06, at + 0.04);
+      g.gain.setValueAtTime(0.06, at + dur - 0.1);
+      g.gain.linearRampToValueAtTime(0, at + dur);
+      o.connect(g);
+      const out = pan(g, where);
+      out.connect(bus);
+      toRoom(out, 0.35);
+      o.start(at); lfo.start(at); o.stop(at + dur + 0.05); lfo.stop(at + dur + 0.05);
+    });
 
   /* One trombone note: two saws through a resonant low-pass that opens on the note and
      half closes again, a plunger mute's "wah". It scoops up into its pitch. The last note
-     (`sag`) wobbles in pitch and wah alike, then droops flat as it dies. */
+     (`sag`) wobbles in pitch and wah alike, growls (a fast flutter in its volume), then
+     droops flat as it dies. */
   function trombone(at, dur, midi, vol, sag){
     const f = hz(midi), stop = at + dur + 0.1;
     const g = ctx.createGain();
@@ -1860,8 +1975,19 @@ function booSound(ctx, ms){
     wah.frequency.setValueAtTime(300, at);
     wah.frequency.exponentialRampToValueAtTime(1500, at + 0.14);
     wah.frequency.exponentialRampToValueAtTime(650, at + Math.min(dur, 0.45));
-    wah.connect(g);
     let wobble = null;
+    if (sag){
+      const am = ctx.createGain(), growl = ctx.createOscillator(), depth = ctx.createGain();
+      am.gain.value = 0.7;
+      growl.frequency.value = 28;
+      depth.gain.setValueAtTime(0, at);
+      depth.gain.linearRampToValueAtTime(0.3, at + 0.5);
+      growl.connect(depth); depth.connect(am.gain);
+      wah.connect(am); am.connect(g);
+      growl.start(at); growl.stop(stop);
+    } else {
+      wah.connect(g);
+    }
     if (sag){
       wah.frequency.setValueAtTime(650, at + dur - 0.4);
       wah.frequency.exponentialRampToValueAtTime(320, at + dur);
@@ -1895,8 +2021,8 @@ function booSound(ctx, ms){
     g.connect(bus);
     toRoom(g, 0.3);
   }
-  [[2.2, 58], [2.7, 57], [3.2, 56]].forEach(([at, m]) => trombone(t0 + at, 0.42, m, 0.16));
-  trombone(t0 + 3.7, 1.7, 55, 0.18, true);
+  [[2.2, 58], [2.7, 57], [3.2, 56]].forEach(([at, m]) => trombone(t0 + at, 0.42, m, 0.22));
+  trombone(t0 + 3.7, 1.7, 55, 0.26, true);
 
   /* Crickets: three quick pulses a chirp, one near, one further off. */
   const cricket = (from, to, freq, vol, p) => {
@@ -1909,10 +2035,18 @@ function booSound(ctx, ms){
   cricket(t0 + 5.4, t0 + 8.4, 4400, 0.13, 0.35);
   cricket(t0 + 5.75, t0 + 8.4, 3900, 0.065, -0.5);
 
-  /* Tomatoes, told about by tomato(). x is 0 to 1 across the screen. */
+  /* Tomatoes, told about by tomato(), and the stamp. x is 0 to 1 across the screen. */
   const panOf = (x) => (x * 2 - 1) * 0.8;
   return {
     bus,
+    stamp(){
+      try{
+        const at = ctx.currentTime;
+        voice({ at, dur:0.3, type:"sine", freq:120, freqTo:42, vol:0.9 });                         // thump
+        voice({ at, dur:0.14, filter:"bandpass", f:700, q:0.8, vol:0.7, attack:0.001, wet:0.35 });  // slap
+        voice({ at, dur:0.05, filter:"highpass", f:3000, vol:0.35, attack:0.001 });                 // crack
+      }catch(e){}
+    },
     toss(x, secs){
       try{
         voice({ at:ctx.currentTime, dur:secs, filter:"bandpass", f:500, fTo:2600, q:1.4,
