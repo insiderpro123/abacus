@@ -328,6 +328,63 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
   .party-beams,.party-ball,.party-ball span,.party-big,.party-sub,.party-dancers,.dancer{animation:none}
 }
 
+/* ===================================================== goals still open: boo
+   The party's opposite, on five quick clicks on a card with goals still open. Same overlay,
+   gloomier: rain, a crowd booing and throwing tomatoes, a trombone, then the crowd leaves
+   and a tumbleweed rolls past to the sound of crickets. Nine seconds. */
+.party.boo{background:radial-gradient(ellipse at 50% 34%,rgba(58,70,88,.95) 0%,rgba(14,20,30,.97) 100%)}
+.boo .party-msg{top:36%}
+.boo .party-sub{margin-top:clamp(18px,3vw,40px)}     /* room for the letters to sag into */
+.boo-cloud{position:absolute;top:2vh;left:50%;animation:drift 3.4s ease-in-out infinite alternate}
+.boo-cloud span{display:block;font-size:clamp(54px,7vw,100px);line-height:1;animation:cloud-off 1s 4.8s ease-in forwards}
+@keyframes drift{from{transform:translateX(calc(-50% - 2.5vw))} to{transform:translateX(calc(-50% + 2.5vw))}}
+@keyframes cloud-off{to{transform:translateY(-180%);opacity:0}}
+@media (max-width:640px){ .boo-cloud{top:40px} }     /* below the close hint */
+.boo-big{font-family:'Sora','Inter',sans-serif;font-weight:800;font-size:clamp(48px,8.5vw,128px);line-height:1.05;
+  filter:drop-shadow(0 6px 26px rgba(0,0,0,.45))}
+/* Each letter of "Boooo!" pops in, then sags on the trombone's last note. The "!" keels over. */
+.boo-big span{display:inline-block;transform-origin:50% 85%;
+  background:linear-gradient(180deg,#F1F5FA 0%,#9DB0C6 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:pop .6s cubic-bezier(.2,1.6,.4,1) both,sag 1.1s ease-in-out forwards}
+@keyframes sag{60%{transform:translateY(calc(var(--dy) * 1.25)) rotate(var(--rot))}
+  to{transform:translateY(var(--dy)) rotate(var(--rot))}}
+.boo-quip{font-family:'Inter',sans-serif;font-style:italic;font-weight:500;font-size:clamp(14px,1.5vw,19px);
+  margin-top:12px;color:var(--slate-on-dark);animation:pop .8s .5s cubic-bezier(.2,1.6,.4,1) both}
+.boo-crowd{position:absolute;left:0;right:0;bottom:4vh;display:flex;justify-content:space-evenly;align-items:flex-end;
+  animation:rise .7s .1s cubic-bezier(.2,1.3,.4,1) both,crowd-off .8s 4.9s ease-in forwards}
+@keyframes crowd-off{to{transform:translateY(170%)}}
+.fan{display:inline-block;font-size:clamp(30px,6vw,92px);line-height:1;transform-origin:50% 100%}
+.f-jab{animation:jab .5s ease-in-out infinite}
+.f-shake{animation:head-shake .7s ease-in-out infinite}
+.f-sulk{animation:sulk 1.6s ease-in-out infinite alternate}
+@keyframes jab{0%,100%{transform:translateY(0) rotate(0)} 45%{transform:translateY(22%) rotate(-14deg)}}
+@keyframes head-shake{0%,100%{transform:rotate(0)} 25%{transform:rotate(-11deg)} 75%{transform:rotate(11deg)}}
+@keyframes sulk{from{transform:rotate(-6deg) translateY(4%)} to{transform:rotate(6deg) translateY(0)}}
+/* A tomato flies up from the crowd, growing as it comes at the screen, and lands as a splat
+   that slides down and fades. --sx is how far left or right of its target it was thrown from. */
+.tomato,.splat{position:absolute;transform:translate(-50%,-50%);pointer-events:none}
+.tomato span{display:block;font-size:clamp(34px,4.2vw,60px);line-height:1;animation:toss .55s cubic-bezier(.35,.15,.65,1) both}
+@keyframes toss{from{transform:translate(var(--sx),75vh) scale(.35) rotate(0)}
+  55%{transform:translate(calc(var(--sx) * .35),-5vh) scale(.85) rotate(calc(var(--spin) * .6))}
+  to{transform:translate(0,0) scale(1.5) rotate(var(--spin))}}
+.splat{width:clamp(96px,11vw,170px)}
+.splat svg{display:block;width:100%;height:auto;animation:splat-hit .22s cubic-bezier(.2,1.6,.4,1) both,drip 2.6s .5s ease-in forwards}
+@keyframes splat-hit{from{transform:scale(.25)}}
+@keyframes drip{to{transform:translateY(7vh) scaleY(1.08);opacity:0}}
+.boo-crickets{position:absolute;left:16px;right:16px;bottom:22vh;text-align:center;font-style:italic;
+  font-size:clamp(15px,1.5vw,20px);color:rgba(255,255,255,.62);animation:party-in .8s 5.7s both}
+.tumble{position:absolute;left:0;bottom:5vh;width:clamp(72px,8.5vw,124px);animation:roll-across 3.1s 5.6s linear both}
+.tumble::after{content:"";position:absolute;left:18%;right:18%;bottom:-7px;height:8px;border-radius:50%;
+  background:rgba(0,0,0,.35);filter:blur(2px)}
+.tumble b{display:block;animation:hop .45s cubic-bezier(.25,.6,.5,1) infinite alternate}
+.tumble svg{display:block;width:100%;height:auto;animation:spin .9s linear infinite}
+@keyframes roll-across{from{transform:translateX(-110%)} to{transform:translateX(calc(100vw + 10%))}}
+@keyframes hop{to{transform:translateY(-35%)}}
+@media (prefers-reduced-motion:reduce){
+  .boo-cloud,.boo-cloud span,.boo-big span,.boo-quip,.boo-crowd,.fan,.boo-crickets{animation:none}
+  .tumble{display:none}
+}
+
 /* ===================================================== print */
 @media print{
   @page{size:A4 landscape;margin:11mm}
@@ -811,9 +868,14 @@ function renderProjects(){
        when the click is in its goals or item list, so typing never switches it off. */
     card.addEventListener("click", (e) => {
       const onControl = e.target.closest("textarea, button, summary, details.done-list ul");
+      if (!onControl) cardTapped(card);
       if (card.classList.contains("sel")){ if (!onControl) card.classList.remove("sel"); return; }
       $("rows").querySelectorAll(".proj.sel").forEach((c) => c.classList.remove("sel"));
       card.classList.add("sel");
+    });
+    /* Quick clicks would otherwise select words on the card as they go. */
+    card.addEventListener("mousedown", (e) => {
+      if (e.detail > 1 && !e.target.closest("textarea, details.done-list ul")) e.preventDefault();
     });
     /* Ticked goals are kept as their text in `done`, beside `next`, so `next` stays the
        plain list of strings every older copy of these notes uses. */
@@ -1160,20 +1222,221 @@ function celebrate(name){
   document.body.appendChild(el);
 
   const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const sound = partyAudio(PARTY_MS);
+  const sound = partyAudio(PARTY_MS, partySound);
   const stopFireworks = calm ? () => {} : fireworks(el.querySelector("canvas"), PARTY_MS - 1400, sound || {});
-  const timers = [setTimeout(() => el.classList.add("out"), PARTY_MS - 600),
-                  setTimeout(() => close(), PARTY_MS)];
+  showFor(el, PARTY_MS, () => { stopFireworks(); if (sound) sound.stop(); });
+}
+
+/* Runs an overlay already on the page for `ms`, fading it out at the end, and calls `stop`
+   however it ends. Esc or a click ends it early, but a click only after the first moment:
+   the boo is set off by clicking fast, and the next click of the run must not close it. */
+function showFor(el, ms, stop){
+  const opened = performance.now();
+  const timers = [setTimeout(() => el.classList.add("out"), ms - 600),
+                  setTimeout(() => close(), ms)];
   const onKey = (e) => { if (e.key === "Escape") close(); };
   function close(){
     timers.forEach(clearTimeout);
-    stopFireworks();
-    if (sound) sound.stop();
+    stop();
     document.removeEventListener("keydown", onKey);
     el.remove();
   }
-  el.addEventListener("click", close);
+  el.addEventListener("click", () => { if (performance.now() - opened > 900) close(); });
   document.addEventListener("keydown", onKey);
+}
+
+/* ===================================================== five quick clicks: the verdict */
+
+/* Five quick clicks on a card (Sam, 12 Oct 2026) give the crowd's verdict on its goals:
+   any still open, or none written, and it boos; all ticked, and the party plays again.
+   A click counts when it lands within half a second of the one before, on the same card. */
+const taps = { card:null, n:0, at:0 };
+
+function cardTapped(card){
+  const now = performance.now();
+  taps.n = taps.card === card && now - taps.at < 500 ? taps.n + 1 : 1;
+  taps.card = card;
+  taps.at = now;
+  if (taps.n < 5) return;
+  taps.n = 0;
+  const goals = [...card.querySelectorAll(".goals li:not(.empty)")];
+  const open = goals.filter((li) => !li.classList.contains("done")).length;
+  const name = card.querySelector("h3 .name")?.textContent.trim();
+  if (goals.length && !open) celebrate(name);
+  else boo(name, open, goals.length);
+}
+
+const BOO_MS = 9000;
+const BOO_QUIPS = [
+  "Tough crowd. Tick a few goals and they might come back.",
+  "The judges have conferred. It's a no from them.",
+  "Not quite the standing ovation we had in mind.",
+  "Goals don't tick themselves.",
+  "The fireworks are on standby until further notice.",
+  "Even the tumbleweed has somewhere better to be."
+];
+
+function boo(name, open, total){
+  if (document.querySelector(".party")) return;
+  const who = name ? esc(name) + " " : "";
+  const sub = !total ? "No " + who + "goals written for next sprint yet."
+    : total === 1 ? "The " + who + "goal is still open."
+    : open === total ? "None of the " + total + " " + who + "goals ticked yet."
+    : open + " of " + total + " " + who + "goals still open.";
+  const quip = !total ? "Hard to tick goals nobody has written."
+    : BOO_QUIPS[Math.floor(Math.random() * BOO_QUIPS.length)];
+  /* How far each letter of "Boooo!" tips and drops when it sags: [degrees, em]. */
+  const SAG = [[-6, 0.05], [9, 0.13], [-12, 0.2], [14, 0.16], [-9, 0.24], [98, 0.3]];
+  const fans = [["👎","jab"], ["😒","shake"], ["👎","jab"], ["🙄","sulk"], ["😤","shake"],
+                ["👎","jab"], ["😑","sulk"], ["👎","jab"]];
+  const el = document.createElement("div");
+  el.className = "party boo no-print";
+  el.setAttribute("role", "status");
+  el.innerHTML = '<canvas></canvas><div class="boo-cloud"><span>🌧️</span></div>' +
+    '<div class="party-hint">Click anywhere to close</div>' +
+    '<div class="party-msg"><div class="boo-big">' + [..."Boooo!"].map((ch, i) =>
+      '<span style="--rot:' + SAG[i][0] + "deg;--dy:" + SAG[i][1] + "em;animation-delay:" +
+      (i * 0.06).toFixed(2) + "s," + (3.95 + i * 0.09).toFixed(2) + 's">' + ch + "</span>").join("") + "</div>" +
+      '<div class="party-sub">' + sub + "</div>" +
+      '<div class="boo-quip">' + esc(quip) + "</div></div>" +
+    '<div class="boo-crowd">' + fans.map(([e, move], i) =>
+      '<span class="fan f-' + move + '" style="animation-delay:' + (-i * 0.13).toFixed(2) + 's">' + e + "</span>").join("") +
+      "</div>" +
+    '<div class="boo-crickets">[crickets chirping]</div>' +
+    '<div class="tumble"><b>' + tumbleSVG() + "</b></div>";
+  document.body.appendChild(el);
+
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const sound = partyAudio(BOO_MS, booSound);
+  const stopRain = calm ? () => {} : rain(el.querySelector("canvas"), 4700);
+  /* Four tomatoes while the crowd is booing, [ms, x, y] with x and y 0 to 1 across the
+     screen, two either side of the message and two lower down. */
+  const jitter = () => (Math.random() - 0.5) * 0.08;
+  const throws = calm ? [] : [[700, 0.24, 0.3], [1250, 0.76, 0.26], [1800, 0.36, 0.66], [2450, 0.66, 0.62]]
+    .map(([at, x, y]) => setTimeout(() => tomato(el, x + jitter(), y + jitter(), sound), at));
+  showFor(el, BOO_MS, () => { throws.forEach(clearTimeout); stopRain(); if (sound) sound.stop(); });
+}
+
+/* One tomato thrown at the screen, landing at x, y (0 to 1 across it), where it turns into a
+   splat. The splat's sound waits for the tomato to land, so the two always line up. */
+function tomato(el, x, y, sound){
+  const t = document.createElement("div");
+  t.className = "tomato";
+  t.style.left = (x * 100).toFixed(1) + "%";
+  t.style.top = (y * 100).toFixed(1) + "%";
+  const from = Math.round((0.2 + Math.random() * 0.6 - x) * window.innerWidth);
+  t.innerHTML = '<span style="--sx:' + from + "px;--spin:" + Math.round(Math.random() * 720 - 360) + 'deg">🍅</span>';
+  el.appendChild(t);
+  if (sound) sound.toss(x, 0.55);
+  t.firstChild.addEventListener("animationend", () => {
+    t.className = "splat";
+    t.innerHTML = splatSVG();
+    if (sound) sound.splat(x);
+  }, { once:true });
+}
+
+/* A splat, different every time: a lumpy blob traced smoothly through points at random
+   distances round a circle, with drips hanging off it, spray around it, seeds and a shine. */
+function splatSVG(){
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const f = (n) => n.toFixed(1);
+  const N = 16, pts = [];
+  for (let i = 0; i < N; i++){
+    const a = i / N * Math.PI * 2 + rnd(-0.08, 0.08);
+    const r = i % 2 ? rnd(25, 31) : rnd(31, Math.random() < 0.35 ? 46 : 37);
+    pts.push([50 + Math.cos(a) * r, 46 + Math.sin(a) * r]);
+  }
+  const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+  let d = "M" + mid(pts[N - 1], pts[0]).map(f).join(" ");
+  pts.forEach((p, i) => {
+    const m = mid(p, pts[(i + 1) % N]);
+    d += " Q" + f(p[0]) + " " + f(p[1]) + " " + f(m[0]) + " " + f(m[1]);
+  });
+  let bits = '<path d="' + d + 'Z"/>';
+  for (let i = 0, n = Math.round(rnd(2, 3)); i < n; i++){                // drips
+    const w = rnd(4, 7), x = rnd(36, 62) - w / 2, h = rnd(22, 34);
+    bits += '<rect x="' + f(x) + '" y="60" width="' + f(w) + '" height="' + f(h) + '" rx="' + f(w / 2) + '"/>' +
+            '<circle cx="' + f(x + w / 2) + '" cy="' + f(60 + h - w / 2) + '" r="' + f(w * 0.75) + '"/>';
+  }
+  for (let i = 0, n = Math.round(rnd(5, 7)); i < n; i++){                // spray
+    const a = rnd(0, Math.PI * 2), r = rnd(40, 48);
+    bits += '<circle cx="' + f(50 + Math.cos(a) * r) + '" cy="' + f(46 + Math.sin(a) * r) + '" r="' + f(rnd(1.6, 4)) + '"/>';
+  }
+  let seeds = "";
+  for (let i = 0; i < 5; i++){
+    const cx = f(50 + rnd(-14, 14)), cy = f(46 + rnd(-12, 12));
+    seeds += '<ellipse cx="' + cx + '" cy="' + cy + '" rx="2.2" ry="1.3" transform="rotate(' +
+             Math.round(rnd(0, 180)) + " " + cx + " " + cy + ')"/>';
+  }
+  return '<svg viewBox="0 0 100 100" aria-hidden="true"><g fill="#D23C2A">' + bits + "</g>" +
+    '<g fill="#F6D77A" opacity=".85">' + seeds + "</g>" +
+    '<ellipse cx="41" cy="37" rx="10" ry="6" fill="#fff" opacity=".18"/></svg>';
+}
+
+/* A tumbleweed: a tangle of curved stems criss-crossing a ball, with twigs poking out of
+   it, in two browns. */
+function tumbleSVG(){
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const f = (n) => n.toFixed(1);
+  const at = (a, r) => f(50 + Math.cos(a) * r) + " " + f(50 + Math.sin(a) * r);
+  let s = "";
+  for (let i = 0; i < 22; i++){                                          // stems
+    const a = rnd(0, Math.PI * 2);
+    s += '<path d="M' + at(a, rnd(30, 44)) + " Q" + at(rnd(0, Math.PI * 2), rnd(0, 22)) + " " +
+         at(a + rnd(1.6, 4.4), rnd(30, 44)) + '" stroke="' + (i % 3 ? "#B08A57" : "#7E5E36") +
+         '" stroke-width="' + f(rnd(1.6, 2.6)) + '"/>';
+  }
+  for (let i = 0; i < 9; i++){                                           // twigs
+    const a = rnd(0, Math.PI * 2);
+    s += '<path d="M' + at(a, rnd(34, 40)) + " L" + at(a + rnd(-0.2, 0.2), rnd(44, 49)) + '" stroke="#7E5E36" stroke-width="1.6"/>';
+  }
+  return '<svg viewBox="0 0 100 100" aria-hidden="true"><g fill="none" stroke-linecap="round" opacity=".95">' + s + "</g></svg>";
+}
+
+/* Rain falling at a slant across the whole canvas. New drops stop after `untilMs` and the
+   last ones fall away, so it clears up before the crickets. Returns a function that stops it. */
+function rain(canvas, untilMs){
+  const ctx = canvas.getContext("2d");
+  const drops = [];
+  let W = 0, H = 0, raf = 0, last = performance.now();
+  const t0 = last;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  function size(){
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  const drop = (y) => ({ x: rnd(-0.05, 1.2) * W, y: y == null ? rnd(-0.25, 0) * H : y,
+                         v: rnd(900, 1400), len: rnd(10, 22), a: rnd(0.18, 0.45) });
+  function frame(now){
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const pouring = now - t0 < untilMs;
+    ctx.clearRect(0, 0, W, H);
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = "round";
+    for (let i = drops.length - 1; i >= 0; i--){
+      const d = drops[i];
+      d.y += d.v * dt;
+      d.x -= d.v * 0.18 * dt;
+      if (d.y - d.len > H){
+        if (pouring) drops[i] = drop(); else drops.splice(i, 1);
+        continue;
+      }
+      ctx.strokeStyle = "rgba(184,201,222," + d.a + ")";
+      ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x + d.len * 0.18, d.y - d.len); ctx.stroke();
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  size();
+  window.addEventListener("resize", size);
+  const n = Math.round(Math.min(320, W * H / 7000));
+  for (let i = 0; i < n; i++) drops.push(drop(rnd(0, 1) * H));     // already falling on the first frame
+  raf = requestAnimationFrame(frame);
+  return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", size); };
 }
 
 /* Rockets rise from the bottom and burst at the top of their climb into sparks that drift
@@ -1267,16 +1530,16 @@ function fireworks(canvas, launchMs, on){
   return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", size); };
 }
 
-/* The party's sound, or null when the browser has none. Browsers only let a page make a
-   noise straight after a click, which is fine: the tick that sets the party off is one.
-   Sound is a nice extra, so any failure here just leaves the party silent. */
-function partyAudio(ms){
+/* An overlay's sound (partySound or booSound), or null when the browser has none. Browsers
+   only let a page make a noise straight after a click, which is fine: the tick or the clicks
+   that set it off are one. Sound is a nice extra, so any failure here just leaves it silent. */
+function partyAudio(ms, make){
   try{
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     const ctx = new AC();
     if (ctx.state === "suspended") ctx.resume();
-    const s = partySound(ctx, ms);
+    const s = make(ctx, ms);
     s.stop = () => {
       try{
         const now = ctx.currentTime;
@@ -1299,82 +1562,12 @@ function partyAudio(ms){
    rocket whistles as it climbs and each burst booms and crackles, panned to where it is on
    screen. Takes any AudioContext, so an OfflineAudioContext can render it to test. */
 function partySound(ctx, ms){
-  /* The slow part first. The noise, the hall and the crowd take over a tenth of a second
-     to write on a cold page, and setting up the notes about as long again, while the audio
-     clock keeps running. Every note is timed from t0, so t0 is read after the buffers and
-     a quarter second ahead, or the opening fanfare would be due before it was set up. */
-  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-  const nd = noise.getChannelData(0);
-  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-  const hall = hallEcho(ctx, 1.8);
+  /* The crowd is slow to write (see soundStage), so it goes before the clock is read. */
   const claps = crowdClaps(ctx, ms / 1000);
-
-  const now = ctx.currentTime, t0 = now + 0.25, end = now + ms / 1000;
-  const bus = ctx.createGain();
-  const comp = ctx.createDynamicsCompressor();     // the finale's stacked booms would clip
-  comp.threshold.value = -20; comp.knee.value = 10; comp.ratio.value = 10;
-  comp.attack.value = 0.001; comp.release.value = 0.2;
-  bus.gain.setValueAtTime(0.65, now);
-  bus.gain.setValueAtTime(0.65, end - 0.6);        // fades with the overlay
-  bus.gain.linearRampToValueAtTime(0.0001, end);
-  bus.connect(comp);
-  comp.connect(ctx.destination);
-
-  const room = ctx.createConvolver();              // the hall: any sound can send some here
-  room.buffer = hall;
-  const roomOut = ctx.createGain();
-  roomOut.gain.value = 0.45;
-  room.connect(roomOut);
-  roomOut.connect(bus);
-  const toRoom = (node, wet) => {
-    if (!wet) return;
-    const send = ctx.createGain();
-    send.gain.value = wet;
-    node.connect(send);
-    send.connect(room);
-  };
+  const { t0, bus, toRoom, voice } = soundStage(ctx, ms, 0.65);
 
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
   const rnd = (a, b) => a + Math.random() * (b - a);
-
-  /* One note or hit: an oscillator (or noise when there is no `type`), an optional filter,
-     a quick attack and a decay to nothing over `dur`, panned, into the bus, with `wet` of
-     it sent to the hall. */
-  function voice({ at, dur, type, freq, freqTo, filter, f, fTo, q = 1, vol, pan = 0, attack = 0.004, wet = 0 }){
-    let src;
-    if (type){
-      src = ctx.createOscillator();
-      src.type = type;
-      src.frequency.setValueAtTime(freq, at);
-      if (freqTo) src.frequency.exponentialRampToValueAtTime(freqTo, at + dur);
-    } else {
-      src = ctx.createBufferSource();
-      src.buffer = noise;
-      src.loop = true;
-    }
-    let node = src;
-    if (filter){
-      const bq = ctx.createBiquadFilter();
-      bq.type = filter; bq.Q.value = q;
-      bq.frequency.setValueAtTime(f, at);
-      if (fTo) bq.frequency.exponentialRampToValueAtTime(fTo, at + dur);
-      node.connect(bq); node = bq;
-    }
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, at);
-    g.gain.exponentialRampToValueAtTime(vol, at + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-    node.connect(g); node = g;
-    if (pan && ctx.createStereoPanner){
-      const p = ctx.createStereoPanner();
-      p.pan.value = Math.max(-1, Math.min(1, pan));
-      node.connect(p); node = p;
-    }
-    node.connect(bus);
-    toRoom(node, wet);
-    if (type) src.start(at); else src.start(at, Math.random() * 0.5);
-    src.stop(at + dur + 0.05);
-  }
 
   /* One brass note: two saws a few cents apart through a filter that opens on the attack,
      the bite of a trumpet, then settles, with a little vibrato on held notes. */
@@ -1503,6 +1696,238 @@ function partySound(ctx, ms){
           voice({ at:at + rnd(0.25, 1.3), dur:0.03, filter:"highpass", f:3000,
                   vol:rnd(0.05, 0.13), attack:0.001, pan:pan + rnd(-0.25, 0.25) });
         }
+      }catch(e){}
+    }
+  };
+}
+
+/* What the party and the boo both play through: a bus at `level` that fades out with the
+   overlay, a compressor so stacked hits never clip, a hall any sound can send some of itself
+   to, and voice(), which plays one note or hit. The noise and the hall, plus the caller's own
+   buffers, take over a tenth of a second to write on a cold page, and setting up the notes
+   about as long again, while the audio clock keeps running. Every note is timed from t0, so
+   t0 is read here, after the buffers, and a quarter second ahead, or the opening notes would
+   be due before they were set up. */
+function soundStage(ctx, ms, level){
+  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const nd = noise.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const hall = hallEcho(ctx, 1.8);
+
+  const now = ctx.currentTime, t0 = now + 0.25, end = now + ms / 1000;
+  const bus = ctx.createGain();
+  const comp = ctx.createDynamicsCompressor();     // the party's stacked booms would clip
+  comp.threshold.value = -20; comp.knee.value = 10; comp.ratio.value = 10;
+  comp.attack.value = 0.001; comp.release.value = 0.2;
+  bus.gain.setValueAtTime(level, now);
+  bus.gain.setValueAtTime(level, end - 0.6);       // fades with the overlay
+  bus.gain.linearRampToValueAtTime(0.0001, end);
+  bus.connect(comp);
+  comp.connect(ctx.destination);
+
+  const room = ctx.createConvolver();              // the hall: any sound can send some here
+  room.buffer = hall;
+  const roomOut = ctx.createGain();
+  roomOut.gain.value = 0.45;
+  room.connect(roomOut);
+  roomOut.connect(bus);
+  const toRoom = (node, wet) => {
+    if (!wet) return;
+    const send = ctx.createGain();
+    send.gain.value = wet;
+    node.connect(send);
+    send.connect(room);
+  };
+
+  /* One note or hit: an oscillator (or noise when there is no `type`), an optional filter,
+     a quick attack and a decay to nothing over `dur`, panned, into the bus, with `wet` of
+     it sent to the hall. */
+  function voice({ at, dur, type, freq, freqTo, filter, f, fTo, q = 1, vol, pan = 0, attack = 0.004, wet = 0 }){
+    let src;
+    if (type){
+      src = ctx.createOscillator();
+      src.type = type;
+      src.frequency.setValueAtTime(freq, at);
+      if (freqTo) src.frequency.exponentialRampToValueAtTime(freqTo, at + dur);
+    } else {
+      src = ctx.createBufferSource();
+      src.buffer = noise;
+      src.loop = true;
+    }
+    let node = src;
+    if (filter){
+      const bq = ctx.createBiquadFilter();
+      bq.type = filter; bq.Q.value = q;
+      bq.frequency.setValueAtTime(f, at);
+      if (fTo) bq.frequency.exponentialRampToValueAtTime(fTo, at + dur);
+      node.connect(bq); node = bq;
+    }
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    node.connect(g); node = g;
+    if (pan && ctx.createStereoPanner){
+      const p = ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pan));
+      node.connect(p); node = p;
+    }
+    node.connect(bus);
+    toRoom(node, wet);
+    if (type) src.start(at); else src.start(at, Math.random() * 0.5);
+    src.stop(at + dur + 0.05);
+  }
+
+  return { t0, bus, toRoom, voice };
+}
+
+/* The boo's sound, all synthesised like the party's. For the first three seconds a crowd
+   boos; as they give up, a trombone plays the classic wah wah wah waaah; once they have gone
+   there is nobody left but two crickets. Each tomato whooshes as it flies and splats where
+   it lands, panned to where it is on screen. Timed to the overlay: the trombone's last note
+   is when the letters sag, the crickets come in with the tumbleweed. */
+function booSound(ctx, ms){
+  const { t0, bus, toRoom, voice } = soundStage(ctx, ms, 0.7);
+  const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const pan = (node, p) => {
+    if (!ctx.createStereoPanner) return node;
+    const sp = ctx.createStereoPanner();
+    sp.pan.value = p;
+    node.connect(sp);
+    return sp;
+  };
+
+  /* The crowd: each person a buzz shaped into an "oo" by two formant filters, with their
+     own wobble, booing two or three times, every boo sliding down in pitch. Most give up
+     by 3 s; the last few hang on under the trombone until the crowd fades out at 4.6 s. */
+  const crowd = ctx.createGain();
+  crowd.gain.setValueAtTime(1, t0);
+  crowd.gain.setValueAtTime(1, t0 + 2.4);
+  crowd.gain.linearRampToValueAtTime(0.35, t0 + 3.4);
+  crowd.gain.linearRampToValueAtTime(0.0001, t0 + 4.6);
+  crowd.connect(bus);
+  toRoom(crowd, 0.5);
+  for (let p = 0; p < 26; p++){
+    const high = p % 5 > 2, f0 = high ? rnd(165, 230) : rnd(85, 135), lift = high ? 1.15 : 1;
+    const o = ctx.createOscillator();
+    o.type = "sawtooth";
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = rnd(4.5, 6.5);
+    const wob = ctx.createGain();
+    wob.gain.value = f0 * 0.015;
+    lfo.connect(wob);
+    wob.connect(o.frequency);
+    const f1 = ctx.createBiquadFilter(), f2 = ctx.createBiquadFilter(), g2 = ctx.createGain();
+    f1.type = f2.type = "bandpass";
+    f1.frequency.value = rnd(290, 360) * lift; f1.Q.value = 4;
+    f2.frequency.value = rnd(800, 900) * lift; f2.Q.value = 6;
+    g2.gain.value = 0.35;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, t0);
+    o.connect(f1); o.connect(f2);
+    f1.connect(env); f2.connect(g2); g2.connect(env);
+    pan(env, rnd(-0.85, 0.85)).connect(crowd);
+
+    let t = t0 + rnd(0, 0.7);
+    const until = t0 + (p < 18 ? rnd(2.2, 3) : rnd(3.2, 4.4));
+    while (t < until){
+      const len = rnd(0.9, 1.9), v = rnd(0.5, 1) * 0.5;
+      o.frequency.setValueAtTime(f0 * 1.06, t);
+      o.frequency.exponentialRampToValueAtTime(f0 * 0.88, t + len);
+      env.gain.setValueAtTime(0, t);
+      env.gain.linearRampToValueAtTime(v, t + 0.18);
+      env.gain.setValueAtTime(v, t + len - 0.3);
+      env.gain.linearRampToValueAtTime(0, t + len);
+      t += len + rnd(0.15, 0.45);
+    }
+    o.start(t0); lfo.start(t0);
+    o.stop(t + 0.1); lfo.stop(t + 0.1);
+  }
+
+  /* One trombone note: two saws through a resonant low-pass that opens on the note and
+     half closes again, a plunger mute's "wah". It scoops up into its pitch. The last note
+     (`sag`) wobbles in pitch and wah alike, then droops flat as it dies. */
+  function trombone(at, dur, midi, vol, sag){
+    const f = hz(midi), stop = at + dur + 0.1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + 0.05);
+    g.gain.setValueAtTime(vol, at + dur - 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, stop);
+    const wah = ctx.createBiquadFilter();
+    wah.type = "lowpass"; wah.Q.value = 7;
+    wah.frequency.setValueAtTime(300, at);
+    wah.frequency.exponentialRampToValueAtTime(1500, at + 0.14);
+    wah.frequency.exponentialRampToValueAtTime(650, at + Math.min(dur, 0.45));
+    wah.connect(g);
+    let wobble = null;
+    if (sag){
+      wah.frequency.setValueAtTime(650, at + dur - 0.4);
+      wah.frequency.exponentialRampToValueAtTime(320, at + dur);
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 6;
+      wobble = ctx.createGain();
+      wobble.gain.setValueAtTime(0, at);
+      wobble.gain.linearRampToValueAtTime(f * 0.035, at + 0.8);
+      const wahWob = ctx.createGain();
+      wahWob.gain.setValueAtTime(0, at);
+      wahWob.gain.linearRampToValueAtTime(380, at + 0.6);
+      lfo.connect(wobble);
+      lfo.connect(wahWob);
+      wahWob.connect(wah.frequency);
+      lfo.start(at); lfo.stop(stop);
+    }
+    [-6, 6].forEach((cents) => {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.detune.value = cents;
+      o.frequency.setValueAtTime(f * 0.96, at);
+      o.frequency.exponentialRampToValueAtTime(f, at + 0.08);
+      if (sag){
+        o.frequency.setValueAtTime(f, at + dur - 0.5);
+        o.frequency.exponentialRampToValueAtTime(f * 0.89, at + dur);
+      }
+      if (wobble) wobble.connect(o.frequency);
+      o.connect(wah);
+      o.start(at); o.stop(stop);
+    });
+    g.connect(bus);
+    toRoom(g, 0.3);
+  }
+  [[2.2, 58], [2.7, 57], [3.2, 56]].forEach(([at, m]) => trombone(t0 + at, 0.42, m, 0.16));
+  trombone(t0 + 3.7, 1.7, 55, 0.18, true);
+
+  /* Crickets: three quick pulses a chirp, one near, one further off. */
+  const cricket = (from, to, freq, vol, p) => {
+    for (let t = from; t < to; t += rnd(0.6, 0.8)){
+      for (let k = 0; k < 3; k++){
+        voice({ at:t + k * 0.045, dur:0.03, type:"sine", freq, vol, attack:0.006, pan:p, wet:0.25 });
+      }
+    }
+  };
+  cricket(t0 + 5.4, t0 + 8.4, 4400, 0.13, 0.35);
+  cricket(t0 + 5.75, t0 + 8.4, 3900, 0.065, -0.5);
+
+  /* Tomatoes, told about by tomato(). x is 0 to 1 across the screen. */
+  const panOf = (x) => (x * 2 - 1) * 0.8;
+  return {
+    bus,
+    toss(x, secs){
+      try{
+        voice({ at:ctx.currentTime, dur:secs, filter:"bandpass", f:500, fTo:2600, q:1.4,
+                vol:0.12, attack:secs * 0.8, pan:panOf(x) });
+      }catch(e){}
+    },
+    /* The crowd fills everything up to about 1 kHz, so the wet top end of a splat is what
+       carries it over them. */
+    splat(x){
+      try{
+        const at = ctx.currentTime, p = panOf(x);
+        voice({ at, dur:0.16, type:"sine", freq:170, freqTo:55, vol:0.7, pan:p });                       // thud
+        voice({ at, dur:0.28, filter:"lowpass", f:2400, fTo:200, vol:0.7, attack:0.002, pan:p, wet:0.2 }); // squelch
+        voice({ at:at + 0.01, dur:0.09, filter:"bandpass", f:1100, q:0.9, vol:0.45, attack:0.001, pan:p }); // slap
+        voice({ at, dur:0.12, filter:"highpass", f:2500, fTo:4500, vol:0.3, attack:0.001, pan:p });         // spatter
       }catch(e){}
     }
   };
