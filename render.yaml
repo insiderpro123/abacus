@@ -15,7 +15,7 @@ services:
     name: insiderpro-process
     runtime: python
     region: frankfurt
-    plan: free
+    plan: starter            # $7/month, never spins down (free took ~30s to wake after 15 idle min)
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
