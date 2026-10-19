@@ -54,6 +54,16 @@ WHAT "COMPLETED" MEANS HERE
     Abacus does it differently again: it reads each issue's CURRENT status and attributes it
     to the issue's latest sprint. Run --reconcile to compare.
 
+WHAT A SYNC PULLS
+    Because past weeks never change, the page's Sync builds on the stored pull: it keeps every
+    finished week older than RECENT_WEEKS and pulls only those recent weeks, this week and the
+    ones ahead (Sam, 19 Oct 2026: pulling six months of tickets every time took ~25s). The
+    tickets done in each week are stored with the pull (done_keys), so one finished in a kept
+    week is still never counted again later. A full pull happens when there is no usable
+    stored pull: none yet, older than MAX_KEEP_AGE_WEEKS, or from an older PULL_VERSION. Only
+    a full pull refreshes a kept week, so a kept week no longer fades as its tickets pass the
+    HISTORY_DAYS window. The local dashboard always pulls in full; the counting is the same.
+
 CREDENTIALS
     On Render: the JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN environment variables Abacus
     already uses. Locally: this folder's .env (app.py loads it into the environment first).
@@ -63,6 +73,8 @@ import json
 import os
 import re
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -80,6 +92,24 @@ HISTORY_DAYS = 190
 # Sprints not started yet, counted in weeks after this one: this week plus two (Sam, 5 Oct
 # 2026). Further ahead they are left out, though Jira holds ISP sprints well into next year.
 FUTURE_WEEKS = 2
+
+# A Sync pulls the RECENT_WEEKS weeks before this one again and keeps the older ones from
+# the stored pull (see WHAT A SYNC PULLS).
+RECENT_WEEKS = 2
+# Their tickets are found by when they were last updated, with this much slack before the
+# first week pulled: putting a ticket in a sprint, finishing it and carrying it over when the
+# sprint is completed all update it.
+UPDATED_SLACK_DAYS = 14
+# A stored pull older than this is not built on; the next Sync pulls everything again.
+MAX_KEEP_AGE_WEEKS = 8
+# Raise this whenever the counting rules change, so the next Sync is a full pull.
+PULL_VERSION = 1
+
+# Epic totals: Jira serves at most 100 children a page, so ~50 pages one after another took
+# ~17s. One epic per search, eight at a time, takes ~6s, most of it the biggest epic's own
+# pages, which have to come one after another.
+EPIC_CHUNK = 1
+EPIC_WORKERS = 8
 
 # Jira names the story-point field differently in company- and team-managed projects.
 _SP_FIELD_NAMES = ("story points", "story point estimate")
@@ -168,7 +198,15 @@ class Jira:
         self.token = cfg["token"]
         self._cloud_id = None
         self._sp_fields = None
-        self.session = requests.Session()
+        self._local = threading.local()
+
+    @property
+    def session(self):
+        """One requests session per thread, as epic totals are fetched side by side."""
+        s = getattr(self._local, "session", None)
+        if s is None:
+            s = self._local.session = requests.Session()
+        return s
 
     @property
     def configured(self):
@@ -591,21 +629,63 @@ def epic_totals(jira, keys, sp_fields):
     totals = {k: 0 for k in keys}
     keys = sorted(keys)
     fields = ",".join(["parent"] + sp_fields)
-    for i in range(0, len(keys), 40):
-        chunk = keys[i:i + 40]
-        for it in jira.search("parent in (" + ",".join(chunk) + ")", fields):
-            f = it.get("fields") or {}
-            pk = (f.get("parent") or {}).get("key")
-            if pk in totals:
-                totals[pk] += points_of(f, sp_fields)
+    chunks = [keys[i:i + EPIC_CHUNK] for i in range(0, len(keys), EPIC_CHUNK)]
+    jira.cloud_id()                     # resolved once, before the threads need it
+    with ThreadPoolExecutor(max_workers=EPIC_WORKERS) as pool:
+        found = pool.map(lambda chunk: jira.search("parent in (" + ",".join(chunk) + ")", fields),
+                         chunks)
+        for children in found:
+            for it in children:
+                f = it.get("fields") or {}
+                pk = (f.get("parent") or {}).get("key")
+                if pk in totals:
+                    totals[pk] += points_of(f, sp_fields)
     return totals
 
 
-def build(jira=None, history_days=HISTORY_DAYS):
-    """Pull from Jira and return the full dashboard payload."""
+def _reusable(previous, history_days, this_monday, cutoff):
+    """(the stored pull's weeks that can stand as they are, the Monday to pull from).
+
+    (None, None) means pull everything. Anything from the week the stored pull was made on
+    may have moved since, and so may any week whose sprints had not all closed by then.
+    """
+    if (not isinstance(previous, dict) or previous.get("pull_version") != PULL_VERSION
+            or previous.get("history_days") != history_days
+            or not isinstance(previous.get("done_keys"), dict)
+            or not isinstance(previous.get("weeks"), list)):
+        return None, None
+    made = monday_of(previous.get("generated_at"))
+    oldest = this_monday - timedelta(weeks=MAX_KEEP_AGE_WEEKS)
+    if not made or made < oldest:
+        return None, None
+    start = min(this_monday - timedelta(weeks=RECENT_WEEKS), made)
+    for wk in previous["weeks"]:
+        mon = monday_of(wk.get("start"))
+        if mon and mon < start and wk.get("sprint_state") != "closed":
+            start = mon
+    if start < oldest:
+        return None, None
+    kept = [wk for wk in previous["weeks"]
+            if cutoff <= date.fromisoformat(wk["start"]) < start]
+    return kept, start
+
+
+def build(jira=None, history_days=HISTORY_DAYS, previous=None):
+    """Pull from Jira and return the full dashboard payload.
+
+    `previous` is the stored payload to build on: its finished weeks are kept and only the
+    recent ones are pulled (see WHAT A SYNC PULLS). Without it, everything is pulled.
+    """
     jira = jira or Jira()
     started = datetime.now(timezone.utc)
     sp_fields = jira.story_point_fields()
+
+    cutoff = (started - timedelta(days=history_days)).date()
+    this_monday = monday_of(started.date())
+    horizon = this_monday + timedelta(weeks=FUTURE_WEEKS)
+    kept, pull_from = _reusable(previous, history_days, this_monday, cutoff)
+    closed_days = (history_days if kept is None
+                   else (started.date() - pull_from).days + UPDATED_SLACK_DAYS)
 
     field_list = ",".join(
         ["summary", "status", "assignee", "priority", "issuetype", "project", "labels",
@@ -617,7 +697,7 @@ def build(jira=None, history_days=HISTORY_DAYS):
     # A ticket moved on to a later sprint is still found, through the sprint it is in now.
     in_sprints = jira.search(
         f"(sprint in openSprints() OR sprint in futureSprints()"
-        f" OR (sprint in closedSprints() AND updated >= -{history_days}d))",
+        f" OR (sprint in closedSprints() AND updated >= -{closed_days}d))",
         field_list)
 
     dropped = len(in_sprints)
@@ -632,9 +712,6 @@ def build(jira=None, history_days=HISTORY_DAYS):
 
     # Every sprint any of them has been in, straight off the sprint field.
     now = datetime.now(timezone.utc)
-    cutoff = (now - timedelta(days=history_days)).date()
-    this_monday = monday_of(now.date())
-    horizon = this_monday + timedelta(weeks=FUTURE_WEEKS)
     all_sprints = {}
     boards = set()
     for it in in_sprints:
@@ -659,6 +736,8 @@ def build(jira=None, history_days=HISTORY_DAYS):
         mon = sprint_week(s)
         if state not in ("closed", "active", "future") or not mon or mon < cutoff:
             continue
+        if pull_from and mon < pull_from:              # a kept week: it stands as stored
+            continue
         if state == "future" and not (this_monday <= mon <= horizon):
             continue
         completed_at = parse_ts(s.get("completeDate")) if state == "closed" else None
@@ -672,9 +751,15 @@ def build(jira=None, history_days=HISTORY_DAYS):
                      "monday": mon, "a": a, "b": b, "completed_at": completed_at})
     runs.sort(key=lambda r: (r["b"], r["monday"], r["name"]))
 
-    weeks = {}
+    weeks = {}            # only the weeks pulled now; the kept ones are already finished
     seen_people = {}
     sprints = {}          # monday iso -> {name: state} as Jira reports them
+    full = kept is None
+    kept = kept or []
+    done_keys = {wk["start"]: list(previous["done_keys"].get(wk["start"]) or []) for wk in kept}
+    for wk in kept:
+        for p in wk.get("people") or []:
+            seen_people[p["key"]] = p["name"]
 
     def week_for(monday):
         if monday.isoformat() not in weeks:
@@ -682,8 +767,9 @@ def build(jira=None, history_days=HISTORY_DAYS):
         return weeks[monday.isoformat()]
 
     # Oldest sprint first, so a ticket Done in one sprint and dragged into the next is only
-    # ever counted as completed in the sprint it was finished in.
-    counted = set()
+    # ever counted as completed in the sprint it was finished in. Tickets done in a kept week
+    # start off counted.
+    counted = {key for keys in done_keys.values() for key in keys}
     for run in runs:
         wk = week_for(run["monday"])
         sprints.setdefault(run["monday"].isoformat(), {})[run["name"]] = run["state"]
@@ -700,6 +786,7 @@ def build(jira=None, history_days=HISTORY_DAYS):
             _tally_committed(wk, key, f, pts, done, seen_people)
             if done:
                 counted.add(key)
+                done_keys.setdefault(wk["start"], []).append(key)
                 if not f.get("resolutiondate"):
                     wk["no_resolution_date"] += 1
                 _tally_done(wk, key, f, pts, seen_people)
@@ -735,18 +822,27 @@ def build(jira=None, history_days=HISTORY_DAYS):
                                    key=lambda e: (-e["done"], -e["committed"], e["name"].lower()))
             for e in proj["epics"]:
                 e["done_items"] = e["done_items"][:40]
+    ordered = sorted(kept + ordered, key=lambda w: w["start"])
 
     # Every card reads "13 of 100": points completed that week of the epic's total. So every
     # epic with any work in a week needs a total. A customer card sums the epics its work
-    # that week sat under; an Operations or Marketing card is one epic.
+    # that week sat under; an Operations or Marketing card is one epic. Totals are fetched
+    # for the epics in the weeks pulled now; one only in kept weeks keeps its stored total.
     active = lambda e: e["done"] > 0 or e["committed"] > 0
     epic_info = {}
+    recent = set()
     for wk in ordered:
         for proj in wk["projects"]:
             for e in proj["epics"]:
                 if e["epic"] and active(e):
                     epic_info[e["epic"]] = {"name": e["name"], "project": proj["code"]}
-    totals = epic_totals(jira, set(epic_info), sp_fields) if epic_info else {}
+                    if wk["start"] in weeks:
+                        recent.add(e["epic"])
+    stored = {} if full else {k: v.get("total", 0) for k, v in (previous.get("epics") or {}).items()
+                              if isinstance(v, dict)}
+    fetch = {k for k in epic_info if full or k in recent or k not in stored}
+    totals = epic_totals(jira, fetch, sp_fields) if fetch else {}
+    totals.update({k: stored[k] for k in epic_info if k not in fetch})
     for k, info in epic_info.items():
         info["total"] = totals.get(k, 0)
     for wk in ordered:
@@ -773,6 +869,15 @@ def build(jira=None, history_days=HISTORY_DAYS):
             "weeks": len(ordered),
             "no_resolution_date": sum(w["no_resolution_date"] for w in ordered),
         },
+        # What this pull fetched: "full", or "recent" = the weeks from `from` on, with the
+        # older ones kept from the stored pull.
+        "pull": {"mode": "full" if full else "recent",
+                 "from": None if full else pull_from.isoformat(),
+                 "tickets": len(in_sprints)},
+        "pull_version": PULL_VERSION,
+        # The tickets counted as done in each week, so the next Sync can keep that week and
+        # still never count one of them again.
+        "done_keys": {k: sorted(v) for k, v in sorted(done_keys.items())},
         "elapsed_seconds": round((datetime.now(timezone.utc) - started).total_seconds(), 1),
     }
 

@@ -2352,10 +2352,23 @@ function signedOut(r){
   return false;
 }
 
-async function fetchData(){
-  const r = await fetch("/api/retro/data", { cache:"no-store" });
+/* Abacus answered, but not with the JSON asked for: an error page, or Render's own reply while
+   the server restarts. Kept apart from a fetch that fails outright, which is the network. */
+class ServerReplyError extends Error {
+  constructor(status){ super("Abacus replied with error " + status); this.status = status; }
+}
+
+/* An Abacus API call's JSON, or null when signed out (already on the way to the login page). */
+async function askServer(url, opts){
+  const r = await fetch(url, opts);
   if (signedOut(r)) return null;
-  const j = await r.json();
+  if (!r.ok) throw new ServerReplyError(r.status);
+  try{ return await r.json(); }
+  catch(e){ throw new ServerReplyError(r.status); }
+}
+
+async function fetchData(){
+  const j = await askServer("/api/retro/data", { cache:"no-store" });
   return (j && Array.isArray(j.weeks)) ? j : null;
 }
 
@@ -2369,6 +2382,17 @@ const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
    sync by itself on opening and on coming back to the tab; Sam asked for that to stop
    (5 Oct 2026). "Synced ..." beside the button says how fresh the figures are. */
 let syncing = false;
+
+/* What to tell people when a sync fails, by what failed. The whole error is in the console. */
+function syncProblem(e, stage){
+  if (stage === "show")
+    return "The new figures arrived but the page could not show them. Reload the page.";
+  if (e instanceof ServerReplyError)
+    return "Abacus had a problem (error " + e.status + ") during the sync. " +
+      (stage === "start" ? "Try Sync again in a minute." :
+       "The sync may still finish on its own: reload the page in a minute.");
+  return "Could not reach Abacus. Check your connection and try again.";
+}
 
 /* How long a sync should take, in seconds: what the last one took in this browser, start to
    finish, else the server's own time for the stored pull plus the polling on top. */
@@ -2416,28 +2440,41 @@ async function sync(){
   btn.disabled = true; icon.className = "spinning";
   const stopProgress = startProgress();
   let ok = false;
+  let stage = "start";
   try{
     const before = DATA ? DATA.generated_at : null;
-    const r = await fetch("/api/retro/sync", { method:"POST" });
-    if (signedOut(r)) return;
-    const started = (await r.json()).started_at;
+    const start = await askServer("/api/retro/sync", { method:"POST" });
+    if (!start) return;
+    const started = start.started_at;
 
-    let fresh = null, err = null;
+    /* The pull carries on on the server whatever happens here, so one failed check (a
+       dropped connection, Render busy for a moment) is not a failed sync: only five in a
+       row are. That used to end the sync with "Could not reach Abacus" on the first. */
+    stage = "wait";
+    let fresh = null, err = null, misses = 0;
     for (let i = 0; i < 90 && !fresh && !err; i++){          // give up after 3 minutes
       await sleep(2000);
-      const s = await (await fetch("/api/retro/sync", { cache:"no-store" })).json();
-      if (s.started_at === started && !s.running){
-        if (s.error) err = s.error;
-        else fresh = await fetchData();
-      } else if (s.started_at !== started){
-        const d = await fetchData();
-        if (d && d.generated_at !== before) fresh = d;
+      try{
+        const s = await askServer("/api/retro/sync", { cache:"no-store" });
+        if (!s) return;
+        if (s.started_at === started && !s.running){
+          if (s.error) err = s.error;
+          else fresh = await fetchData();
+        } else if (s.started_at !== started){
+          const d = await fetchData();
+          if (d && d.generated_at !== before) fresh = d;
+        }
+        misses = 0;
+      }catch(e){
+        console.warn("Sprint Retro: a sync check failed, trying again", e);
+        if (++misses >= 5) throw e;
       }
     }
     if (err){ flash("Jira sync failed: " + esc(err), "err"); return; }
     if (!fresh){ flash("The Jira sync is taking longer than usual. Reload the page in a minute to see it.", "err"); return; }
 
     ok = true;
+    stage = "show";
     /* Stay on the week you were looking at, unless that was this sprint by default: then
        go to this sprint in the new pull, which may hold a week the old one did not. */
     const had = DATA && DATA.weeks.length;
@@ -2446,10 +2483,15 @@ async function sync(){
     const found = keepWeek ? DATA.weeks.findIndex((w) => w.start === keepWeek) : -1;
     weekIdx = found >= 0 ? found : defaultWeekIndex();
     render();
-    flash("Pulled " + DATA.counts.completed_issues + " completed sprint items from Jira in " +
-          DATA.elapsed_seconds + "s.", "info");
+    const pull = DATA.pull || {};
+    flash(pull.mode === "recent"
+      ? "Synced the weeks from w/c " + esc(fmtDate(pull.from)) + " in " + DATA.elapsed_seconds +
+        "s. Earlier weeks are final, so they were kept as they were."
+      : "Pulled " + DATA.counts.completed_issues + " completed sprint items from Jira in " +
+        DATA.elapsed_seconds + "s.", "info");
   }catch(e){
-    flash("Could not reach Abacus. Check your connection and try again.", "err");
+    console.error("Sprint Retro sync failed (" + stage + ")", e);
+    flash(syncProblem(e, stage), "err");
   }finally{
     syncing = false;
     btn.disabled = !ONLINE; icon.className = "";
@@ -2460,10 +2502,14 @@ async function sync(){
 /* ===================================================== boot */
 
 async function boot(){
-  try{
-    DATA = await fetchData();
-    ONLINE = true;
-  }catch(e){ ONLINE = false; }
+  /* Three tries before saying "cannot reach Abacus": one failed load is often a blip. */
+  for (let attempt = 0; attempt < 3 && !ONLINE; attempt++){
+    if (attempt) await sleep(1500);
+    try{
+      DATA = await fetchData();
+      ONLINE = true;
+    }catch(e){ console.warn("Sprint Retro: could not load the stored pull", e); }
+  }
 
   await loadNotes();
   await loadPinned();

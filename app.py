@@ -1742,11 +1742,23 @@ def api_retro_data():
     return app.response_class(row.payload, mimetype="application/json")
 
 
-def _retro_sync_worker():
-    """Runs off the request thread: a pull takes ~30s, which is gunicorn's default worker
-    timeout, so doing it inside the request would risk the worker being killed mid-sync."""
+def _retro_sync_worker(full=False):
+    """Runs off the request thread: a full pull takes ~15s and gunicorn's default worker
+    timeout is 30s, so doing it inside the request would risk the worker being killed.
+
+    An ordinary sync builds on the stored pull and only fetches the recent weeks (see
+    retro_pull's WHAT A SYNC PULLS); full=True pulls the whole history again."""
     try:
-        payload = retro_pull.build()
+        previous = None
+        if not full:
+            with SessionLocal() as s:
+                row = s.query(RetroSnapshot).order_by(RetroSnapshot.id.desc()).first()
+                if row:
+                    try:
+                        previous = json.loads(row.payload)
+                    except ValueError:
+                        previous = None                 # unreadable: pull everything
+        payload = retro_pull.build(previous=previous)
         body = json.dumps(payload)
         with SessionLocal.begin() as s:
             s.add(RetroSnapshot(payload=body))
@@ -1765,13 +1777,15 @@ def _retro_sync_worker():
 
 @app.route("/api/retro/sync", methods=["GET", "POST"])
 def api_retro_sync():
-    """POST starts a pull in the background (one at a time); GET reports its progress."""
+    """POST starts a pull in the background (one at a time); GET reports its progress.
+    POST ?full=1 pulls the whole history instead of only the recent weeks."""
     if request.method == "POST":
+        full = request.args.get("full") == "1"
         with _RETRO_LOCK:
             if not _RETRO_SYNC["running"]:
                 _RETRO_SYNC.update(running=True, error=None,
                                    started_at=datetime.now().astimezone().isoformat(timespec="seconds"))
-                threading.Thread(target=_retro_sync_worker, daemon=True).start()
+                threading.Thread(target=_retro_sync_worker, args=(full,), daemon=True).start()
     return jsonify(dict(_RETRO_SYNC))
 
 
