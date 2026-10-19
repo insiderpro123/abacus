@@ -285,14 +285,16 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
 
 /* ===================================================== all goals ticked: party
    Ten seconds of fireworks (a canvas) and dancers over the whole page when the last
-   open goal is ticked. Click anywhere or press Esc to end it early. */
-.party{position:fixed;inset:0;z-index:9999;overflow:hidden;cursor:pointer;
+   open goal is ticked. Click anywhere or press Esc to end it early. The overlays spell out
+   top/right/bottom/left rather than inset:0, which Safari only has from 14.1: on an older
+   Mac the rest of the page works, but the party and the boo would come out 0 by 0. */
+.party{position:fixed;top:0;right:0;bottom:0;left:0;z-index:9999;overflow:hidden;cursor:pointer;
   user-select:none;-webkit-user-select:none;   /* clicks after the 5th land here; select nothing */
   background:radial-gradient(ellipse at 50% 38%,rgba(14,58,99,.94) 0%,rgba(5,18,34,.97) 100%);
   animation:party-in .35s ease-out both;transition:opacity .6s ease}
 .party.out{opacity:0}
 @keyframes party-in{from{opacity:0}}
-.party canvas{position:absolute;inset:0;width:100%;height:100%}
+.party canvas{position:absolute;top:0;left:0;width:100%;height:100%}
 /* Slow disco beams turning behind everything. */
 .party-beams{position:absolute;left:50%;top:-60vmax;width:240vmax;height:240vmax;margin-left:-120vmax;
   background:repeating-conic-gradient(from 0deg,rgba(255,255,255,.05) 0deg 7deg,transparent 7deg 22deg);
@@ -340,9 +342,9 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
 /* Everything that shakes when a tomato or the stamp hits. Inside it, back to front: the
    splats, the message and stamp (kept readable on top of them), the crowd, then tomatoes
    in flight. */
-.boo-stage,.boo-splats,.boo-fly{position:absolute;inset:0}
+.boo-stage,.boo-splats,.boo-fly{position:absolute;top:0;right:0;bottom:0;left:0}
 .boo-splats,.boo-fly{pointer-events:none}
-.boo-flash{position:absolute;inset:0;background:#fff;pointer-events:none;animation:flash .7s .25s ease-out both}
+.boo-flash{position:absolute;top:0;right:0;bottom:0;left:0;background:#fff;pointer-events:none;animation:flash .7s .25s ease-out both}
 @keyframes flash{0%{opacity:0} 6%{opacity:.85} 16%{opacity:.1} 24%{opacity:.6} 45%,100%{opacity:0}}
 .boo .party-msg{top:34%}
 .boo .party-sub{margin-top:clamp(18px,3vw,40px)}     /* room for the letters to sag into */
