@@ -287,6 +287,7 @@ details.done-list .k{font-weight:700;color:var(--blue);min-width:86px;flex:none}
    Ten seconds of fireworks (a canvas) and dancers over the whole page when the last
    open goal is ticked. Click anywhere or press Esc to end it early. */
 .party{position:fixed;inset:0;z-index:9999;overflow:hidden;cursor:pointer;
+  user-select:none;-webkit-user-select:none;   /* clicks after the 5th land here; select nothing */
   background:radial-gradient(ellipse at 50% 38%,rgba(14,58,99,.94) 0%,rgba(5,18,34,.97) 100%);
   animation:party-in .35s ease-out both;transition:opacity .6s ease}
 .party.out{opacity:0}
@@ -1278,9 +1279,10 @@ function showFor(el, ms, stop){
 
 /* ===================================================== five quick clicks: the verdict */
 
-/* Five quick clicks on a card (Sam, 12 Oct 2026) give the crowd's verdict on its goals:
-   any still open, or none written, and it boos; all ticked, and the party plays again.
-   A click counts when it lands within half a second of the one before, on the same card. */
+/* Five quick clicks on a card (Sam, 12 Oct 2026), or clicking it and pressing B (Sam,
+   19 Oct 2026: easier), give the crowd's verdict on its goals: any still open, or none
+   written, and it boos; all ticked, and the party plays again. A click counts when it lands
+   within half a second of the one before, on the same card. */
 const taps = { card:null, n:0, at:0 };
 
 function cardTapped(card){
@@ -1290,6 +1292,23 @@ function cardTapped(card){
   taps.at = now;
   if (taps.n < 5) return;
   taps.n = 0;
+  verdict(card);
+}
+
+/* B on the highlighted card. Not while typing, so a goal can still hold the letter b. */
+function booKey(e){
+  if (e.key !== "b" && e.key !== "B") return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  const t = e.target;
+  if (t && t.closest && t.closest("textarea, input, select, [contenteditable]")) return;
+  const card = $("rows").querySelector(".proj.sel");
+  if (!card || document.querySelector(".party")) return;
+  e.preventDefault();
+  verdict(card);
+}
+
+function verdict(card){
+  window.getSelection()?.removeAllRanges();    // quick clicks can leave words selected
   const goals = [...card.querySelectorAll(".goals li:not(.empty)")];
   const open = goals.filter((li) => !li.classList.contains("done")).length;
   const name = card.querySelector("h3 .name")?.textContent.trim();
@@ -2483,12 +2502,15 @@ async function sync(){
     const found = keepWeek ? DATA.weeks.findIndex((w) => w.start === keepWeek) : -1;
     weekIdx = found >= 0 ? found : defaultWeekIndex();
     render();
+    /* Say how many tickets were fetched. The old wording gave the dashboard's total of done
+       items (~1,150), which read as "it pulled everything again" even after a recent pull. */
     const pull = DATA.pull || {};
+    const fetched = Number(pull.tickets || DATA.counts.committed_issues || 0).toLocaleString("en-GB");
     flash(pull.mode === "recent"
-      ? "Synced the weeks from w/c " + esc(fmtDate(pull.from)) + " in " + DATA.elapsed_seconds +
-        "s. Earlier weeks are final, so they were kept as they were."
-      : "Pulled " + DATA.counts.completed_issues + " completed sprint items from Jira in " +
-        DATA.elapsed_seconds + "s.", "info");
+      ? "Fetched " + fetched + " tickets for the weeks from w/c " + esc(fmtDate(pull.from)) +
+        " in " + DATA.elapsed_seconds + "s. Earlier weeks are final, so they were kept as they were."
+      : "Full pull: fetched " + fetched + " tickets from Jira in " + DATA.elapsed_seconds +
+        "s. The next Sync only fetches the last two weeks.", "info");
   }catch(e){
     console.error("Sprint Retro sync failed (" + stage + ")", e);
     flash(syncProblem(e, stage), "err");
@@ -2521,6 +2543,7 @@ async function boot(){
   document.addEventListener("click", (e) => {
     if (!$("custMenu").hidden && !e.target.closest("#custPick")) setCustMenu(false);
   });
+  document.addEventListener("keydown", booKey);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !$("custMenu").hidden){ setCustMenu(false); $("custBtn").focus(); }
   });
