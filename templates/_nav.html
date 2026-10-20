@@ -1,14 +1,15 @@
 {# The strip across the very top of every page: Home, then each group of dashboards in
    dashboards.py (injected as `dashboard_groups` by app.py), Marketing first, then
-   Process. Each group's tabs carry its colour, Marketing orange and Process green, the
-   colours the Sprint Retro and Meeting Notes already use for those categories. Include
+   Process, with a thin rule before each group and no group label. Each group's tabs
+   carry its colour, Marketing orange and Process green, the colours the Sprint Retro and
+   Meeting Notes already use for those categories. Include
    with {% set nav_active = "home" %}  or a dashboard's key first. Styles are inline and
    self-contained because the pages carry different stylesheets. #}
 <nav class="ip-nav" aria-label="Insider Pro dashboards">
   <a href="/" class="ip-nav-tab{% if nav_active == 'home' %} is-on{% endif %}"
      {% if nav_active == 'home' %}aria-current="page"{% endif %}>🏠 Home</a>
   {% for g in dashboard_groups %}
-  <span class="ip-nav-group g-{{ g.key }}">{{ g.title }}</span>
+  <span class="ip-nav-sep" aria-hidden="true"></span>
   {% for d in g.dashboards %}
   <a href="{{ d.url }}" class="ip-nav-tab g-{{ g.key }}{% if nav_active == d.key %} is-on{% endif %}"
      title="{{ g.title }}: {{ d.title }}"
@@ -28,15 +29,11 @@
   .ip-nav-tab:hover{color:#fff;background:rgba(255,255,255,.1)}
   .ip-nav-tab.is-on{color:#0B2A4A;background:#fff}
 
-  /* The groups (20 Oct 2026). A small coloured label opens each one, after a thin rule;
-     its tabs are tinted in its colour, and the open one is filled with a darker shade
-     so white text on it stays readable (4.8:1 orange, 5.3:1 green). */
-  .ip-nav-group{flex:none;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
-    margin-left:12px;padding-left:16px;border-left:1px solid rgba(255,255,255,.18);
-    font-size:12px;font-weight:700;line-height:1}
-  .ip-nav-group::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
-  .ip-nav-group.g-marketing{color:#eb6834}
-  .ip-nav-group.g-process{color:#1baf7a}
+  /* The groups (20 Oct 2026). A thin rule opens each one (no label: the user had the
+     words "Marketing" and "Process" taken off the strip); its tabs are tinted in its
+     colour, and the open one is filled with a darker shade so white text on it stays
+     readable (4.8:1 orange, 5.3:1 green). */
+  .ip-nav-sep{flex:none;align-self:stretch;width:1px;margin:4px 8px;background:rgba(255,255,255,.18)}
   .ip-nav-tab.g-marketing{color:#F79A6E;background:rgba(235,104,52,.14);border-color:rgba(235,104,52,.45)}
   .ip-nav-tab.g-marketing:hover{color:#fff;background:rgba(235,104,52,.3)}
   .ip-nav-tab.g-marketing.is-on{color:#fff;background:#C24E1B;border-color:#C24E1B}
@@ -45,7 +42,7 @@
   .ip-nav-tab.g-process.is-on{color:#fff;background:#0E7A55;border-color:#0E7A55}
 
   @media (max-width:640px){.ip-nav{padding:7px 12px}.ip-nav-tab{padding:8px 11px}
-    .ip-nav-group{margin-left:6px;padding-left:10px}}
+    .ip-nav-sep{margin:4px 4px}}
   @media print{.ip-nav{display:none}}
   /* Switching pages: the strip and the white bar under it hold still while only the page
      below cross-fades (Chrome/Edge; other browsers just switch as before). */
