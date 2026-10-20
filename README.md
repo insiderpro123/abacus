@@ -71,7 +71,7 @@ top bar (`templates/_topbar.html`), so the logo never moves between pages.
 
 | Group | Dashboard | URL | Template |
 |-------|-----------|-----|----------|
-| Marketing | 🎯 Tracking | `/tracking` | the `tracking/` package (its own templates, CSS and JS) |
+| Marketing | 🎯 CRM | `/tracking` | the `tracking/` package (its own templates, CSS and JS) |
 | Process | 🧮 Abacus | `/abacus` | `index.html` + `static/app.js` |
 | Process | 📊 Sprint Retro | `/sprint-retro` | `sprint_retro.html` |
 | Process | 📋 Meeting Notes | `/meeting-notes` | `meeting_notes.html` |
@@ -82,7 +82,8 @@ from it. Since 20 Oct 2026 the dashboards are in two groups, **Marketing** first
 the nav strip labels each group and colours its tabs (Marketing orange, Process green, the
 colours the Sprint Retro and Meeting Notes already use for those categories).
 
-**Tracking** (added 20 Oct 2026) is the outbound lead tracker. The `tracking/` folder is a
+**CRM** (added 20 Oct 2026 as Tracking, renamed CRM the same day; its key, URL and package
+are still `tracking`) is the outbound lead tracker. The `tracking/` folder is a
 copy of the package that also runs inside ARGUS (`Marketing - Customer Relationship
 Management\03 Live\argus lead detection system\app\tracking`); make changes there and copy
 the folder across, so the two stay the same. Its five tables (`company`, `contact`,

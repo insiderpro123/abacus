@@ -33,7 +33,7 @@ GROUPS = [
 DASHBOARDS = [
     {
         "key": "tracking",
-        "title": "Tracking",
+        "title": "CRM",                # renamed from Tracking, 20 Oct 2026; the key stays
         "emoji": "🎯",
         "endpoint": "tracking.page",
         "blurb": "Every outbound lead on one board by stage. Bring a list in from ARGUS with a CSV.",
