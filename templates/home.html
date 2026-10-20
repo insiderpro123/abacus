@@ -26,7 +26,6 @@
      border-radius:var(--r-md);box-shadow:var(--shadow-sm);transition:box-shadow .15s,border-color .15s}
 .key:hover,.key:focus-visible{box-shadow:var(--shadow-md);outline:none}
 .key b{font-family:'Sora','Inter',sans-serif;font-size:18px;color:var(--g-text)}
-.key span{font-size:14px;color:var(--slate);line-height:1.45}
 .key .n{margin-left:auto;flex:none;font-size:13px;font-weight:700;color:var(--g-text);
         background:var(--g-tint);border-radius:999px;padding:4px 10px}
 
@@ -36,7 +35,6 @@
             border-bottom:2px solid var(--g)}
 .group-head h2{display:flex;align-items:center;gap:10px;font-size:24px;font-weight:700;color:var(--g-text)}
 .group-head h2::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--g)}
-.group-head p{font-size:15px;color:var(--slate)}
 
 /* As many columns as fit (three at 1100px), so another dashboard just starts a new row. */
 .choices{margin-top:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px}
@@ -72,7 +70,7 @@
   <nav class="groups-key" aria-label="Dashboard groups">
     {% for g in dashboard_groups %}
     <a class="key g-{{ g.key }}" href="#{{ g.key }}">
-      <b>{{ g.title }}</b><span>{{ g.blurb }}</span>
+      <b>{{ g.title }}</b>
       <span class="n">{{ g.dashboards|length }}</span>
     </a>
     {% endfor %}
@@ -82,7 +80,6 @@
   <section class="group g-{{ g.key }}" id="{{ g.key }}" aria-labelledby="h-{{ g.key }}">
     <div class="group-head">
       <h2 id="h-{{ g.key }}">{{ g.title }}</h2>
-      <p>{{ g.blurb }}</p>
     </div>
     <div class="choices">
       {% for d in g.dashboards %}

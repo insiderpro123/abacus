@@ -11,8 +11,7 @@ the dashboards inside a group in DASHBOARDS order.
 
 Each group:
   key       short id, also the CSS class suffix (g-marketing, g-process)
-  title     the section heading and the label on the nav strip
-  blurb     one line under the heading
+  title     the section heading on the home page (no line under it, at Sam's request)
 
 Each dashboard:
   key       short id; the page sets  {% set nav_active = "<key>" %}  to light up its tab
@@ -27,16 +26,8 @@ so an entry can go in before its page is finished.
 """
 
 GROUPS = [
-    {
-        "key": "marketing",
-        "title": "Marketing",
-        "blurb": "Finding new clients and winning the work.",
-    },
-    {
-        "key": "process",
-        "title": "Process",
-        "blurb": "How the delivery work is running.",
-    },
+    {"key": "marketing", "title": "Marketing"},
+    {"key": "process", "title": "Process"},
 ]
 
 DASHBOARDS = [
