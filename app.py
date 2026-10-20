@@ -53,7 +53,7 @@ from models import (
     Process, Subprocess, WorkPackage, WpStatus, WpFinished, WpTask,
     Sprint, SprintHistory, WpJiraLink, RetroSnapshot, RetroNote, RetroSetting,
 )
-from dashboards import DASHBOARDS
+from dashboards import DASHBOARDS, GROUPS
 # The Tracking Dashboard (20 Oct 2026), the same package that runs inside
 # ARGUS. After _load_local_env(): tracking/models.py reads DATABASE_URL on import.
 from tracking import bp as tracking_bp
@@ -126,8 +126,13 @@ def inject_dashboards():
     """The dashboard list (dashboards.py) for the nav strip and home page, each with its
     URL. An entry whose route does not exist yet is left out, so a half-added dashboard
     cannot break every page with a url_for BuildError."""
-    return {"dashboards": [dict(d, url=url_for(d["endpoint"]))
-                           for d in DASHBOARDS if d["endpoint"] in app.view_functions]}
+    live = [dict(d, url=url_for(d["endpoint"]), group=d.get("group", "process"))
+            for d in DASHBOARDS if d["endpoint"] in app.view_functions]
+    # Marketing then Process (GROUPS order), each with its dashboards; an empty group is
+    # left out. `dashboards` keeps the flat list for anything that only needs that.
+    groups = [dict(g, dashboards=[d for d in live if d["group"] == g["key"]]) for g in GROUPS]
+    return {"dashboards": [d for g in groups for d in g["dashboards"]],
+            "dashboard_groups": [g for g in groups if g["dashboards"]]}
 
 
 @app.template_global()

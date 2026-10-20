@@ -69,15 +69,18 @@ Live at **https://insiderpro-process.onrender.com**. After sign-in, `/` is a hom
 card per dashboard, and every page carries the same nav strip (`templates/_nav.html`) and white
 top bar (`templates/_topbar.html`), so the logo never moves between pages.
 
-| Dashboard | URL | Template |
-|-----------|-----|----------|
-| 🧮 Abacus | `/abacus` | `index.html` + `static/app.js` |
-| 📊 Sprint Retro | `/sprint-retro` | `sprint_retro.html` |
-| 📋 Meeting Notes | `/meeting-notes` | `meeting_notes.html` |
-| 🎯 Tracking | `/tracking` | the `tracking/` package (its own templates, CSS and JS) |
+| Group | Dashboard | URL | Template |
+|-------|-----------|-----|----------|
+| Marketing | 🎯 Tracking | `/tracking` | the `tracking/` package (its own templates, CSS and JS) |
+| Process | 🧮 Abacus | `/abacus` | `index.html` + `static/app.js` |
+| Process | 📊 Sprint Retro | `/sprint-retro` | `sprint_retro.html` |
+| Process | 📋 Meeting Notes | `/meeting-notes` | `meeting_notes.html` |
 
 The list itself lives in **`dashboards.py`**. The nav strip and the home cards are both built
-from it, in its order.
+from it. Since 20 Oct 2026 the dashboards are in two groups, **Marketing** first, then
+**Process**: the home page opens with a key to the two and shows each as its own section, and
+the nav strip labels each group and colours its tabs (Marketing orange, Process green, the
+colours the Sprint Retro and Meeting Notes already use for those categories).
 
 **Tracking** (added 20 Oct 2026) is the outbound lead tracker. The `tracking/` folder is a
 copy of the package that also runs inside ARGUS (`Marketing - Customer Relationship
@@ -104,7 +107,10 @@ library and playbook start empty here: their text lives in a workbook that git i
    start (`init_db` → `create_all`), with no migration step.
 3. **List it** in `dashboards.py`: a `key` (the same one the page sets as `nav_active`), a
    `title`, an `emoji` (colour form, e.g. `🖨️` not `🖨`), the `endpoint` (the route's function
-   name, `my_dashboard` above) and a one-sentence `blurb` for its home card.
+   name, `my_dashboard` above), a one-sentence `blurb` for its home card, and its `group`:
+   `"marketing"` or `"process"`. The group decides which home page section it sits in and
+   the colour of its tab (Marketing orange, Process green). A new group is one more entry in
+   `GROUPS` plus its colours in `templates/_nav.html` and `templates/home.html`.
 4. **Check locally**, commit, and deploy (see *Deploy online*).
 
 An entry in `dashboards.py` whose route doesn't exist yet is skipped rather than breaking the

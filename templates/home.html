@@ -1,5 +1,7 @@
 {% extends "_page.html" %}
-{# Where staff land after signing in: one card per dashboard in dashboards.py. #}
+{# Where staff land after signing in: the dashboards in dashboards.py, one section per
+   group (Marketing first, then Process, since 20 Oct 2026), one card per dashboard. The
+   group colours match the nav strip: Marketing orange, Process green. #}
 {% set nav_active = "home" %}
 {% set page_title = "Live Process Dashboard" %}
 {% set bar_subtitle = "Insider Pro · internal" %}
@@ -10,28 +12,54 @@
          border:1px solid var(--line);border-radius:999px;background:#fff}
 .signout:hover{border-color:var(--blue-300);color:var(--ink)}
 
-/* As many columns as fit (three at 1100px), so a fourth or fifth dashboard just starts
-   a new row. Kept to 1100px and centred so a wide screen doesn't stretch the cards. */
-.choices{max-width:1100px;margin:26px auto 0;display:grid;
-         grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px}
+/* Each group's colours: the base (stripes, dots), a darker shade for text on white, and
+   a pale tint for the icon. Marketing and Process as on the nav strip. */
+.g-marketing{--g:#eb6834;--g-text:#B4461A;--g-tint:#FDEEE7}
+.g-process{--g:#1baf7a;--g-text:#0E7A55;--g-tint:#E5F6EF}
+
+.home{max-width:1100px;margin:22px auto 0}
+
+/* The key at the top: what the two groups are, each a link down to its section. */
+.groups-key{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.key{display:flex;align-items:center;gap:14px;padding:16px 20px;background:#fff;color:inherit;
+     text-decoration:none;border:1px solid var(--line);border-left:6px solid var(--g);
+     border-radius:var(--r-md);box-shadow:var(--shadow-sm);transition:box-shadow .15s,border-color .15s}
+.key:hover,.key:focus-visible{box-shadow:var(--shadow-md);outline:none}
+.key b{font-family:'Sora','Inter',sans-serif;font-size:18px;color:var(--g-text)}
+.key span{font-size:14px;color:var(--slate);line-height:1.45}
+.key .n{margin-left:auto;flex:none;font-size:13px;font-weight:700;color:var(--g-text);
+        background:var(--g-tint);border-radius:999px;padding:4px 10px}
+
+/* One section per group. */
+.group{margin-top:34px;scroll-margin-top:16px}
+.group-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:12px;
+            border-bottom:2px solid var(--g)}
+.group-head h2{display:flex;align-items:center;gap:10px;font-size:24px;font-weight:700;color:var(--g-text)}
+.group-head h2::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--g)}
+.group-head p{font-size:15px;color:var(--slate)}
+
+/* As many columns as fit (three at 1100px), so another dashboard just starts a new row. */
+.choices{margin-top:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px}
 .choice{display:flex;flex-direction:column;gap:14px;padding:30px;background:#fff;color:inherit;
         text-decoration:none;border:1px solid var(--line);border-radius:var(--r-lg);
         box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
         transition:box-shadow .15s,border-color .15s,transform .15s}
-.choice::before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:var(--grad-brand)}
-.choice:hover,.choice:focus-visible{box-shadow:var(--shadow-md);border-color:var(--blue-300);transform:translateY(-2px);outline:none}
+.choice::before{content:"";position:absolute;top:0;right:0;left:0;height:5px;background:var(--g)}
+.choice:hover,.choice:focus-visible{box-shadow:var(--shadow-md);border-color:var(--g);transform:translateY(-2px);outline:none}
 .icon{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:28px;
-      background:#EEF4FB}
+      background:var(--g-tint)}
 .choice h2{font-size:22px;font-weight:700}
 .choice p{font-size:15px;line-height:1.5;color:var(--slate)}
-.go{margin-top:auto;font-weight:600;font-size:15px;color:var(--blue)}
+.go{margin-top:auto;font-weight:600;font-size:15px;color:var(--g-text)}
 .choice:hover .go{text-decoration:underline}
 
 @media (max-width:640px){
-  .choices{margin-top:12px;grid-template-columns:1fr;gap:16px}
+  .home{margin-top:8px}
+  .group{margin-top:26px}
+  .choices{grid-template-columns:1fr;gap:16px}
   .choice{padding:24px}
 }
-@media (prefers-reduced-motion:reduce){.choice{transition:none}.choice:hover{transform:none}}
+@media (prefers-reduced-motion:reduce){.choice,.key{transition:none}.choice:hover{transform:none}}
 </style>
 {% endblock %}
 
@@ -40,14 +68,33 @@
 {% endblock %}
 
 {% block content %}
-<div class="choices">
-  {% for d in dashboards %}
-  <a class="choice" href="{{ d.url }}">
-    <span class="icon" aria-hidden="true">{{ d.emoji }}</span>
-    <h2>{{ d.title }}</h2>
-    <p>{{ d.blurb }}</p>
-    <span class="go">Open {{ d.title }} →</span>
-  </a>
+<div class="home">
+  <nav class="groups-key" aria-label="Dashboard groups">
+    {% for g in dashboard_groups %}
+    <a class="key g-{{ g.key }}" href="#{{ g.key }}">
+      <b>{{ g.title }}</b><span>{{ g.blurb }}</span>
+      <span class="n">{{ g.dashboards|length }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  {% for g in dashboard_groups %}
+  <section class="group g-{{ g.key }}" id="{{ g.key }}" aria-labelledby="h-{{ g.key }}">
+    <div class="group-head">
+      <h2 id="h-{{ g.key }}">{{ g.title }}</h2>
+      <p>{{ g.blurb }}</p>
+    </div>
+    <div class="choices">
+      {% for d in g.dashboards %}
+      <a class="choice" href="{{ d.url }}">
+        <span class="icon" aria-hidden="true">{{ d.emoji }}</span>
+        <h2>{{ d.title }}</h2>
+        <p>{{ d.blurb }}</p>
+        <span class="go">Open {{ d.title }} →</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
   {% endfor %}
 </div>
 {% endblock %}
