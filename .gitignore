@@ -4,6 +4,8 @@ __pycache__/
 
 # Local database
 abacus.db
+# The Tracking Dashboard's local copy (tracking/models.py, with no DATABASE_URL)
+crm.db
 
 # Client data — NEVER commit to GitHub. These stay on your machine and are only
 # used locally to seed the database (see README "Seed the database").

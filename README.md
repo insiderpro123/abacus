@@ -74,9 +74,19 @@ top bar (`templates/_topbar.html`), so the logo never moves between pages.
 | 🧮 Abacus | `/abacus` | `index.html` + `static/app.js` |
 | 📊 Sprint Retro | `/sprint-retro` | `sprint_retro.html` |
 | 📋 Meeting Notes | `/meeting-notes` | `meeting_notes.html` |
+| 🎯 Tracking | `/tracking` | the `tracking/` package (its own templates, CSS and JS) |
 
 The list itself lives in **`dashboards.py`**. The nav strip and the home cards are both built
 from it, in its order.
+
+**Tracking** (added 20 Oct 2026) is the outbound lead tracker. The `tracking/` folder is a
+copy of the package that also runs inside ARGUS (`Marketing - Customer Relationship
+Management\03 Live\argus lead detection system\app\tracking`); make changes there and copy
+the folder across, so the two stay the same. Its five tables (`company`, `contact`,
+`activity`, `role_hook`, `setting`) sit on the same database as Abacus. Companies arrive by
+its **CSV** button: a file from ARGUS's "Download for the tracker", or the ARGUS tracker's own
+"Download the board". Import only adds, so the same file can go in twice. The Reference
+library and playbook start empty here: their text lives in a workbook that git ignores.
 
 ## Adding a dashboard
 

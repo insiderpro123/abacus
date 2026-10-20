@@ -1,0 +1,43 @@
+{% extends "_page.html" %}
+{# The Tracking Dashboard, built on the live process dashboard's layout the same way
+   its dashboard_starter.html is: _page.html supplies the head, fonts, colour tokens,
+   TEST banner, nav strip and top bar; this page adds its own CSS, buttons and board. #}
+{% set nav_active = "tracking" %}
+{% set page_title = "Tracking Dashboard" %}
+{% set bar_subtitle = "Outbound pipeline" %}        {# short: the shared top bar has no room for more on a phone #}
+
+{% block head %}
+<link rel="stylesheet" href="{{ tracking_static('tracking.css') }}">
+{% endblock %}
+
+{% block bar_actions %}
+<button class="btn btn-ghost" id="open-reference" title="Role &amp; hook library and the play">📚 Reference</button>
+<button class="btn btn-ghost" id="open-csv" title="Download the board, or add companies from a CSV">📄 CSV</button>
+<button class="btn btn-primary" id="add-contact">+ Add contact</button>
+{% endblock %}
+
+{% block content %}
+<!-- One row above the board: what this is, how many live leads there are, and
+     the Closed toggle. No filters and no number tiles: the board of live leads
+     is the whole view. -->
+<section class="tk-head" id="tk-head">
+  <h1>Pipeline</h1>
+  <span class="livecount" id="live-count"></span>
+  <p class="hint">Click a card to open it, drag it to move it. % is the chance of a win, ~ means estimated.</p>
+  <div id="status" class="status" role="status"></div>
+  <div class="spacer"></div>
+  <button class="btn btn-ghost btn-sm" id="show-closed" hidden></button>
+</section>
+
+<section id="board" class="board"></section>
+
+<!-- The record panel and the reference drawer slide in over the board, so the
+     board itself never moves when you open one. -->
+<div class="sheet" id="detail" hidden></div>
+<div class="sheet" id="drawer" hidden></div>
+<div class="sheet" id="csvsheet" hidden></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ tracking_static('tracking.js') }}"></script>
+{% endblock %}

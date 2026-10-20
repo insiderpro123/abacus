@@ -36,4 +36,11 @@ DASHBOARDS = [
         "endpoint": "meeting_notes",
         "blurb": "Every project's Jamie meeting notes in one place: overviews and key action items.",
     },
+    {
+        "key": "tracking",
+        "title": "Tracking",
+        "emoji": "🎯",
+        "endpoint": "tracking.page",
+        "blurb": "Every outbound lead on one board by stage. Bring a list in from ARGUS with a CSV.",
+    },
 ]

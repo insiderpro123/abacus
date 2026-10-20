@@ -1,0 +1,320 @@
+/* ==========================================================================
+   Tracking Dashboard
+   In the live process dashboard's house style. _page.html already supplies
+   the colour tokens (--ink, --blue, --teal, --paper, --line ...), the Sora /
+   Inter fonts, .btn / .btn-primary / .btn-ghost, .card and .page-wrap; this
+   file adds the board, the card action rail, the slide-over sheet used by the
+   record and the reference drawer, and the add-contact modal.
+
+   Sticky offsets are not magic numbers: tracking.js measures the shared top
+   bar and the Pipeline row and writes them to --tk-bar and --tk-head.
+   ========================================================================== */
+
+:root{
+  /* the pipeline's tone ramp: cold prospect -> live conversation -> work
+     agreed (green) -> closed without work */
+  --tone-cold:var(--slate-light);
+  --tone-warm:var(--blue-300);
+  --tone-hot:var(--teal);
+  --tone-won:var(--good);
+  --tone-park:var(--slate);
+  --tk-bar:73px;      /* overwritten by tracking.js */
+  --tk-head:64px;
+}
+
+a{color:var(--blue)}
+.btn[hidden]{display:none}
+.btn:disabled{opacity:.55;cursor:default}
+.btn-sm{font-size:13.5px;padding:7px 14px;gap:6px}
+.btn-danger{background:#fff;color:var(--danger);border:1px solid rgba(214,69,60,.45)}
+.btn-danger:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn-ghost.on{border-color:var(--blue-300);color:var(--blue);background:var(--paper-2)}
+
+/* --------------------------------------------------------------------------
+   The one row above the board. It follows you down a tall board, docked
+   under the shared top bar.
+   -------------------------------------------------------------------------- */
+.tk-head{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;
+  position:sticky;top:var(--tk-bar);z-index:30;background:var(--paper);
+  margin-top:-10px;padding:10px 0 16px}
+.tk-head h1{font-size:26px;font-weight:700;line-height:1.2}
+.tk-head .hint{font-size:14px;color:var(--slate-light)}
+.tk-head .spacer{flex:1}
+.livecount{font-size:13px;font-weight:700;padding:4px 11px;border-radius:999px;white-space:nowrap;
+  background:rgba(18,181,165,.13);color:var(--teal-600)}
+.status{font-size:13.5px;color:var(--slate);min-height:18px;line-height:18px}
+.status.error{color:var(--danger);font-weight:600}
+
+/* --------------------------------------------------------------------------
+   Pipeline board: one column per live stage, sharing the width. One surface:
+   a column is never a scroll box, every card in a stage is on the page at
+   once, and they all run to the height of the fullest. Never give .board an
+   overflow value; even overflow-x makes it a scroll box again.
+   -------------------------------------------------------------------------- */
+.board{display:flex;gap:14px;align-items:stretch}
+.col{flex:1 1 0;min-width:180px;background:var(--paper-2);border:1px solid var(--line);
+  border-radius:var(--r-md);display:flex;flex-direction:column;min-height:260px}
+.col.dragover{border-color:var(--blue-300);background:#E3EEFB;box-shadow:0 0 0 3px rgba(22,99,199,.14)}
+.col-head{padding:13px 14px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;
+  -webkit-user-select:none;user-select:none;position:sticky;top:calc(var(--tk-bar) + var(--tk-head));z-index:5;
+  background:var(--paper-2);border-radius:var(--r-md) var(--r-md) 0 0;
+  box-shadow:inset 0 3px 0 var(--col-tone,var(--line))}
+.col.tone-cold{--col-tone:var(--tone-cold)}
+.col.tone-warm{--col-tone:var(--tone-warm)}
+.col.tone-hot {--col-tone:var(--tone-hot)}
+.col.tone-won {--col-tone:var(--tone-won)}
+.col.tone-park{--col-tone:var(--tone-park)}
+.col-head .cn{width:26px;height:26px;min-width:26px;border-radius:50%;display:grid;place-items:center;
+  font-family:'Sora';font-size:12.5px;font-weight:700;background:var(--grad-brand);color:#fff}
+.col.closed-stage .col-head .cn{background:#DCE3EC;color:var(--slate)}
+.col-head .ct{font-family:'Sora';font-size:15px;font-weight:700;line-height:1.25;flex:1;color:var(--ink)}
+.col-head .cc{font-family:'Sora';font-size:13px;font-weight:700;color:var(--ink);background:#fff;
+  border:1px solid var(--line);border-radius:999px;padding:2px 10px;min-width:30px;text-align:center}
+.col-body{padding:10px;display:flex;flex-direction:column;gap:10px;flex:1 1 auto}
+.col-empty{color:var(--slate-light);font-size:13px;text-align:center;padding:14px 4px}
+
+/* a contact card: three lines, who / how likely / the one thing to know.
+   The coloured left edge is the priority. */
+.pcard{position:relative;background:#fff;border:1px solid var(--line);border-left:4px solid #C9D3DF;
+  border-radius:12px;padding:11px 13px 10px;cursor:pointer;box-shadow:var(--shadow-sm);
+  transition:box-shadow .12s,transform .12s}
+.pcard:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.pcard.dragging{opacity:.45}
+.pcard.sel{box-shadow:0 0 0 2px var(--blue),var(--shadow-md)}
+.pcard.p-High  {border-left-color:var(--danger)}
+.pcard.p-Medium{border-left-color:var(--priority)}
+.pcard.p-Low   {border-left-color:#C9D3DF}
+.pc-top{display:flex;align-items:flex-start;gap:10px}
+.pc-co{flex:1;min-width:0;font-family:'Sora';font-size:14.5px;font-weight:700;line-height:1.3;color:var(--ink)}
+.pc-who{font-size:13px;color:var(--slate);line-height:1.4;margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* the chance of a win: filled when someone set it, dashed while it is the
+   stage estimate, and how it ended once closed */
+.pc-chance{flex:none;font-family:'Sora';font-size:13px;font-weight:700;line-height:1.45;white-space:nowrap;
+  padding:1px 9px;border-radius:999px;border:1px solid transparent}
+.pc-chance.min {background:var(--paper-2);color:var(--slate-light)}
+.pc-chance.low {background:rgba(76,157,240,.14);color:var(--blue)}
+.pc-chance.mid {background:rgba(18,181,165,.15);color:var(--teal-600)}
+.pc-chance.high{background:rgba(46,158,91,.16);color:#217A45}
+.pc-chance.estimate{background:#fff;border-style:dashed;border-color:currentColor}
+.pc-chance.out-Won    {background:rgba(46,158,91,.14);color:#217A45}
+.pc-chance.out-Lost   {background:rgba(214,69,60,.12);color:#B23A32}
+.pc-chance.out-Nurture{background:#E8EDF3;color:var(--slate)}
+.pc-chance.out-none   {background:rgba(224,163,46,.17);color:#94650C}
+
+/* status left, the arrow right */
+.pc-foot{display:flex;align-items:center;gap:6px;margin-top:9px}
+.pc-status{flex:1 1 auto;min-width:0;font-size:12.5px;font-weight:600;color:var(--slate-light)}
+.pc-status.warn  {color:#B07A12}
+.pc-status.stale  {color:var(--danger)}
+
+/* the arrow that moves a card to the next stage */
+.qk.adv{flex:none;margin-left:auto;border:none;border-radius:999px;cursor:pointer;
+  background:var(--grad-brand);color:#fff;font-family:'Inter';font-size:13px;font-weight:600;
+  line-height:1.3;padding:3px 12px;box-shadow:0 3px 10px rgba(22,99,199,.25);transition:box-shadow .12s}
+.qk.adv:hover{box-shadow:0 5px 14px rgba(22,99,199,.34)}
+
+/* a stage, wherever it is named outside the board */
+.stage-badge{display:inline-block;font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px;white-space:nowrap}
+.stage-badge.tone-cold{background:#E8EDF3;color:var(--slate)}
+.stage-badge.tone-warm{background:rgba(76,157,240,.15);color:var(--blue)}
+.stage-badge.tone-hot {background:rgba(18,181,165,.14);color:var(--teal-600)}
+.stage-badge.tone-won {background:rgba(46,158,91,.14);color:#217A45}
+.stage-badge.tone-park{background:#E8EDF3;color:var(--slate-light)}
+.stage-badge.o-Won    {background:rgba(46,158,91,.14);color:#217A45}
+.stage-badge.o-Lost   {background:rgba(214,69,60,.12);color:#B23A32}
+.stage-badge.o-Nurture{background:#E8EDF3;color:var(--slate)}
+
+/* --------------------------------------------------------------------------
+   Slide-over sheet: the record panel and the reference drawer. It floats over
+   the board, so the board never moves when one opens.
+   -------------------------------------------------------------------------- */
+/* top/right/bottom/left throughout, never inset: Safari only knows inset
+   from 14.1, and before that a sheet sized by it is 0x0. */
+.sheet{position:fixed;top:0;right:0;bottom:0;left:0;z-index:300}
+.sheet[hidden]{display:none}
+.sheet-back{position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(11,42,74,.32)}
+.sheet-panel{position:absolute;top:0;right:0;bottom:0;width:700px;max-width:100%;background:#fff;
+  box-shadow:-12px 0 40px rgba(11,42,74,.22);display:flex;flex-direction:column;
+  animation:sheetin .16s ease-out}
+#drawer .sheet-panel{width:1140px}
+@keyframes sheetin{from{transform:translateX(26px);opacity:.5}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.sheet-panel{animation:none}}
+.sheet-body{flex:1;overflow-y:auto;padding:6px 24px 48px}
+body.sheet-open{overflow:hidden}
+
+.panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex:none;
+  padding:22px 24px 16px;border-bottom:1px solid var(--line);position:relative}
+.panel-head::before{content:"";position:absolute;top:0;right:0;left:0;height:5px;background:var(--grad-brand)}
+.panel-head > :first-child{flex:1;min-width:0}
+.panel-head h2{font-size:21px;font-weight:700;color:var(--ink);margin-bottom:5px;line-height:1.25}
+.panel-head .sub{font-size:14px;color:var(--slate);line-height:1.6}
+.panel-head-actions{display:flex;align-items:center;gap:8px;flex:none}
+.close{width:36px;height:36px;flex:none;border-radius:50%;border:1px solid var(--line);background:#fff;
+  color:var(--slate-light);font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.close:hover{border-color:var(--blue-300);color:var(--ink)}
+
+.seclabel{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;
+  color:var(--slate-light);margin:24px 0 10px}
+.fieldgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}
+.fieldgrid .wide{grid-column:1 / -1}
+.field label{display:block;font-size:11.5px;font-weight:700;color:var(--slate-light);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}
+.field input,.field select,.field textarea{
+  width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 11px;
+  font-family:'Inter';font-size:14.5px;color:var(--ink);background:#fff;outline:none;
+  transition:border-color .12s,box-shadow .12s}
+.field input:focus,.field select:focus,.field textarea:focus{
+  border-color:var(--blue-300);box-shadow:0 0 0 3px rgba(22,99,199,.12)}
+.field textarea{resize:vertical;min-height:64px;line-height:1.5}
+
+/* the stage control inside the record: one labelled pill per stage */
+.spick{display:flex;gap:6px;flex-wrap:wrap}
+.sp{flex:1 1 auto;min-width:92px;border:1px solid var(--line);background:#fff;color:var(--slate);
+  border-radius:999px;padding:8px 12px;font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer;
+  transition:background .12s,border-color .12s,color .12s}
+.sp:hover{border-color:var(--blue-300);color:var(--blue)}
+.sp.past{background:var(--paper-2);color:var(--ink-700)}
+.sp.at,.sp.at:hover{background:var(--grad-brand);color:#fff;border-color:transparent;cursor:default;
+  box-shadow:var(--shadow-blue)}
+
+.orow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.olab{font-size:14px;font-weight:600;color:var(--slate)}
+.ob{border:1px solid var(--line);background:#fff;color:var(--slate);border-radius:999px;padding:6px 15px;
+  font-family:'Inter';font-size:13.5px;font-weight:600;cursor:pointer}
+.ob:hover{border-color:var(--blue-300);color:var(--ink)}
+.ob.on.o-Lost   {background:rgba(214,69,60,.12);color:#B23A32;border-color:var(--danger)}
+.ob.on.o-Nurture{background:#E8EDF3;color:var(--slate);border-color:var(--slate-light)}
+
+/* the record's five people to contact (8 Oct 2026): a name, a contact status
+   anyone can type, and a red / amber / green. The lit dot is filled; the
+   others are rings in their own colour, so the choice reads without the fill. */
+.people{display:flex;flex-direction:column;gap:7px}
+.people-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) 104px;gap:8px;align-items:center}
+.people-head{font-size:11.5px;font-weight:700;color:var(--slate-light);text-transform:uppercase;letter-spacing:.1em}
+.people-head span:last-child{text-align:center}
+.people input{width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;
+  font-family:'Inter';font-size:14.5px;color:var(--ink);background:#fff;outline:none;
+  transition:border-color .12s,box-shadow .12s}
+.people input:focus{border-color:var(--blue-300);box-shadow:0 0 0 3px rgba(22,99,199,.12)}
+.people input::placeholder{color:#A3B0BF}
+.rag{display:flex;justify-content:center;gap:8px}
+.rag-dot{width:26px;height:26px;flex:none;border-radius:50%;border:2px solid;background:#fff;padding:0;
+  cursor:pointer;transition:background .12s,box-shadow .12s}
+.rag-dot:hover{box-shadow:0 0 0 3px rgba(22,99,199,.12)}
+.rag-dot:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.rag-red  {border-color:rgba(214,69,60,.6)}
+.rag-amber{border-color:rgba(224,163,46,.75)}
+.rag-green{border-color:rgba(46,158,91,.6)}
+.rag-red.on  {background:var(--danger);border-color:var(--danger)}
+.rag-amber.on{background:#E0A32E;border-color:#E0A32E}
+.rag-green.on{background:var(--good);border-color:var(--good)}
+.comments-box textarea{min-height:130px}
+.save-hint{margin-top:6px}
+.save-hint.ok{color:var(--good);font-weight:600}
+.no-co{margin-top:24px}
+
+.hookhint{grid-column:1 / -1;font-size:14px;color:var(--ink);line-height:1.55;
+  background:rgba(18,181,165,.07);border:1px solid rgba(18,181,165,.35);border-radius:var(--r-sm);padding:10px 13px}
+.hookhint b{display:block;margin-bottom:3px;color:var(--teal-600)}
+
+.note-hint{font-size:13px;color:var(--slate-light);line-height:1.5}
+
+/* --------------------------------------------------------------------------
+   Reference drawer: the Role & hook library table and the play
+   -------------------------------------------------------------------------- */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-md);background:#fff}
+table.grid{border-collapse:collapse;width:100%;font-size:14px}
+table.grid thead th{text-align:left;font-size:12px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--slate-light);font-weight:700;padding:12px 11px 10px;border-bottom:1px solid var(--line);
+  white-space:nowrap;background:#fff}
+table.grid tbody td{padding:9px 11px;border-bottom:1px solid var(--paper-2);vertical-align:top;color:var(--ink)}
+table.grid tbody tr:last-child td{border-bottom:none}
+table.grid tbody tr:hover td{background:var(--paper-2)}
+td.wrap{white-space:normal;line-height:1.5;min-width:120px}
+td.ed{cursor:text}
+td.ed:hover{background:#FFFBEF !important;box-shadow:inset 0 0 0 1px var(--priority)}
+td.ed input{width:100%;border:1px solid var(--blue-300);border-radius:6px;padding:4px 7px;
+  font-family:'Inter';font-size:14px;outline:none}
+.sharp-High  {color:#217A45;font-weight:700}
+.sharp-Medium{color:#94650C;font-weight:700}
+.sharp-Low   {color:var(--slate-light);font-weight:700}
+
+.stageflow{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.stageflow .sf{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:4px 13px 4px 4px;background:#fff}
+.stageflow .sf i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-family:'Sora';
+  font-size:11.5px;font-weight:700;font-style:normal;background:var(--grad-brand);color:#fff}
+.playgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.playcard{background:#fff;border:1px solid var(--line);border-top:3px solid var(--teal);border-radius:var(--r-md);
+  box-shadow:var(--shadow-sm);padding:15px 17px}
+.playcard h3{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px}
+.playcard p{font-size:14px;line-height:1.6;color:var(--slate)}
+.drawer-warm{margin-top:14px}
+
+/* --------------------------------------------------------------------------
+   Add-contact modal
+   -------------------------------------------------------------------------- */
+.modal-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(11,42,74,.45);z-index:500;
+  display:grid;place-items:center;padding:20px}
+.modal{background:#fff;border-radius:var(--r-lg);width:680px;max-width:100%;max-height:90vh;
+  display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(11,42,74,.32);overflow:hidden;position:relative}
+.modal::before{content:"";position:absolute;top:0;right:0;left:0;height:5px;background:var(--grad-brand)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:14px;
+  padding:22px 24px 16px;border-bottom:1px solid var(--line)}
+.modal-head h3{font-size:20px;font-weight:700;color:var(--ink)}
+.modal-body{padding:18px 24px;overflow-y:auto}
+.modal-foot{display:flex;justify-content:flex-end;align-items:center;gap:10px;
+  padding:14px 24px;border-top:1px solid var(--line);background:var(--paper)}
+.modal-foot .note-hint{margin-right:auto}
+.modal-foot .note-hint.error{color:var(--danger);font-weight:600}
+
+/* --------------------------------------------------------------------------
+   Narrower screens. Below ~1000px four columns no longer fit side by side,
+   so they wrap two and two rather than push the page sideways; the sticky
+   column heads only make sense on the one-row board.
+   -------------------------------------------------------------------------- */
+@media (max-width:1000px){
+  .board{flex-wrap:wrap}
+  .col{flex:1 1 calc(50% - 7px);min-width:220px}
+  .col-head{position:static}
+}
+@media (max-width:640px){
+  .tk-head{position:static;margin-top:0;padding-top:0}
+  .tk-head h1{font-size:22px}
+  .col{flex-basis:100%}
+  .fieldgrid{grid-template-columns:1fr}
+  /* a person is two lines on a phone: name and colour, then the status */
+  .people-head{display:none}
+  .people{gap:12px}
+  .people-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name rag" "status status";gap:6px 10px}
+  .pp-name{grid-area:name}
+  .pp-status{grid-area:status}
+  .rag{grid-area:rag}
+  .sheet-body{padding:6px 16px 40px}
+  .panel-head,.modal-head{padding:20px 16px 14px}
+  .panel-head-actions{flex-wrap:wrap;justify-content:flex-end;max-width:45%}
+  .modal-body{padding:16px}
+  .modal-foot{padding:12px 16px}
+}
+@media print{
+  .tk-head,.col-head{position:static}
+  .qk.adv,#show-closed{display:none}
+}
+
+/* Moving companies with a CSV (20 Oct 2026): Download, and a drop area for Import. */
+.csv-text{font-size:14px;color:var(--slate);line-height:1.6;margin:0 0 12px;max-width:62ch}
+.csv-text b{color:var(--ink)}
+.seclabel.csv-gap{margin-top:32px}
+.csv-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  min-height:120px;padding:20px;border:2px dashed var(--line);border-radius:var(--r-md);
+  background:var(--paper-2);color:var(--slate);text-align:center;cursor:pointer;
+  transition:border-color .15s,background .15s}
+.csv-drop b{font-size:15px;color:var(--ink)}
+.csv-drop span{font-size:13px;color:var(--slate-light)}
+.csv-drop:hover,.csv-drop.over{border-color:var(--blue);background:var(--paper)}
+.csv-drop.busy{opacity:.6;pointer-events:none}
+.csv-result{margin-top:14px;font-size:14px;color:var(--ink);line-height:1.6}
+.csv-result p{margin:0 0 6px}
+.csv-result.error{color:var(--danger);font-weight:600}

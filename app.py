@@ -54,6 +54,9 @@ from models import (
     Sprint, SprintHistory, WpJiraLink, RetroSnapshot, RetroNote, RetroSetting,
 )
 from dashboards import DASHBOARDS
+# The Tracking Dashboard (20 Oct 2026), the same package that runs inside
+# ARGUS. After _load_local_env(): tracking/models.py reads DATABASE_URL on import.
+from tracking import bp as tracking_bp
 import jira_client
 import jamie_client
 import jira_sync
@@ -139,6 +142,9 @@ def static_v(filename):
 
 
 init_db()  # create tables if missing (safe to call every start)
+# /tracking and /api/tracking/...; registering creates its five tables
+# (company, contact, activity, role_hook, setting) on the same database.
+app.register_blueprint(tracking_bp)
 
 
 def _next_sub_num(s, parent_id):
