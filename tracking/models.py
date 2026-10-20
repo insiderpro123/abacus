@@ -94,7 +94,9 @@ class Contact(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey("company.id"), index=True, nullable=True)
     priority = Column(String(16), default="Medium")   # High | Medium | Low
-    sector = Column(String(255), default="")
+    sector = Column(String(255), default="")          # the card's sector tag since 20 Oct 2026
+    responsible = Column(String(128), default="")     # who looks after the card; its initials show on it
+    summary = Column(String(255), default="")         # a few words shown on the card
     cost_area = Column(String(255), default="")       # links to RoleHook.cost_area
     target_role = Column(Text, default="")            # the role title being approached
     contact_name = Column(String(255), default="")    # blank until found on LinkedIn
@@ -207,6 +209,8 @@ def _ensure_columns():
             "notes": "TEXT",
             "notes_on": "DATE",
             "win_chance": "INTEGER",
+            "responsible": "VARCHAR(128)",
+            "summary": "VARCHAR(255)",
         },
         "company": {
             "website": "TEXT",

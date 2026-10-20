@@ -36,6 +36,13 @@ CONTACT_COLUMNS = [
     ("Chance %", "win_chance"),
     ("Priority", "priority"),
 ]
+# What the card itself shows (20 Oct 2026). "Sector tag" is the card's own;
+# "Sector" below is the company's longer description.
+CARD_COLUMNS = [
+    ("Responsible", "responsible"),
+    ("Sector tag", "sector"),
+    ("Summary", "summary"),
+]
 COMPANY_DETAIL_COLUMNS = [
     ("Sector", "sub_sector"),
     ("Size", "scale"),
@@ -57,11 +64,12 @@ COMMENT_COLUMNS = [("Comments", "notes")]
 PEOPLE_COLUMNS = [h for i in range(1, PEOPLE_SLOTS + 1)
                   for h in (f"Person {i}", f"Person {i} status", f"Person {i} RAG")]
 
-HEADERS = ([h for h, _ in COMPANY_COLUMNS + CONTACT_COLUMNS + COMPANY_DETAIL_COLUMNS
-            + CONTACT_DETAIL_COLUMNS + COMMENT_COLUMNS] + PEOPLE_COLUMNS)
+HEADERS = ([h for h, _ in COMPANY_COLUMNS + CONTACT_COLUMNS + CARD_COLUMNS
+            + COMPANY_DETAIL_COLUMNS + CONTACT_DETAIL_COLUMNS + COMMENT_COLUMNS]
+           + PEOPLE_COLUMNS)
 
 COMPANY_FIELDS = dict(COMPANY_COLUMNS + COMPANY_DETAIL_COLUMNS + COMMENT_COLUMNS)
-CONTACT_FIELDS = dict(CONTACT_DETAIL_COLUMNS)
+CONTACT_FIELDS = dict(CARD_COLUMNS + CONTACT_DETAIL_COLUMNS)
 
 RAG_WORDS = {"red": "red", "r": "red", "amber": "amber", "a": "amber",
              "green": "green", "g": "green"}
@@ -172,7 +180,7 @@ def _stage(value) -> int:
     for s in ST.STAGES:
         if text in (s["label"].lower(), s["short"].lower()):
             return s["num"]
-    return 1
+    return ST.FORMER_LABELS.get(text, 1)
 
 
 def import_csv(raw: bytes) -> dict:
@@ -249,7 +257,7 @@ def import_csv(raw: bytes) -> dict:
                 priority=priority if priority in ST.PRIORITIES else "Medium",
                 stage_changed_at=datetime.utcnow(),
                 **{f: contact_cell(values, h, f) for h, f in CONTACT_FIELDS.items()})
-            c.sector = co.sub_sector or ""
+            c.sector = c.sector or co.sub_sector or ""      # a file from before the tag column
             s.add(c)
             s.flush()
             _log(s, c, "Note", note="Added from a CSV import.")

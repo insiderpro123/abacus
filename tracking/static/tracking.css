@@ -73,8 +73,9 @@ a{color:var(--blue)}
 .col-body{padding:10px;display:flex;flex-direction:column;gap:10px;flex:1 1 auto}
 .col-empty{color:var(--slate-light);font-size:13px;text-align:center;padding:14px 4px}
 
-/* a contact card: three lines, who / how likely / the one thing to know.
-   The coloured left edge is the priority. */
+/* a contact card: the company and who is responsible, a few words on where
+   it stands, the person, then the sector tag. The coloured left edge is the
+   priority. */
 .pcard{position:relative;background:#fff;border:1px solid var(--line);border-left:4px solid #C9D3DF;
   border-radius:12px;padding:11px 13px 10px;cursor:pointer;box-shadow:var(--shadow-sm);
   transition:box-shadow .12s,transform .12s}
@@ -88,24 +89,23 @@ a{color:var(--blue)}
 .pc-co{flex:1;min-width:0;font-family:'Sora';font-size:14.5px;font-weight:700;line-height:1.3;color:var(--ink)}
 .pc-who{font-size:13px;color:var(--slate);line-height:1.4;margin-top:3px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* the few words on where it stands: two lines at most */
+.pc-sum{font-size:13.5px;color:var(--ink-700);line-height:1.4;margin-top:4px;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 
-/* the chance of a win: filled when someone set it, dashed while it is the
-   stage estimate, and how it ended once closed */
-.pc-chance{flex:none;font-family:'Sora';font-size:13px;font-weight:700;line-height:1.45;white-space:nowrap;
-  padding:1px 9px;border-radius:999px;border:1px solid transparent}
-.pc-chance.min {background:var(--paper-2);color:var(--slate-light)}
-.pc-chance.low {background:rgba(76,157,240,.14);color:var(--blue)}
-.pc-chance.mid {background:rgba(18,181,165,.15);color:var(--teal-600)}
-.pc-chance.high{background:rgba(46,158,91,.16);color:#217A45}
-.pc-chance.estimate{background:#fff;border-style:dashed;border-color:currentColor}
-.pc-chance.out-Won    {background:rgba(46,158,91,.14);color:#217A45}
-.pc-chance.out-Lost   {background:rgba(214,69,60,.12);color:#B23A32}
-.pc-chance.out-Nurture{background:#E8EDF3;color:var(--slate)}
-.pc-chance.out-none   {background:rgba(224,163,46,.17);color:#94650C}
+/* the initials of whoever is responsible for the card (20 Oct 2026) */
+.pc-ini{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;
+  font-family:'Sora';font-size:11.5px;font-weight:700;letter-spacing:.02em;
+  background:var(--blue);color:#fff;margin:-2px -3px 0 0}
 
-/* status left, the arrow right */
+/* how long it has sat still, once that is worth saying */
+.pc-status{font-size:12.5px;font-weight:600;color:var(--slate-light);margin-top:5px}
+
+/* the sector tag left, the arrow right. Every sector tag is the same colour
+   (user, 20 Oct 2026). */
 .pc-foot{display:flex;align-items:center;gap:6px;margin-top:9px}
-.pc-status{flex:1 1 auto;min-width:0;font-size:12.5px;font-weight:600;color:var(--slate-light)}
+.pc-tag{flex:0 1 auto;min-width:0;font-size:12px;font-weight:600;line-height:1.5;padding:1px 9px;border-radius:999px;
+  background:rgba(18,181,165,.13);color:var(--teal-600);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pc-status.warn  {color:#B07A12}
 .pc-status.stale  {color:var(--danger)}
 

@@ -5,13 +5,14 @@ One screen. A board of the live leads you are working, one column per stage,
 with everything about a record in a slide-over panel beside it. There are no
 filters and no number tiles: every current lead is on the board all the time,
 and closed work sits behind one toggle. Reference material (the Role & Hook
-library and the playbook) lives in a drawer, not in a nav bar. It is an
-Insider Pro tool, so nothing on it is split by person: there is no owner.
+library and the playbook) lives in a drawer, not in a nav bar.
 
-  * a pipeline board with drag-and-drop: the three live stages and Work
-    agreed (the win), with Closed (Lost or Nurture) behind one toggle;
-  * each card shows the chance of a win: someone's own figure, or the stage
-    estimate in stages.py until there is one;
+  * a pipeline board with drag-and-drop: the three live stages and Add to
+    InsideTrack (the win, called Work agreed until 20 Oct 2026), with Closed
+    (Lost or Nurture) behind one toggle;
+  * each card shows the initials of whoever is responsible for it, a sector
+    tag and a few-word summary (20 Oct 2026), all typed in the record. The
+    chance of a win came off the card the same day; it still sorts a column;
   * the card's arrow advances the stage without reloading the screen: every
     write returns the updated record;
   * the record (click a card) is the company's: the stage row, then five
@@ -168,6 +169,8 @@ def _contact_dict(c, company_name=""):
         "company": company_name,
         "priority": c.priority or "Medium",
         "sector": c.sector or "",
+        "responsible": c.responsible or "",
+        "summary": c.summary or "",
         "cost_area": c.cost_area or "",
         "target_role": c.target_role or "",
         "contact_name": c.contact_name or "",
@@ -280,7 +283,9 @@ def _log(s, contact, kind, note="", from_stage=None, to_stage=None):
 def _apply(obj, fields, allowed, date_fields=(), pct_fields=()):
     """Write a {field: value} dict onto a row, one whitelist for the whole
     request. Replaces the old one-field-per-request endpoints, which is what
-    lets the panel save a whole record in a single POST."""
+    lets the panel save a whole record in a single POST. Text is cut to its
+    column's length: SQLite never minds, but Postgres (the live site) refuses
+    the whole save over one long line."""
     for key, val in (fields or {}).items():
         key = _clean(key)
         if key in date_fields:
@@ -288,7 +293,9 @@ def _apply(obj, fields, allowed, date_fields=(), pct_fields=()):
         elif key in pct_fields:
             setattr(obj, key, _parse_pct(val))
         elif key in allowed:
-            setattr(obj, key, _clean(val))
+            text = _clean(val)
+            limit = getattr(obj.__table__.columns[key].type, "length", None)
+            setattr(obj, key, text[:limit].rstrip() if limit else text)
 
 
 def _fields_of(payload):
@@ -371,6 +378,8 @@ def board_payload():
                       s.query(RoleHook).order_by(RoleHook.tier, RoleHook.cost_area).all()],
             "playbook": get_setting(s, "playbook", []),
             "warm_note": get_setting(s, "warm_expand_note", ""),
+            # offered when a sector tag is typed; the page adds the ones in use
+            "sector_suggestions": ST.SECTOR_SUGGESTIONS + (get_setting(s, "sectors", []) or []),
             "win_chance_estimate": ST.WIN_CHANCE_ESTIMATE,
             "ageing": {"warn": ST.AGEING_WARN_DAYS, "stale": ST.AGEING_STALE_DAYS},
         }
@@ -383,7 +392,7 @@ def board_payload():
 CONTACT_FIELDS = {
     "priority", "sector", "cost_area", "target_role", "contact_name",
     "linkedin_url", "email", "phone", "hook", "next_action", "notes",
-    "outcome",
+    "outcome", "responsible", "summary",
 }
 CONTACT_DATE_FIELDS = {"last_contact", "next_action_date"}
 CONTACT_PCT_FIELDS = {"win_chance"}
@@ -405,6 +414,8 @@ def api_contact_add():
             company_id=company_id,
             priority=_clean(d.get("priority")) or "Medium",
             sector=sector,
+            responsible=_clean(d.get("responsible")),
+            summary=_clean(d.get("summary")),
             cost_area=_clean(d.get("cost_area")),
             target_role=_clean(d.get("target_role")),
             contact_name=_clean(d.get("contact_name")),

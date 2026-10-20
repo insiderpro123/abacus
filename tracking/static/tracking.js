@@ -39,25 +39,45 @@ const stageOf = (num) =>
 const isClosed = (stage) => (DATA.closed_stages || []).includes(stage);
 const isWon = (stage) => (DATA.won_stages || []).includes(stage);   // Work agreed
 
-/* There is no sign-in, no owner and no touch log: it is an Insider Pro tool.
-   Where a company has got to is in its record: the people to contact, their
-   red / amber / green, and one Comments box (8 Oct 2026). */
+/* There is no sign-in and no touch log: it is an Insider Pro tool. Where a
+   company has got to is in its record: the people to contact, their red /
+   amber / green, and one Comments box (8 Oct 2026). Since 20 Oct 2026 each
+   card also says who is responsible for it (as initials), its sector and a
+   few words on where it stands, all typed in the record. The chance of a win
+   came off the card the same day; it still sorts each column. */
 
-/* The chance of a win, as the card shows it. A figure set before 8 Oct 2026
-   is plain ("35%"); the stage estimate carries a "~" ("~8%") so the two are
-   never confused. Work agreed is 100%; a closed card shows how it ended. The
-   record no longer has a slider to set one. */
-function chanceText(c) {
-  if (c.chance_source === "outcome") return c.outcome || "Outcome?";
-  if (c.chance_source === "won") return "100%";
-  if (c.chance === null || c.chance === undefined) return "";
-  if (c.chance_source === "estimate") return c.chance < 1 ? "<1%" : `~${Math.round(c.chance)}%`;
-  return `${Math.round(c.chance)}%`;
+/* "Ann Other" -> "AO", "Ann" -> "A": the first letter of the first and the
+   last word. */
+function initials(name) {
+  const words = String(name || "").trim().split(/\s+/).filter(Boolean)
+    .map((w) => (w.match(/[\p{L}\d]/u) || [""])[0]).filter(Boolean);
+  if (!words.length) return "";
+  return (words[0] + (words.length > 1 ? words[words.length - 1] : "")).toUpperCase();
 }
-function chanceBand(c) {
-  if (c.chance_source === "outcome") return `out-${c.outcome || "none"}`;
-  const v = c.chance || 0;
-  return v >= 60 ? "high" : v >= 30 ? "mid" : v >= 5 ? "low" : "min";
+
+/* What a card's field has been set to anywhere on the board, once each
+   (ignoring case), for the record's suggestion lists. */
+function inUse(values) {
+  const seen = new Map();
+  values.forEach((v) => {
+    const t = String(v || "").trim();
+    if (t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+  });
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+const sectorOptions = () =>
+  inUse([...(DATA.sector_suggestions || []), ...DATA.contacts.map((c) => c.sector)]);
+const responsibleOptions = () => inUse(DATA.contacts.map((c) => c.responsible));
+
+/* A text box with a list of suggestions under it; anything can still be typed. */
+function suggestInput(id, options) {
+  const input = el("input");
+  input.type = "text";
+  input.setAttribute("list", id);
+  const dl = el("datalist");
+  dl.id = id;
+  options.forEach((o) => dl.appendChild(new Option(o, o)));
+  return [input, dl];
 }
 
 /* One plain line under the name: how long a live card has sat in its stage,
@@ -175,8 +195,10 @@ function renderBoard() {
   });
 }
 
-/* A card is who, how likely and the one thing to know. The priority is the
-   coloured left edge; everything else is in the record. */
+/* A card is who looks after it, where it stands and who to talk to: the
+   company with the responsible person's initials, the few-word summary, the
+   person, then the sector tag. The priority is the coloured left edge;
+   everything else is in the record. */
 function cardNode(c) {
   const card = el("div", `pcard p-${c.priority}${c.id === selectedId ? " sel" : ""}`);
   card.draggable = true;
@@ -184,29 +206,25 @@ function cardNode(c) {
   const who = c.contact_name
     ? `${c.contact_name}${c.target_role ? " · " + c.target_role : ""}`
     : (c.target_role || c.cost_area || "");
-  const chance = chanceText(c);
-  const chanceTitle = {
-    estimate: `Estimated chance of a win for ${stageOf(c.stage).label}, from published B2B sales averages`,
-    own: "Your chance of a win for this contact",
-    won: "Work agreed",
-  }[c.chance_source] || "How it ended";
+  const ini = initials(c.responsible);
   const status = statusOf(c);
   card.innerHTML =
     `<div class="pc-top">` +
       `<div class="pc-co">${esc(c.company || "(no company)")}</div>` +
-      (chance ? `<span class="pc-chance ${chanceBand(c)} ${c.chance_source}" ` +
-                `title="${esc(chanceTitle)}">${esc(chance)}</span>` : "") +
+      (ini ? `<span class="pc-ini" title="${esc(c.responsible)} is responsible">${esc(ini)}</span>` : "") +
     `</div>` +
-    (who ? `<div class="pc-who" title="${esc(who)}">${esc(who)}</div>` : "");
+    (c.summary ? `<div class="pc-sum">${esc(c.summary)}</div>` : "") +
+    (who ? `<div class="pc-who" title="${esc(who)}">${esc(who)}</div>` : "") +
+    (status ? `<div class="pc-status ${status.cls}">${esc(status.text)}</div>` : "");
 
-  /* The status on the left, and the arrow that moves it on. */
+  /* The sector tag on the left, and the arrow that moves it on. */
   const next = (c.stage || 1) + 1;
-  if (status || next <= DATA.last_open_stage) {
+  if (c.sector || next <= DATA.last_open_stage) {
     const foot = el("div", "pc-foot");
-    foot.appendChild(el("span", `pc-status ${status ? status.cls : ""}`, status ? esc(status.text) : ""));
+    if (c.sector) foot.appendChild(el("span", "pc-tag", esc(c.sector)));
     if (next <= DATA.last_open_stage) {
       const adv = el("button", "qk adv", "&rarr;");
-      adv.title = `Move to ${stageOf(next).label}`;
+      adv.title = `Move to the ${stageOf(next).label} column`;
       adv.onclick = (e) => { e.stopPropagation(); moveStage(c.id, next); };
       foot.appendChild(adv);
     }
@@ -231,7 +249,7 @@ async function moveStage(id, stage) {
     // closing something shows the Closed column, so nothing appears to vanish
     if (isClosed(stage)) showClosed = true;
     applyContact(res.contact, { panel: true });
-    setStatus(`${c.company || "Contact"} moved to ${stageOf(stage).label}.` +
+    setStatus(`${c.company || "Contact"} moved to the ${stageOf(stage).label} column.` +
       (isClosed(stage) && !res.contact.outcome ? " Set the outcome in the record." : ""));
   } catch (e) { setStatus(e.message, true); }
 }
@@ -330,6 +348,8 @@ function renderDetail() {
     body.appendChild(el("div", "seclabel", "Stage"));
     body.appendChild(stagePicker(c));
     if (isClosed(c.stage)) body.appendChild(outcomeRow(c));
+    body.appendChild(el("div", "seclabel", "On the card"));
+    body.appendChild(cardFields(c));
 
     const co = companyOf(c);
     if (!co) {
@@ -374,7 +394,7 @@ function stagePicker(c) {
   DATA.stages.forEach((s) => {
     const state = s.num === c.stage ? " at" : s.num < c.stage ? " past" : "";
     const b = el("button", `sp tone-${s.tone}${state}`, esc(s.short));
-    b.title = s.num === c.stage ? `Already at ${s.label}` : `Move to ${s.label}`;
+    b.title = s.num === c.stage ? `Already in ${s.label}` : `Move to the ${s.label} column`;
     b.onclick = () => moveStage(c.id, s.num);
     wrap.appendChild(b);
   });
@@ -390,6 +410,60 @@ function outcomeRow(c) {
     row.appendChild(b);
   });
   return row;
+}
+
+/* What the card shows (20 Oct 2026): who is responsible for it (the card
+   carries their initials), its sector tag and a few words on where it stands.
+   These belong to the card, not the company, so a second contact at the same
+   company keeps its own. Each box saves when you click away; the board's copy
+   is patched first, so a panel redrawn mid-save shows what was typed. */
+function cardFields(c) {
+  const wrap = el("div", "cardfields");
+  const grid = el("div", "fieldgrid");
+  const hint = saveHint();
+  const field = (key, label, input, list, wide) => {
+    const f = el("div", "field" + (wide ? " wide" : ""));
+    const lab = el("label", null, esc(label));
+    input.id = `cf-${key}`;
+    lab.htmlFor = input.id;
+    input.value = c[key] || "";
+    let saved = input.value.trim();
+    input.onblur = async () => {
+      const now = input.value.trim();
+      if (now === saved) return;
+      const mine = DATA.contacts.find((x) => x.id === c.id);
+      if (mine) mine[key] = now;
+      const u = await saveFields(c, { [key]: now });
+      if (!u) return;
+      saved = u[key];
+      hint.flash();
+    };
+    input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); input.blur(); } };
+    f.appendChild(lab);
+    f.appendChild(input);
+    if (list) f.appendChild(list);
+    grid.appendChild(f);
+  };
+
+  const [resp, respList] = suggestInput("cf-people", responsibleOptions());
+  resp.placeholder = "Name";
+  resp.maxLength = 128;
+  field("responsible", "Responsible", resp, respList);
+
+  const [sector, sectorList] = suggestInput("cf-sectors", sectorOptions());
+  sector.placeholder = "e.g. Healthcare";
+  sector.maxLength = 60;
+  field("sector", "Sector", sector, sectorList);
+
+  const summary = el("input");
+  summary.type = "text";
+  summary.maxLength = 80;
+  summary.placeholder = "A few words on where it stands";
+  field("summary", "Summary", summary, null, true);
+
+  wrap.appendChild(grid);
+  wrap.appendChild(hint);
+  return wrap;
 }
 
 /* A company write. The client's copy is patched before the request goes, so a
@@ -737,6 +811,24 @@ function openAddModal() {
 
   const priority = mk("priority", "Priority", "select", DATA.priorities);
   priority.value = "Medium";
+  // what the card shows: initials, sector tag, summary
+  const suggest = (key, label, listId, options, max, placeholder, wide) => {
+    const w = el("div", "field" + (wide ? " wide" : ""));
+    w.appendChild(el("label", null, esc(label)));
+    const [i, dl] = listId ? suggestInput(listId, options) : [el("input"), null];
+    i.type = "text";
+    i.maxLength = max;
+    i.placeholder = placeholder;
+    i.dataset.key = key;
+    w.appendChild(i);
+    if (dl) w.appendChild(dl);
+    grid.appendChild(w);
+    return i;
+  };
+  const resp = suggest("responsible", "Responsible", "add-people", responsibleOptions(), 128, "Name");
+  const sector = suggest("sector", "Sector", "add-sectors", sectorOptions(), 60,
+    "Blank: the company's sector");
+  const summary = suggest("summary", "Summary", null, null, 80, "A few words on where it stands", true);
   const costAreas = [...new Set((DATA.hooks || []).map((h) => h.cost_area).filter(Boolean))].sort();
   const cost = mk("cost_area", "Cost area / function", "select", ["", ...costAreas]);
   const role = mk("target_role", "Target role", "text");
@@ -784,7 +876,7 @@ function openAddModal() {
 
   save.onclick = async () => {
     const payload = { stage: parseInt((stage.value || "1").split(".")[0], 10) };
-    [coInput, priority, cost, role, name, li, email, hook, nextAct, nextDate]
+    [coInput, priority, resp, sector, summary, cost, role, name, li, email, hook, nextAct, nextDate]
       .forEach((i) => { payload[i.dataset.key] = i.value; });
     save.disabled = true;
     try {

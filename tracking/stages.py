@@ -23,25 +23,32 @@ seed_data.py (the one-time workbook import), and handed to the front end by
 # a stage was added after them (v3), which the same day became Work agreed: the
 # win, as its own column, so Closed now only means it ended without work (v4).
 # See STAGE_MAP_V2_TO_V3 and STAGE_MAP_V3_TO_V4.
+# On 20 Oct 2026 Work agreed was renamed Add to InsideTrack (user's words). Only
+# the label changed: it is still stage 4, the win.
 # --------------------------------------------------------------------------- #
 STAGES = [
-    {"num": 1, "label": "New",              "short": "New",              "tone": "cold"},
-    {"num": 2, "label": "Contacted",        "short": "Contacted",        "tone": "warm"},
-    {"num": 3, "label": "Talking / Meeting", "short": "Talking / Meeting", "tone": "hot"},
-    {"num": 4, "label": "Work agreed",      "short": "Work agreed",      "tone": "won"},
-    {"num": 5, "label": "Closed",           "short": "Closed",           "tone": "park"},
+    {"num": 1, "label": "New",                "short": "New",                "tone": "cold"},
+    {"num": 2, "label": "Contacted",          "short": "Contacted",          "tone": "warm"},
+    {"num": 3, "label": "Talking / Meeting",  "short": "Talking / Meeting",  "tone": "hot"},
+    {"num": 4, "label": "Add to InsideTrack", "short": "Add to InsideTrack", "tone": "won"},
+    {"num": 5, "label": "Closed",             "short": "Closed",             "tone": "park"},
 ]
 
 STAGE_BY_NUM = {s["num"]: s for s in STAGES}
 
-# Work agreed is the win. It is not a lead any more, so it never ages and is
-# not counted as live, but it stays on the board, because wins are worth seeing.
+# Names a stage has had before, so a CSV saved under the old name still lands
+# in the right column.
+FORMER_LABELS = {"work agreed": 4}
+
+# Add to InsideTrack (Work agreed until 20 Oct 2026) is the win. It is not a
+# lead any more, so it never ages and is not counted as live, but it stays on
+# the board, because wins are worth seeing.
 WON_STAGES = [4]
 # Closed means it ended without work. It never ages, never counts as live, and
 # sits behind the board's Closed toggle.
 CLOSED_STAGES = [5]
 # The last stage a contact can be advanced into with the card arrow: Talking /
-# Meeting moves to Work agreed in one click. Closing something needs an
+# Meeting moves to Add to InsideTrack in one click. Closing something needs an
 # outcome, so it is a deliberate act in the record panel.
 LAST_OPEN_STAGE = 4
 
@@ -53,7 +60,10 @@ OUTCOMES = ["Lost", "Nurture"]
 # --------------------------------------------------------------------------- #
 # Chance of a win
 #
-# Every live card shows the chance it ends with work agreed. Somebody's own
+# The card stopped showing this on 20 Oct 2026 (user: "remove percentage on
+# the card"); it is still worked out, sorts each column and goes in the CSV.
+#
+# Every live card showed the chance it ends with work agreed. Somebody's own
 # figure for a contact (Contact.win_chance, set in the record) always wins;
 # until there is one, the card shows this estimate for its stage, marked with
 # a "~". It is built from published averages, not from this team's history (no
@@ -188,8 +198,13 @@ def outcome_from_excel(value):
 # --------------------------------------------------------------------------- #
 PRIORITIES = ["High", "Medium", "Low"]
 
-# There is no owner and no touch log (both removed 6 Oct 2026): this is an
-# Insider Pro tool, and a card's progress is its one "latest update" comment.
+# There is no touch log (removed 6 Oct 2026). The owner went the same day, but
+# on 20 Oct 2026 the user asked for the name of whoever is responsible for each
+# card, shown as initials: that is Contact.responsible, typed in the record.
+
+# Offered when a card's sector tag is typed, beside every sector already in
+# use. The user's own examples (20 Oct 2026); any other word can be typed.
+SECTOR_SUGGESTIONS = ["Healthcare", "Dentistry", "Hospitality"]
 
 # Days in one stage before a card is flagged as ageing / stalled on the board.
 AGEING_WARN_DAYS = 14
