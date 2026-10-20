@@ -804,6 +804,26 @@ const ROWS = [
   { sector:"Marketing",       cls:"r-marketing", title:"Marketing",  by:"epic" }
 ];
 
+/* The Operations and Marketing cards that show every week, empty or not (Sam, 20 Oct 2026:
+   "the squares we need to show all the time"), so each always has somewhere for its next
+   goal. Keyed on the Jira epic, so a rename in Jira keeps the card; the name is only used
+   until the pull has seen the epic, then Jira's wins. Other epics still get a card in any
+   week they have work. Website Management and Lead Generation each have an older epic of
+   the same name marked Done (ISPMKTG-661, -1370) with no work since; these are the open ones. */
+const ALWAYS_EPICS = {
+  "Process and Ops": [
+    ["ISPOPS2-2171", "Business Dev & Networking (InsideOut)"],
+    ["ISPOPS2-1",    "Operational Efficiency and Team Development (InsideOut)"]
+  ],
+  "Marketing": [
+    ["ISPMKTG-1395", "Website Management"],
+    ["ISPMKTG-728",  "Compelling Content"],
+    ["ISPMKTG-1134", "Lead Generation"],
+    ["ISPMKTG-1588", "Crafting our Offer"],
+    ["ISPMKTG-1180", "Sales meetings with potential new clients"]
+  ]
+};
+
 function renderProjects(){
   const w = DATA.weeks[weekIdx];
   const wk = weekEntry(w.start);
@@ -874,11 +894,15 @@ function renderProjects(){
       })));
       const seen = new Set(items.map((it) => it.code));
       const epics = allEpics();
-      withGoals(row.sector).forEach((code) => {
-        if (seen.has(code)) return;
-        items.push({ kind:"epic", code, name:epics.get(code).name, sector:row.sector,
-          src:{ key:code, done:0, committed:0, issues_done:0, done_items:[] } });
-      });
+      /* Goals written for this week, then the always-shown cards: each gets an empty
+         card when it has no Jira work this sprint (0 completed, none scheduled). */
+      [...withGoals(row.sector), ...(ALWAYS_EPICS[row.sector] || []).map(([key]) => key)]
+        .forEach((code) => {
+          if (seen.has(code)) return;
+          seen.add(code);
+          items.push({ kind:"epic", code, name:epics.get(code).name, sector:row.sector,
+            src:{ key:code, done:0, committed:0, issues_done:0, done_items:[] } });
+        });
     }
 
     /* A to Z by name in every row (Sam, 5 Oct 2026; they used to sort by points), so a card
@@ -938,9 +962,13 @@ function allCustomers(){
 }
 
 /* Every Operations and Marketing epic seen anywhere in the pull, key -> {name, sector},
-   so a card whose goals outlive its Jira work this week still has its name. */
+   so a card whose goals outlive its Jira work this week still has its name. The
+   always-shown epics are in from the start, so they have a row and a name even before
+   the pull has seen them; a name from Jira replaces the one in ALWAYS_EPICS. */
 function allEpics(){
   const m = new Map();
+  Object.entries(ALWAYS_EPICS).forEach(([sector, list]) =>
+    list.forEach(([key, name]) => m.set(key, { name, sector })));
   (DATA && DATA.weeks || []).forEach((w) => (w.projects || []).forEach((p) => {
     if (p.sector === "Customer") return;
     (p.epics || []).forEach((e) => m.set(e.key, { name:e.epic ? e.name : "Not under an epic", sector:p.sector }));
