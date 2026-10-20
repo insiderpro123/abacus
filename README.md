@@ -88,8 +88,10 @@ copy of the package that also runs inside ARGUS (`Marketing - Customer Relations
 Management\03 Live\argus lead detection system\app\tracking`); make changes there and copy
 the folder across, so the two stay the same. Its five tables (`company`, `contact`,
 `activity`, `role_hook`, `setting`) sit on the same database as Abacus. Companies arrive by
-its **CSV** button: a file from ARGUS's "Download for the tracker", or the ARGUS tracker's own
-"Download the board". Import only adds, so the same file can go in twice. The Reference
+its **CSV** button: a file from ARGUS's "Download for the tracker", the ARGUS tracker's own
+"Download the board", or ARGUS's "Download all to contact" Excel (a tab per area; only the
+rows with Yes in its "Add to live site?" column are added). Import only adds, so the same
+file can go in twice. The Reference
 library and playbook start empty here: their text lives in a workbook that git ignores.
 
 ## Adding a dashboard

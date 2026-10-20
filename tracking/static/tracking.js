@@ -682,9 +682,12 @@ function renderCsv() {
       "Adds the companies in a CSV as new cards: a file from another tracker, or ARGUS's " +
       "<b>Download for the tracker</b>. A company already on this board is left as it is, " +
       "so dropping the same file in twice changes nothing."));
+    body.appendChild(el("p", "csv-text",
+      "ARGUS's <b>all to contact</b> Excel goes in the same way. Only the rows with Yes in " +
+      "its <b>Add to live site?</b> column are added."));
     const drop = el("label", "csv-drop",
-      `<input type="file" accept=".csv,text/csv" hidden>` +
-      `<b>Drop a CSV here</b><span>or click to choose one</span>`);
+      `<input type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>` +
+      `<b>Drop a CSV or Excel file here</b><span>or click to choose one</span>`);
     const input = drop.querySelector("input");
     const result = el("div", "csv-result");
     result.setAttribute("role", "status");
@@ -717,9 +720,14 @@ async function importCsv(file, drop, result) {
     const n = json.added.length;
     const parts = [n
       ? `Added ${n} compan${n === 1 ? "y" : "ies"} (${json.contacts} contact${json.contacts === 1 ? "" : "s"}) as new cards.`
-      : "Nothing new to add."];
+      : (json.pick_column && !json.marked
+        ? "No rows say Yes in the Add to live site? column. Put Yes beside the companies to add, save the file and drop it in again."
+        : "Nothing new to add.")];
     if (json.already.length) {
       parts.push(`Already on the board, left as they are: ${json.already.map(esc).join(", ")}.`);
+    }
+    if (json.pick_column && json.marked && json.unmarked) {
+      parts.push(`${json.unmarked} row${json.unmarked === 1 ? "" : "s"} without a Yes left out.`);
     }
     if (json.skipped) parts.push(`${json.skipped} row${json.skipped === 1 ? "" : "s"} had no company name and were skipped.`);
     // Fixed words and numbers, plus company names escaped above.

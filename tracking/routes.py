@@ -593,9 +593,9 @@ def api_import_csv():
     from . import csvio
     f = request.files.get("file")
     if f is None or not f.filename:
-        return jsonify({"error": "Choose a CSV file first."}), 400
+        return jsonify({"error": "Choose a CSV or Excel file first."}), 400
     try:
-        result = csvio.import_csv(f.read())
+        result = csvio.import_file(f.read())
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify({"ok": True, **result})

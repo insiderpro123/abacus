@@ -12,13 +12,20 @@ ever ADDS: a company already on the board (same Companies House number, or
 the same name) is left exactly as it is, so dropping the same file in twice
 changes nothing. Rows for one company inside one file become that company's
 contacts. Every write stays in this package, as with intake.py.
+
+Since 20 Oct 2026 an Excel file can be dropped in too: ARGUS's "companies to
+contact" workbook, a tab per area, read top to bottom. It has an "Add to live
+site?" column, and only the rows marked Yes are added, so a list can be
+screened in Excel and moved across a few companies at a time. Three of its
+headers are worded for reading (PLAIN_COLUMNS) and fill a tracker field when
+the file has no column of the tracker's own name.
 """
 
 import csv
 import io
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 from .models import SessionLocal, Company, Contact
 from .routes import _clean, _clean_people, _log, _parse_pct, _people_slots, PEOPLE_SLOTS
@@ -73,6 +80,18 @@ CONTACT_FIELDS = dict(CARD_COLUMNS + CONTACT_DETAIL_COLUMNS)
 
 RAG_WORDS = {"red": "red", "r": "red", "amber": "amber", "a": "amber",
              "green": "green", "g": "green"}
+
+# ARGUS's companies-to-contact workbook: the rows to add carry a Yes here.
+PICK_COLUMN = "Add to live site?"
+YES_WORDS = {"yes", "y", "x", "true", "1", "✓", "✔"}
+# Its plainer headers: "Why now" lists the reasons one a line (the tracker's
+# "Why they fit"), "What ARGUS found" is the evidence (the "Hook", which ARGUS
+# heads "What ARGUS found:"), "Other directors" follow the contact into the
+# people slots.
+PLAIN_COLUMNS = ("Why now", "What ARGUS found", "Other directors")
+HOOK_HEAD = "What ARGUS found:"
+# Cells whose link matters more than the word shown ("Search LinkedIn").
+LINK_COLUMNS = ("LinkedIn", "Website")
 
 
 # --------------------------------------------------------------- writing
@@ -183,10 +202,8 @@ def _stage(value) -> int:
     return ST.FORMER_LABELS.get(text, 1)
 
 
-def import_csv(raw: bytes) -> dict:
-    """Add the companies in a CSV as leads. Returns what happened, for the
-    page to say: companies added, contacts added, companies already on the
-    board (left alone) and rows skipped."""
+def _csv_tables(raw: bytes) -> list:
+    """The file as one (header, rows) table."""
     text = _decode(raw)
     first = text.splitlines()[0] if text else ""
     # A UK Excel writes commas; some European set-ups write semicolons.
@@ -196,70 +213,159 @@ def import_csv(raw: bytes) -> dict:
         header = next(reader)
     except StopIteration:
         raise ValueError("The file is empty.")
-    col = {_norm(h): i for i, h in enumerate(header)}
-    if "company" not in col:
+    return [(header, reader)]
+
+
+def _cell_text(cell, link: bool = False) -> str:
+    """An Excel cell as the text a CSV would hold. A link column gives the
+    address behind the word shown."""
+    target = getattr(getattr(cell, "hyperlink", None), "target", None)
+    if link and target:
+        return target
+    value = cell.value
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)            # a company number Excel holds as 1603760.0
+    if isinstance(value, datetime):
+        value = value.date() if value.time() == datetime.min.time() else value
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
+def _xlsx_tables(raw: bytes) -> list:
+    """Each tab as a (header, rows) table. The header is the first row in a
+    tab's top ten with a Company cell, since ARGUS's tabs open with a title
+    and a how-to line. A tab with no such row (a notes page) is passed over."""
+    import openpyxl
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
+    except Exception as exc:
+        raise ValueError("That Excel file could not be read. Save it as an .xlsx "
+                         "workbook and drop it in again.") from exc
+    links = {_norm(h) for h in LINK_COLUMNS}
+    tables = []
+    for ws in wb.worksheets:
+        rows = ws.iter_rows()
+        header = None
+        for cells in rows:
+            texts = [_cell_text(c) for c in cells]
+            if "company" in {_norm(t) for t in texts}:
+                header = texts
+                break
+            if cells[0].row >= 10:
+                break
+        if header is None:
+            continue
+        linked = {i for i, h in enumerate(header) if _norm(h) in links}
+        tables.append((header, [[_cell_text(c, i in linked) for i, c in enumerate(cells)]
+                                for cells in rows]))
+    return tables
+
+
+def _lines(text: str, commas: bool = False) -> list[str]:
+    """One item a line ("Why now", "Other directors"); a semicolon, or for
+    names a comma, also splits, for a list someone typed on one line."""
+    parts = re.split(r"[\n;,]+" if commas else r"[\n;]+", text or "")
+    return [p.strip(" -•\t") for p in parts if p.strip(" -•\t")]
+
+
+def import_file(raw: bytes) -> dict:
+    """Add the companies in a CSV, or in an Excel file's tabs, as leads.
+    Returns what happened, for the page to say: companies added, contacts
+    added, companies already on the board (left alone), rows skipped, and,
+    for a file with an "Add to live site?" column, the rows not marked Yes."""
+    excel = raw[:4] == b"PK\x03\x04"           # an .xlsx is a zip
+    tables = _xlsx_tables(raw) if excel else _csv_tables(raw)
+    if not any("company" in {_norm(h) for h in header} for header, _ in tables):
         raise ValueError('No "Company" column. Use a file downloaded from a tracker '
-                         'or from ARGUS ("Download for the tracker").')
-
-    def cell(values, name):
-        i = col.get(_norm(name))
-        return _clean(values[i]) if i is not None and i < len(values) else ""
-
-    def company_cell(values, header, field):
-        return _fit(Company, field, cell(values, header))
-
-    def contact_cell(values, header, field):
-        return _fit(Contact, field, cell(values, header))
+                         'or from ARGUS ("Download for the tracker", or the Excel of '
+                         'companies to contact).')
 
     added, already, skipped, contacts = [], [], 0, 0
+    picking, marked, unmarked = False, 0, 0
     with SessionLocal.begin() as s:
         here = {}            # this file's companies: key -> Company, or None when already on the board
-        for values in reader:
-            name = company_cell(values, "Company", "name")
-            if not name:
-                skipped += 1 if any(_clean(v) for v in values) else 0
-                continue
-            number = _fit(Company, "company_number",
-                          company_number(cell(values, "Companies House number")))
-            key = number or name.lower()
-            if key not in here:
-                co = None
-                if number:
-                    co = s.query(Company).filter(Company.company_number == number).first()
-                if co is None:
-                    co = s.query(Company).filter(Company.name.ilike(name)).first()
-                if co is not None:
-                    here[key] = None
-                    already.append(co.name)
+        for header, rows in tables:
+            col = {_norm(h): i for i, h in enumerate(header)}
+            pick = col.get(_norm(PICK_COLUMN))
+            picking = picking or pick is not None
+            plain = {h: _norm(h) in col for h in PLAIN_COLUMNS}
+
+            def cell(values, name):
+                i = col.get(_norm(name))
+                return _clean(values[i]) if i is not None and i < len(values) else ""
+
+            def company_cell(values, header, field):
+                return _fit(Company, field, cell(values, header))
+
+            def contact_cell(values, header, field):
+                return _fit(Contact, field, cell(values, header))
+
+            for values in rows:
+                name = company_cell(values, "Company", "name")
+                if not name:
+                    skipped += 1 if any(_clean(v) for v in values) else 0
                     continue
-                co = Company(**{f: company_cell(values, h, f) for h, f in COMPANY_FIELDS.items()})
-                co.name, co.company_number = name, number
-                people = [{"name": cell(values, f"Person {i}"),
-                           "status": cell(values, f"Person {i} status"),
-                           "rag": RAG_WORDS.get(cell(values, f"Person {i} RAG").lower(), "")}
-                          for i in range(1, PEOPLE_SLOTS + 1)]
-                if any(p["name"] or p["status"] for p in people):
-                    co.people = json.dumps(_clean_people(people))
-                s.add(co)
+                if pick is not None:
+                    if cell(values, PICK_COLUMN).lower() not in YES_WORDS:
+                        unmarked += 1
+                        continue
+                    marked += 1
+                number = _fit(Company, "company_number",
+                              company_number(cell(values, "Companies House number")))
+                key = number or name.lower()
+                if key not in here:
+                    co = None
+                    if number:
+                        co = s.query(Company).filter(Company.company_number == number).first()
+                    if co is None:
+                        co = s.query(Company).filter(Company.name.ilike(name)).first()
+                    if co is not None:
+                        here[key] = None
+                        already.append(co.name)
+                        continue
+                    co = Company(**{f: company_cell(values, h, f) for h, f in COMPANY_FIELDS.items()})
+                    co.name, co.company_number = name, number
+                    if not co.why_fit and plain["Why now"]:
+                        co.why_fit = _fit(Company, "why_fit", "; ".join(_lines(cell(values, "Why now"))))
+                    people = [{"name": cell(values, f"Person {i}"),
+                               "status": cell(values, f"Person {i} status"),
+                               "rag": RAG_WORDS.get(cell(values, f"Person {i} RAG").lower(), "")}
+                              for i in range(1, PEOPLE_SLOTS + 1)]
+                    if not any(p["name"] or p["status"] for p in people) and plain["Other directors"]:
+                        names = []
+                        for n in [cell(values, "Contact name")] + _lines(cell(values, "Other directors"), True):
+                            if n and n.lower() not in {x.lower() for x in names}:
+                                names.append(n)
+                        people = [{"name": n, "status": "", "rag": ""} for n in names]
+                    if any(p["name"] or p["status"] for p in people):
+                        co.people = json.dumps(_clean_people(people))
+                    s.add(co)
+                    s.flush()
+                    here[key] = co
+                    added.append(name)
+                co = here[key]
+                if co is None:
+                    continue
+                stage = _stage(cell(values, "Stage"))
+                outcome = cell(values, "Outcome").capitalize()
+                priority = cell(values, "Priority").capitalize()
+                c = Contact(
+                    company_id=co.id, stage=stage,
+                    outcome=outcome if stage in ST.CLOSED_STAGES and outcome in ST.OUTCOMES else "",
+                    win_chance=_parse_pct(cell(values, "Chance %")),
+                    priority=priority if priority in ST.PRIORITIES else "Medium",
+                    stage_changed_at=datetime.utcnow(),
+                    **{f: contact_cell(values, h, f) for h, f in CONTACT_FIELDS.items()})
+                c.sector = c.sector or co.sub_sector or ""      # a file from before the tag column
+                found = cell(values, "What ARGUS found")
+                if not c.hook and plain["What ARGUS found"] and found:
+                    c.hook = found if found.startswith(HOOK_HEAD) else f"{HOOK_HEAD}\n{found}"
+                s.add(c)
                 s.flush()
-                here[key] = co
-                added.append(name)
-            co = here[key]
-            if co is None:
-                continue
-            stage = _stage(cell(values, "Stage"))
-            outcome = cell(values, "Outcome").capitalize()
-            priority = cell(values, "Priority").capitalize()
-            c = Contact(
-                company_id=co.id, stage=stage,
-                outcome=outcome if stage in ST.CLOSED_STAGES and outcome in ST.OUTCOMES else "",
-                win_chance=_parse_pct(cell(values, "Chance %")),
-                priority=priority if priority in ST.PRIORITIES else "Medium",
-                stage_changed_at=datetime.utcnow(),
-                **{f: contact_cell(values, h, f) for h, f in CONTACT_FIELDS.items()})
-            c.sector = c.sector or co.sub_sector or ""      # a file from before the tag column
-            s.add(c)
-            s.flush()
-            _log(s, c, "Note", note="Added from a CSV import.")
-            contacts += 1
-    return {"added": added, "contacts": contacts, "already": already, "skipped": skipped}
+                _log(s, c, "Note", note=f"Added from {'an Excel' if excel else 'a CSV'} import.")
+                contacts += 1
+    return {"added": added, "contacts": contacts, "already": already, "skipped": skipped,
+            "pick_column": picking, "marked": marked, "unmarked": unmarked}
