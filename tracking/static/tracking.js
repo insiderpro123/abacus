@@ -182,8 +182,12 @@ function renderBoard() {
     cards.forEach((c) => body.appendChild(cardNode(c)));
     col.appendChild(body);
 
-    // drop target
-    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("dragover"); });
+    // drop target (a file from the desktop goes to the import instead, see wiring)
+    col.addEventListener("dragover", (e) => {
+      if (isFileDrag(e)) return;
+      e.preventDefault();
+      col.classList.add("dragover");
+    });
     col.addEventListener("dragleave", () => col.classList.remove("dragover"));
     col.addEventListener("drop", async (e) => {
       e.preventDefault();
@@ -661,8 +665,10 @@ function renderDrawer() {
    Download this board, or add companies from a file: one downloaded from
    another copy of the tracker, or ARGUS's "Download for the tracker". The
    server only ever adds, so the same file can go in twice. A bulk import is
-   the one write that reloads the whole board: it can add dozens of records. */
-function renderCsv() {
+   the one write that reloads the whole board: it can add dozens of records.
+   Given a file (one dropped anywhere on the page), the panel opens and
+   imports it straight away. */
+function renderCsv(file) {
   const host = $("#csvsheet");
   const title = el("div", null,
     `<h2>Move companies with a CSV</h2><div class="sub">Build a list on one tracker, ` +
@@ -702,7 +708,12 @@ function renderCsv() {
     });
     body.appendChild(drop);
     body.appendChild(result);
+    if (file) importCsv(file, drop, result);
   });
+}
+
+function isFileDrag(e) {
+  return Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes("Files");
 }
 
 async function importCsv(file, drop, result) {
@@ -936,6 +947,20 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#add-contact").onclick = openAddModal;
   $("#open-reference").onclick = () => renderDrawer();
   $("#open-csv").onclick = () => renderCsv();
+  // ARGUS says to drop its files "on the CSV button" (21 Oct 2026): a file let
+  // go anywhere on the page, the button included, goes to the import. The
+  // panel's own drop area handles its drops itself.
+  document.addEventListener("dragover", (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  });
+  document.addEventListener("drop", (e) => {
+    if (!isFileDrag(e) || e.target.closest(".csv-drop")) return;
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f) renderCsv(f);
+  });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || document.querySelector(".modal-overlay")) return;
     const open = document.querySelector(".sheet:not([hidden])");
