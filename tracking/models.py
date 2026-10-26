@@ -81,6 +81,10 @@ class Company(Base):
     # NULL until first saved, when the record offers the names already on the
     # company's contacts (routes._people_slots).
     people = Column(Text, nullable=True)
+    # The day it was put on the live site's CRM (26 Oct 2026). Only a host that
+    # sets TRACKING_LIVE_SITE_MARK (ARGUS's local copy) shows or sets it, so the
+    # live site never offers it. NULL = not on the live site yet.
+    live_site_on = Column(Date, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     contacts = relationship("Contact", back_populates="company")
@@ -217,6 +221,7 @@ def _ensure_columns():
             "notes": "TEXT",
             "company_number": "VARCHAR(16)",
             "people": "TEXT",
+            "live_site_on": "DATE",
         },
         "activity": {
             "from_stage": "INTEGER",

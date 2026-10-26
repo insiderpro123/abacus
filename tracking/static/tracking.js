@@ -92,6 +92,33 @@ function statusOf(c) {
   return null;
 }
 
+/* "Added to live site" (26 Oct 2026): the day a card's company went up to the
+   live site's CRM, or "". Only a local copy that moves lists up by hand turns
+   it on (live_mark); the live site never shows it. */
+function liveSiteOn(c) {
+  if (!DATA.live_mark) return "";
+  const co = companyOf(c);
+  return (co && co.live_site_on) || "";
+}
+
+/* The company's sub-sector ("Care homes", 26 Oct 2026), or "" when it only
+   repeats the card's sector tag, as older companies' "Healthcare" does. */
+function subSectorOf(c) {
+  const co = companyOf(c);
+  const sub = ((co && co.sub_sector) || "").trim();
+  return sub.toLowerCase() === (c.sector || "").trim().toLowerCase() ? "" : sub;
+}
+
+/* '2026-10-21' -> '21 Oct 2026'; today's date the same way round. */
+function dayText(iso) {
+  const d = new Date(`${iso}T00:00:00`);
+  return isNaN(d) ? iso : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function setStatus(msg, isError) {
   const s = $("#status");
   if (!s) return;
@@ -212,14 +239,19 @@ function cardNode(c) {
     : (c.target_role || c.cost_area || "");
   const ini = initials(c.responsible);
   const status = statusOf(c);
+  const live = liveSiteOn(c);
+  const sub = subSectorOf(c);
   card.innerHTML =
     `<div class="pc-top">` +
       `<div class="pc-co">${esc(c.company || "(no company)")}</div>` +
       (ini ? `<span class="pc-ini" title="${esc(c.responsible)} is responsible">${esc(ini)}</span>` : "") +
     `</div>` +
+    (sub ? `<div class="pc-subsec" title="Sub-sector">${esc(sub)}</div>` : "") +
     (c.summary ? `<div class="pc-sum">${esc(c.summary)}</div>` : "") +
     (who ? `<div class="pc-who" title="${esc(who)}">${esc(who)}</div>` : "") +
-    (status ? `<div class="pc-status ${status.cls}">${esc(status.text)}</div>` : "");
+    (status ? `<div class="pc-status ${status.cls}">${esc(status.text)}</div>` : "") +
+    (live ? `<div class="pc-live" title="Put on the live site's CRM on ${esc(dayText(live))}">` +
+            `&#10003; Added to live site</div>` : "");
 
   /* The sector tag on the left, and the arrow that moves it on. */
   const next = (c.stage || 1) + 1;
@@ -352,10 +384,14 @@ function renderDetail() {
     body.appendChild(el("div", "seclabel", "Stage"));
     body.appendChild(stagePicker(c));
     if (isClosed(c.stage)) body.appendChild(outcomeRow(c));
-    body.appendChild(el("div", "seclabel", "On the card"));
-    body.appendChild(cardFields(c));
-
     const co = companyOf(c);
+    if (DATA.live_mark && co) {
+      body.appendChild(el("div", "seclabel", "Live site"));
+      body.appendChild(liveRow(co));
+    }
+    body.appendChild(el("div", "seclabel", "On the card"));
+    body.appendChild(cardFields(c, co));
+
     if (!co) {
       body.appendChild(el("div", "note-hint no-co",
         "This contact has no company, so there is nowhere to keep people or comments."));
@@ -405,6 +441,35 @@ function stagePicker(c) {
   return wrap;
 }
 
+/* Whether the company is on the live site's CRM yet: one button to say it
+   is, once it has been dropped there, and Undo if that was a slip. It belongs
+   to the company, so every card there shows it. */
+function liveRow(co) {
+  const row = el("div", "orow live-row");
+  const set = async (value) => {
+    if (await saveCompany(co, { live_site_on: value })) {
+      renderBoard();
+      renderDetail();
+      setStatus(value ? `${co.name} marked as added to the live site.`
+                      : `${co.name} no longer marked as on the live site.`);
+    }
+  };
+  if (co.live_site_on) {
+    row.appendChild(el("span", "live-on", `&#10003; Added to live site on ${esc(dayText(co.live_site_on))}`));
+    const undo = el("button", "ob", "Undo");
+    undo.title = "It is not on the live site after all";
+    undo.onclick = () => set("");
+    row.appendChild(undo);
+  } else {
+    const mark = el("button", "ob", "Mark as added to live site");
+    mark.title = "Once it is on the live site's CRM";
+    mark.onclick = () => set(todayIso());
+    row.appendChild(mark);
+    row.appendChild(el("span", "note-hint", "Not on the live site yet."));
+  }
+  return row;
+}
+
 function outcomeRow(c) {
   const row = el("div", "orow");
   row.appendChild(el("span", "olab", "How did it end?"));
@@ -420,8 +485,10 @@ function outcomeRow(c) {
    carries their initials), its sector tag and a few words on where it stands.
    These belong to the card, not the company, so a second contact at the same
    company keeps its own. Each box saves when you click away; the board's copy
-   is patched first, so a panel redrawn mid-save shows what was typed. */
-function cardFields(c) {
+   is patched first, so a panel redrawn mid-save shows what was typed. The
+   sub-sector (26 Oct 2026) is the one box that belongs to the company: every
+   card there shows the same. */
+function cardFields(c, co) {
   const wrap = el("div", "cardfields");
   const grid = el("div", "fieldgrid");
   const hint = saveHint();
@@ -458,6 +525,34 @@ function cardFields(c) {
   sector.placeholder = "e.g. Healthcare";
   sector.maxLength = 60;
   field("sector", "Sector", sector, sectorList);
+
+  if (co) {
+    const [sub, subList] = suggestInput("cf-subsectors",
+      inUse((DATA.companies || []).map((x) => x.sub_sector)));
+    sub.id = "cf-sub_sector";
+    sub.placeholder = "e.g. Care homes";
+    sub.maxLength = 255;
+    sub.value = co.sub_sector || "";
+    let saved = sub.value.trim();
+    sub.onblur = async () => {
+      const now = sub.value.trim();
+      if (now === saved) return;
+      const u = await saveCompany(co, { sub_sector: now });
+      if (!u) return;
+      saved = u.sub_sector;
+      renderBoard();
+      hint.flash();
+    };
+    sub.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); sub.blur(); } };
+    const f = el("div", "field wide");
+    const lab = el("label", null, "Sub-sector");
+    lab.htmlFor = sub.id;
+    lab.title = "The company's: every card at this company shows it";
+    f.appendChild(lab);
+    f.appendChild(sub);
+    f.appendChild(subList);
+    grid.appendChild(f);
+  }
 
   const summary = el("input");
   summary.type = "text";

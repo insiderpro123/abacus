@@ -44,14 +44,16 @@ CONTACT_COLUMNS = [
     ("Priority", "priority"),
 ]
 # What the card itself shows (20 Oct 2026). "Sector tag" is the card's own;
-# "Sector" below is the company's longer description.
+# "Sub-sector" below is the company's ("Care homes"). Files from before 26 Oct
+# 2026 called that column "Sector" and the import still reads them that way
+# (LEGACY_SUB_SECTOR); a file with both, ARGUS's Excel, means the card's sector.
 CARD_COLUMNS = [
     ("Responsible", "responsible"),
     ("Sector tag", "sector"),
     ("Summary", "summary"),
 ]
 COMPANY_DETAIL_COLUMNS = [
-    ("Sector", "sub_sector"),
+    ("Sub-sector", "sub_sector"),
     ("Size", "scale"),
     ("Ownership", "ownership"),
     ("Why they fit", "why_fit"),
@@ -90,6 +92,7 @@ YES_WORDS = {"yes", "y", "x", "true", "1", "✓", "✔"}
 # people slots.
 PLAIN_COLUMNS = ("Why now", "What ARGUS found", "Other directors")
 HOOK_HEAD = "What ARGUS found:"
+LEGACY_SUB_SECTOR = "Sector"
 # Cells whose link matters more than the word shown ("Search LinkedIn").
 LINK_COLUMNS = ("LinkedIn", "Website")
 
@@ -289,6 +292,8 @@ def import_file(raw: bytes) -> dict:
         here = {}            # this file's companies: key -> Company, or None when already on the board
         for header, rows in tables:
             col = {_norm(h): i for i, h in enumerate(header)}
+            if _norm("Sub-sector") not in col and _norm(LEGACY_SUB_SECTOR) in col:
+                col[_norm("Sub-sector")] = col.pop(_norm(LEGACY_SUB_SECTOR))
             pick = col.get(_norm(PICK_COLUMN))
             picking = picking or pick is not None
             plain = {h: _norm(h) in col for h in PLAIN_COLUMNS}
@@ -359,7 +364,10 @@ def import_file(raw: bytes) -> dict:
                     priority=priority if priority in ST.PRIORITIES else "Medium",
                     stage_changed_at=datetime.utcnow(),
                     **{f: contact_cell(values, h, f) for h, f in CONTACT_FIELDS.items()})
-                c.sector = c.sector or co.sub_sector or ""      # a file from before the tag column
+                # No "Sector tag": ARGUS's Excel has "Sector" beside "Sub-sector";
+                # a file from before the tag column had only the company's.
+                c.sector = (c.sector or _fit(Contact, "sector", cell(values, LEGACY_SUB_SECTOR))
+                            or co.sub_sector or "")
                 found = cell(values, "What ARGUS found")
                 if not c.hook and plain["What ARGUS found"] and found:
                     c.hook = found if found.startswith(HOOK_HEAD) else f"{HOOK_HEAD}\n{found}"

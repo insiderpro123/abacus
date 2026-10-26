@@ -41,7 +41,7 @@ import json
 import os
 from datetime import date, datetime, timedelta
 
-from flask import Blueprint, Response, jsonify, render_template, request, url_for
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, url_for
 
 from .models import (
     init_db, SessionLocal, Company, Contact, Activity, RoleHook,
@@ -254,6 +254,7 @@ def _company_dict(co, contacts=None):
         "website": co.website or "",
         "notes": co.notes or "",
         "company_number": co.company_number or "",
+        "live_site_on": _iso(co.live_site_on),
         "people": _people_slots(co, contacts),
         "contact_count": len(contacts),
         "open_count": len(open_),
@@ -344,7 +345,11 @@ def page():
 # --------------------------------------------------------------------------- #
 @bp.route("/api/tracking/data")
 def api_data():
-    return jsonify(board_payload())
+    payload = board_payload()
+    # "Added to live site" (26 Oct 2026) is for a local copy whose lists are
+    # moved up to the live site by hand. The live site itself leaves it off.
+    payload["live_mark"] = bool(current_app.config.get("TRACKING_LIVE_SITE_MARK"))
+    return jsonify(payload)
 
 
 def board_payload():
@@ -408,8 +413,12 @@ def api_contact_add():
         company_id = _company_for_name(s, company_name)
         sector = _clean(d.get("sector"))
         if not sector and company_id:
+            # Another card at the company lends its tag; the company's
+            # sub-sector ("Care homes" since 26 Oct 2026) only when it has none.
+            sib = (s.query(Contact).filter(Contact.company_id == company_id, Contact.sector != "")
+                   .order_by(Contact.id).first())
             co = s.get(Company, company_id)
-            sector = (co.sub_sector or "") if co else ""
+            sector = sib.sector if sib else ((co.sub_sector or "") if co else "")
         c = Contact(
             company_id=company_id,
             priority=_clean(d.get("priority")) or "Medium",
@@ -525,6 +534,7 @@ COMPANY_FIELDS = {
     "name", "sub_sector", "ownership", "scale", "why_fit",
     "priority_functions", "warm_intro", "website", "notes",
 }
+COMPANY_DATE_FIELDS = {"live_site_on"}
 
 
 @bp.route("/api/tracking/company/update", methods=["POST"])
@@ -535,7 +545,7 @@ def api_company_update():
     d = request.get_json(silent=True) or {}
     fields = _fields_of(d)
     for key in fields:
-        if key not in COMPANY_FIELDS and key != "people":
+        if key not in COMPANY_FIELDS | COMPANY_DATE_FIELDS and key != "people":
             return jsonify({"error": f"Field '{key}' cannot be edited."}), 400
     with SessionLocal.begin() as s:
         co = s.get(Company, int(d.get("id") or 0))
@@ -543,7 +553,7 @@ def api_company_update():
             return jsonify({"error": "No such company."}), 404
         if "people" in fields:
             co.people = json.dumps(_clean_people(fields["people"]))
-        _apply(co, fields, COMPANY_FIELDS)
+        _apply(co, fields, COMPANY_FIELDS, date_fields=COMPANY_DATE_FIELDS)
         s.flush()
         kids = s.query(Contact).filter(Contact.company_id == co.id).all()
         out = _company_dict(co, kids)

@@ -87,6 +87,9 @@ a{color:var(--blue)}
 .pcard.p-Low   {border-left-color:#C9D3DF}
 .pc-top{display:flex;align-items:flex-start;gap:10px}
 .pc-co{flex:1;min-width:0;font-family:'Sora';font-size:14.5px;font-weight:700;line-height:1.3;color:var(--ink)}
+/* the company's sub-sector, under its name (26 Oct 2026) */
+.pc-subsec{font-size:12.5px;font-weight:600;color:var(--teal-600);line-height:1.35;margin-top:2px;
+  overflow-wrap:anywhere}
 .pc-who{font-size:13px;color:var(--slate);line-height:1.4;margin-top:3px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* the few words on where it stands: two lines at most */
@@ -108,6 +111,12 @@ a{color:var(--blue)}
   background:rgba(18,181,165,.13);color:var(--teal-600);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pc-status.warn  {color:#B07A12}
 .pc-status.stale  {color:var(--danger)}
+
+/* put on the live site's CRM (26 Oct 2026, ARGUS's local copy only) */
+.pc-live{font-size:12.5px;font-weight:700;color:#217A45;margin-top:5px}
+.live-row{margin-top:0}
+.live-on{font-size:14px;font-weight:700;color:#217A45;background:rgba(46,158,91,.12);
+  border-radius:999px;padding:6px 14px}
 
 /* the arrow that moves a card to the next stage */
 .qk.adv{flex:none;margin-left:auto;border:none;border-radius:999px;cursor:pointer;
