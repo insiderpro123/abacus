@@ -175,6 +175,21 @@ a{color:var(--blue)}
   box-shadow:-12px 0 40px rgba(11,42,74,.22);display:flex;flex-direction:column;
   animation:sheetin .16s ease-out}
 #drawer .sheet-panel{width:1140px}
+
+/* The record fills the screen (27 Oct 2026), its content in a centred
+   column the header lines up with. Wide: the working parts left, About this
+   company right. Narrow: one column, in each section's order. */
+#detail{--rec-pad:max(24px, calc((100vw - 1320px) / 2))}
+#detail .sheet-panel{width:100%}
+#detail .panel-head,#detail .sheet-body{padding-left:var(--rec-pad);padding-right:var(--rec-pad)}
+.rec{display:flex;flex-direction:column}
+.rec-main,.rec-side{display:contents}
+.rec-sec.o1{order:1} .rec-sec.o2{order:2} .rec-sec.o3{order:3} .rec-sec.o4{order:4}
+.rec-sec.o5{order:5} .rec-sec.o6{order:6} .rec-sec.o7{order:7} .rec .no-co{order:8}
+@media (min-width:1100px){
+  .rec{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0 48px;align-items:start}
+  .rec-main,.rec-side{display:block}
+}
 @keyframes sheetin{from{transform:translateX(26px);opacity:.5}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.sheet-panel{animation:none}}
 .sheet-body{flex:1;overflow-y:auto;padding:6px 24px 48px}
@@ -333,6 +348,7 @@ td.ed input{width:100%;border:1px solid var(--blue-300);border-radius:6px;paddin
   .pp-status{grid-area:status}
   .rag{grid-area:rag}
   .sheet-body{padding:6px 16px 40px}
+  #detail{--rec-pad:16px}
   .panel-head,.modal-head{padding:20px 16px 14px}
   .panel-head-actions{flex-wrap:wrap;justify-content:flex-end;max-width:45%}
   .modal-body{padding:16px}

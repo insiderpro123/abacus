@@ -394,33 +394,39 @@ function renderDetail() {
     (c.outcome ? ` <span class="stage-badge o-${esc(c.outcome)}">${esc(c.outcome)}</span>` : "") +
     `</div>`);
 
+  /* The record fills the screen (27 Oct 2026, the user's ask). On a wide
+     one the working parts sit on the left and About this company on the
+     right; on a narrow one they stack, About straight after the decision
+     (each section's o1..o7 order, tracking.css). */
   sheetShell(host, title, (body) => {
-    body.appendChild(el("div", "seclabel", "Stage"));
-    body.appendChild(stagePicker(c));
-    if (isClosed(c.stage)) body.appendChild(outcomeRow(c));
+    const rec = el("div", "rec");
+    const main = el("div", "rec-main");
+    const side = el("div", "rec-side");
+    rec.appendChild(main);
+    rec.appendChild(side);
+    body.appendChild(rec);
+    const section = (where, order, label, ...nodes) => {
+      const s = el("section", `rec-sec o${order}`);
+      s.appendChild(el("div", "seclabel", label));
+      nodes.forEach((n) => s.appendChild(n));
+      where.appendChild(s);
+    };
     const co = companyOf(c);
-    if (DATA.live_mark && co) {
-      body.appendChild(el("div", "seclabel", "Live site"));
-      body.appendChild(liveRow(co));
-    }
+    section(main, 1, "Stage", stagePicker(c), ...(isClosed(c.stage) ? [outcomeRow(c)] : []));
+    if (DATA.live_mark && co) section(main, 2, "Live site", liveRow(co));
     if (co) {
-      body.appendChild(el("div", "seclabel", "Suitable to work with?"));
-      body.appendChild(suitableBlock(co));
-      body.appendChild(el("div", "seclabel", "About this company"));
-      body.appendChild(aboutBlock(co, c));
+      section(main, 3, "Suitable to work with?", suitableBlock(co));
+      section(side, 4, "About this company", aboutBlock(co, c));
     }
-    body.appendChild(el("div", "seclabel", "On the card"));
-    body.appendChild(cardFields(c, co));
+    section(main, 5, "On the card", cardFields(c, co));
 
     if (!co) {
-      body.appendChild(el("div", "note-hint no-co",
+      main.appendChild(el("div", "note-hint no-co",
         "This contact has no company, so there is nowhere to keep people or comments."));
       return;
     }
-    body.appendChild(el("div", "seclabel", "People to contact"));
-    body.appendChild(peopleBlock(co));
-    body.appendChild(el("div", "seclabel", "Comments"));
-    body.appendChild(commentsBlock(co));
+    section(main, 6, "People to contact", peopleBlock(co));
+    section(main, 7, "Comments", commentsBlock(co));
   }, (acts) => {
     if (c.linkedin_url) {
       const a = el("a", "btn btn-ghost btn-sm", "LinkedIn");
