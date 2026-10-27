@@ -88,6 +88,20 @@ def _fit(co, field, text):
     return text[:limit].rstrip() if limit else text
 
 
+def _says_nothing(co, key) -> bool:
+    """Whether a company field is as good as blank. Empty, or, for the
+    sub-sector, only the card's sector tag again: companies moved to the live
+    site from files made before 26 Oct 2026 hold "Healthcare" there, which the
+    card hides as a repeat of its tag, so a real one ("Care homes") may
+    replace it (27 Oct 2026)."""
+    have = (getattr(co, key) or "").strip()
+    if not have:
+        return True
+    if key == "sub_sector":
+        return have.lower() in {(c.sector or "").strip().lower() for c in co.contacts}
+    return False
+
+
 def fill_blanks(co, fields=None, facts=None, facts_on=None, decision=None) -> bool:
     """Fill in what a company on the board is missing from a new hand-over of
     it (Add to tracker again, or a file dropped in), never changing anything
@@ -97,7 +111,8 @@ def fill_blanks(co, fields=None, facts=None, facts_on=None, decision=None) -> bo
     changed = False
     for key in BLANK_FILLABLE:
         text = ("" if (fields or {}).get(key) is None else str(fields[key])).strip()
-        if text and not (getattr(co, key) or "").strip():
+        have = (getattr(co, key) or "").strip()
+        if text and text.lower() != have.lower() and _says_nothing(co, key):
             setattr(co, key, _fit(co, key, text))
             changed = True
 

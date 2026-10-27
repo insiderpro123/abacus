@@ -92,7 +92,9 @@ its **CSV** button: a file from ARGUS's "Download for the tracker", the ARGUS tr
 "Download the board", or ARGUS's "Download all to contact" Excel (a tab per area; only the
 rows with Yes in its "Add to live site?" column are added). Import only adds, so the same
 file can go in twice; since 27 Oct 2026 a company already on the board does get the blanks
-filled in (key facts it is missing, an unanswered Suitable?), never anything already typed.
+filled in (key facts it is missing, an unanswered Suitable?, a sub-sector that only repeats
+the sector tag, as "Healthcare" does on the companies moved up on 21 Oct), never anything
+already typed.
 Each record has **Suitable to work with?** (Suitable / Not suitable, why, who decided, the
 day stamped) and **About this company**: the Companies House link and the key facts ARGUS
 handed over (`tracking/facts.py`, stored as JSON in `company.facts`). The Reference
