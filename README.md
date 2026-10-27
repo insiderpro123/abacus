@@ -91,7 +91,11 @@ the folder across, so the two stay the same. Its five tables (`company`, `contac
 its **CSV** button: a file from ARGUS's "Download for the tracker", the ARGUS tracker's own
 "Download the board", or ARGUS's "Download all to contact" Excel (a tab per area; only the
 rows with Yes in its "Add to live site?" column are added). Import only adds, so the same
-file can go in twice. The Reference
+file can go in twice; since 27 Oct 2026 a company already on the board does get the blanks
+filled in (key facts it is missing, an unanswered Suitable?), never anything already typed.
+Each record has **Suitable to work with?** (Suitable / Not suitable, why, who decided, the
+day stamped) and **About this company**: the Companies House link and the key facts ARGUS
+handed over (`tracking/facts.py`, stored as JSON in `company.facts`). The Reference
 library and playbook start empty here: their text lives in a workbook that git ignores.
 
 ## Adding a dashboard

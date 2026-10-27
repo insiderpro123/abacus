@@ -101,6 +101,17 @@ function liveSiteOn(c) {
   return (co && co.live_site_on) || "";
 }
 
+/* Whether the card's company is suitable to work with (27 Oct 2026), as the
+   card says it: decided either way, or still to decide. Null with no company. */
+const SUITABLE = { yes: "Suitable", no: "Not suitable" };
+function suitableOf(c) {
+  const co = companyOf(c);
+  if (!co) return null;
+  if (co.suitable === "yes") return { cls: "yes", html: "&#10003; Suitable", co };
+  if (co.suitable === "no") return { cls: "no", html: "&#10007; Not suitable", co };
+  return { cls: "open", html: "Suitable? Not decided yet", co };
+}
+
 /* The company's sub-sector ("Care homes", 26 Oct 2026), or "" when it only
    repeats the card's sector tag, as older companies' "Healthcare" does. */
 function subSectorOf(c) {
@@ -241,6 +252,7 @@ function cardNode(c) {
   const status = statusOf(c);
   const live = liveSiteOn(c);
   const sub = subSectorOf(c);
+  const suit = suitableOf(c);
   card.innerHTML =
     `<div class="pc-top">` +
       `<div class="pc-co">${esc(c.company || "(no company)")}</div>` +
@@ -249,6 +261,8 @@ function cardNode(c) {
     (sub ? `<div class="pc-subsec" title="Sub-sector">${esc(sub)}</div>` : "") +
     (c.summary ? `<div class="pc-sum">${esc(c.summary)}</div>` : "") +
     (who ? `<div class="pc-who" title="${esc(who)}">${esc(who)}</div>` : "") +
+    (suit ? `<div class="pc-suit ${suit.cls}" title="${esc(suit.co.suitable_why ||
+              (suit.co.suitable ? "No reasons written yet" : "Open the card to decide"))}">${suit.html}</div>` : "") +
     (status ? `<div class="pc-status ${status.cls}">${esc(status.text)}</div>` : "") +
     (live ? `<div class="pc-live" title="Put on the live site's CRM on ${esc(dayText(live))}">` +
             `&#10003; Added to live site</div>` : "");
@@ -389,6 +403,12 @@ function renderDetail() {
       body.appendChild(el("div", "seclabel", "Live site"));
       body.appendChild(liveRow(co));
     }
+    if (co) {
+      body.appendChild(el("div", "seclabel", "Suitable to work with?"));
+      body.appendChild(suitableBlock(co));
+      body.appendChild(el("div", "seclabel", "About this company"));
+      body.appendChild(aboutBlock(co, c));
+    }
     body.appendChild(el("div", "seclabel", "On the card"));
     body.appendChild(cardFields(c, co));
 
@@ -468,6 +488,131 @@ function liveRow(co) {
     row.appendChild(el("span", "note-hint", "Not on the live site yet."));
   }
   return row;
+}
+
+/* Whether the company is suitable to work with (27 Oct 2026): Suitable or Not
+   suitable (the lit one again goes back to not decided), why, and who
+   decided, so anyone new to the company can see the reasons. It belongs to
+   the company, so every card there shows it; the day is stamped by the server. */
+function suitableBlock(co) {
+  const wrap = el("div", "suit");
+  const hint = saveHint();
+  const row = el("div", "orow suit-row");
+  const when = el("span", "note-hint");
+  const btns = Object.entries(SUITABLE).map(([key, label]) => {
+    const b = el("button", `ob suit-${key}`, `${key === "yes" ? "&#10003;" : "&#10007;"} ${esc(label)}`);
+    b.type = "button";
+    b.onclick = async () => {
+      if (await saveCompany(co, { suitable: co.suitable === key ? "" : key })) {
+        paint();
+        renderBoard();
+        hint.flash();
+      }
+    };
+    row.appendChild(b);
+    return [key, b];
+  });
+  const paint = () => {
+    btns.forEach(([key, b]) => {
+      const on = co.suitable === key;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.title = on ? "Click again to go back to not decided" : "";
+    });
+    when.textContent = co.suitable
+      ? (co.suitable_on ? `Decided ${dayText(co.suitable_on)}.` : "")
+      : "Not decided yet.";
+  };
+  row.appendChild(when);
+  wrap.appendChild(row);
+
+  /* The reasons, and who decided: each saves when you click away. */
+  const grid = el("div", "fieldgrid suit-fields");
+  const text = (key, label, input, list, wide) => {
+    const f = el("div", "field" + (wide ? " wide" : ""));
+    const lab = el("label", null, esc(label));
+    input.id = `suit-${key}`;
+    lab.htmlFor = input.id;
+    input.value = co[key] || "";
+    let saved = input.value.trim();
+    input.onblur = async () => {
+      const now = input.value.trim();
+      if (now === saved) return;
+      const u = await saveCompany(co, { [key]: now });
+      if (!u) return;
+      saved = u[key];
+      renderBoard();
+      hint.flash();
+    };
+    f.appendChild(lab);
+    f.appendChild(input);
+    if (list) f.appendChild(list);
+    grid.appendChild(f);
+    return input;
+  };
+  const why = el("textarea");
+  why.rows = 4;
+  why.placeholder = "Why it is, or is not, a company to work with, for anyone who has not seen it before.";
+  text("suitable_why", "Why", why, null, true);
+  const [by, byList] = suggestInput("suit-people",
+    inUse([...responsibleOptions(), ...(DATA.companies || []).map((x) => x.suitable_by)]));
+  by.placeholder = "Name";
+  by.maxLength = 128;
+  by.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); by.blur(); } };
+  text("suitable_by", "Decided by", by, byList);
+  wrap.appendChild(grid);
+  wrap.appendChild(hint);
+  paint();
+  return wrap;
+}
+
+/* What is known about the company (27 Oct 2026): its Companies House link,
+   then the key facts a lead finder handed over (facts.py), its owners and
+   website, and why it was put forward. Read only: the facts are a snapshot,
+   dated underneath. A list fact (Reasons to call ...) is one item a line. */
+const SNAPSHOT_FACTS = ["turnover", "profit", "staff", "incorporated", "office", "runs", "accounts"];
+function aboutBlock(co, c) {
+  const facts = Object.fromEntries((co.facts || []).map((f) => [f.key, f]));
+  const rows = [];
+  const add = (label, html, cls) => { if (html) rows.push({ label, html, cls }); };
+  const lines = (text) => {
+    const items = String(text || "").split("\n").map((t) => t.trim()).filter(Boolean);
+    if (items.length < 2) return esc(items[0] || "");
+    return `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>`;
+  };
+  const link = (url, text) =>
+    `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(text)}</a>`;
+
+  if (co.company_number) add("Companies House", `${link(co.ch_url, co.company_number)} &nbsp;<span class="note-hint">opens the record</span>`);
+  SNAPSHOT_FACTS.forEach((key) => {
+    if (facts[key]) add(facts[key].label, lines(facts[key].value));
+    else if (key === "turnover" && co.scale) add("Turnover", esc(co.scale));
+  });
+  add("Ownership", esc(co.ownership));
+  if (co.website && co.website !== co.ch_url) add("Website", link(co.website, co.website));
+  (co.facts || []).filter((f) => !SNAPSHOT_FACTS.includes(f.key))
+    .forEach((f) => add(f.label, lines(f.value), `fact-${f.key}`));
+  add("Why now", lines((co.why_fit || "").split(/;\s*/).join("\n")));
+  const found = (c.hook || "").replace(/^What ARGUS found:\s*/, "");
+  add("What ARGUS found", found ? `<div class="found">${esc(found)}</div>` : "");
+
+  const wrap = el("div", "about");
+  if (!rows.length) {
+    wrap.appendChild(el("p", "note-hint",
+      "No key facts for this company. Companies added from ARGUS bring theirs with them."));
+    return wrap;
+  }
+  const grid = el("div", "facts");
+  rows.forEach((r) => {
+    grid.appendChild(el("div", "fk", esc(r.label)));
+    grid.appendChild(el("div", `fv${r.cls ? " " + r.cls : ""}`, r.html));
+  });
+  wrap.appendChild(grid);
+  if (co.facts_on) {
+    wrap.appendChild(el("p", "note-hint facts-on",
+      `Facts from ARGUS on ${esc(dayText(co.facts_on))}. Check anything important on the Companies House record.`));
+  }
+  return wrap;
 }
 
 function outcomeRow(c) {
@@ -773,7 +918,7 @@ function renderCsv(file) {
     body.appendChild(el("div", "seclabel", "Download"));
     body.appendChild(el("p", "csv-text",
       "Every company and contact on this board, one row per contact, with its stage, " +
-      "people and comments. It opens in Excel."));
+      "people, comments, key facts and whether it is suitable. It opens in Excel."));
     const dl = el("a", "btn btn-ghost", "Download the board (CSV)");
     dl.href = API + "/export.csv";
     body.appendChild(dl);
@@ -781,8 +926,9 @@ function renderCsv(file) {
     body.appendChild(el("div", "seclabel csv-gap", "Import"));
     body.appendChild(el("p", "csv-text",
       "Adds the companies in a CSV as new cards: a file from another tracker, or ARGUS's " +
-      "<b>Download for the tracker</b>. A company already on this board is left as it is, " +
-      "so dropping the same file in twice changes nothing."));
+      "<b>Download for the tracker</b>. A company already on this board keeps what it has: " +
+      "only the key facts it is missing, its blank details and a Suitable? it has not " +
+      "answered are filled in from the file. Dropping the same file in twice changes nothing."));
     body.appendChild(el("p", "csv-text",
       "ARGUS's <b>all to contact</b> Excel goes in the same way. Only the rows with Yes in " +
       "its <b>Add to live site?</b> column are added."));
@@ -828,9 +974,16 @@ async function importCsv(file, drop, result) {
       ? `Added ${n} compan${n === 1 ? "y" : "ies"} (${json.contacts} contact${json.contacts === 1 ? "" : "s"}) as new cards.`
       : (json.pick_column && !json.marked
         ? "No rows say Yes in the Add to live site? column. Put Yes beside the companies to add, save the file and drop it in again."
-        : "Nothing new to add.")];
-    if (json.already.length) {
-      parts.push(`Already on the board, left as they are: ${json.already.map(esc).join(", ")}.`);
+        : "No new companies to add.")];
+    // Already on the board: the ones whose blanks the file filled in (key
+    // facts, details, an unanswered Suitable?), then the ones left alone.
+    const filled = json.filled || [];
+    const untouched = json.already.filter((name) => !filled.includes(name));
+    if (filled.length) {
+      parts.push(`Already on the board, blanks filled in from the file: ${filled.map(esc).join(", ")}.`);
+    }
+    if (untouched.length) {
+      parts.push(`Already on the board, left as they are: ${untouched.map(esc).join(", ")}.`);
     }
     if (json.pick_column && json.marked && json.unmarked) {
       parts.push(`${json.unmarked} row${json.unmarked === 1 ? "" : "s"} without a Yes left out.`);
@@ -838,7 +991,7 @@ async function importCsv(file, drop, result) {
     if (json.skipped) parts.push(`${json.skipped} row${json.skipped === 1 ? "" : "s"} had no company name and were skipped.`);
     // Fixed words and numbers, plus company names escaped above.
     result.innerHTML = parts.map((p) => `<p>${p}</p>`).join("");
-    if (n) await load();
+    if (n || filled.length) await load();
   } catch (e) {
     result.className = "csv-result error";
     result.textContent = e.message;

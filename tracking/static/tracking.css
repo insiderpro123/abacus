@@ -112,6 +112,33 @@ a{color:var(--blue)}
 .pc-status.warn  {color:#B07A12}
 .pc-status.stale  {color:var(--danger)}
 
+/* whether the company is suitable to work with (27 Oct 2026): green, red,
+   or a quiet amber while nobody has decided */
+.pc-suit{font-size:12.5px;font-weight:700;margin-top:5px}
+.pc-suit.yes{color:#217A45}
+.pc-suit.no{color:#B23A32}
+.pc-suit.open{color:#94650C;font-weight:600}
+
+/* the record's answer: two pills, the lit one filled in its colour */
+.suit-row{margin-top:0}
+.ob.suit-yes.on{background:rgba(46,158,91,.14);color:#217A45;border-color:var(--good)}
+.ob.suit-no.on{background:rgba(214,69,60,.12);color:#B23A32;border-color:var(--danger)}
+.suit-fields{margin-top:12px}
+
+/* About this company: label left, fact right; one item a line in the lists */
+.facts{display:grid;grid-template-columns:150px minmax(0,1fr);gap:0 16px;font-size:14px;line-height:1.5;
+  border:1px solid var(--line);border-radius:var(--r-md);padding:4px 14px;background:#fff}
+.facts .fk,.facts .fv{padding:8px 0;border-bottom:1px solid var(--paper-2)}
+.facts .fk{font-size:12px;font-weight:700;color:var(--slate-light);text-transform:uppercase;
+  letter-spacing:.08em;line-height:1.7}
+.facts .fv{color:var(--ink);overflow-wrap:anywhere}
+.facts .fk:nth-last-child(2),.facts .fv:last-child{border-bottom:none}
+.facts ul{margin:0;padding-left:18px}
+.facts li + li{margin-top:3px}
+.facts .fact-red_flags{color:#B23A32;font-weight:600}
+.facts .found{white-space:pre-wrap;font-size:13.5px;color:var(--ink-700)}
+.facts-on{margin-top:6px}
+
 /* put on the live site's CRM (26 Oct 2026, ARGUS's local copy only) */
 .pc-live{font-size:12.5px;font-weight:700;color:#217A45;margin-top:5px}
 .live-row{margin-top:0}
@@ -294,6 +321,10 @@ td.ed input{width:100%;border:1px solid var(--blue-300);border-radius:6px;paddin
   .tk-head h1{font-size:22px}
   .col{flex-basis:100%}
   .fieldgrid{grid-template-columns:1fr}
+  /* a fact is its label over its value on a phone */
+  .facts{grid-template-columns:1fr}
+  .facts .fk{padding-bottom:0;border-bottom:none}
+  .facts .fv{padding-top:2px}
   /* a person is two lines on a phone: name and colour, then the status */
   .people-head{display:none}
   .people{gap:12px}

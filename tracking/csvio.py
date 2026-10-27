@@ -9,9 +9,18 @@ those rows with lead_row below), so either kind of file can be dropped in.
 
 One row per contact, with the company's details repeated on each. Import only
 ever ADDS: a company already on the board (same Companies House number, or
-the same name) is left exactly as it is, so dropping the same file in twice
-changes nothing. Rows for one company inside one file become that company's
-contacts. Every write stays in this package, as with intake.py.
+the same name) keeps everything it has, so dropping the same file in twice
+changes nothing. Since 27 Oct 2026 the one exception is a blank: a company
+already there gets the key facts it is missing, its blank details, and the
+file's Suitable? answer if it has none of its own (facts.fill_blanks), so a
+list moved to the live site before the facts existed can be topped up. Rows
+for one company inside one file become that company's contacts. Every write
+stays in this package, as with intake.py.
+
+The key facts (facts.FACTS) go one column each under their own labels, then
+"Facts as of"; the decision is "Suitable?" (Yes / No / blank), "Why suitable
+or not", "Decided by" and "Decided on". "Companies House link" is written for
+reading only; the number is what an import goes by.
 
 Since 20 Oct 2026 an Excel file can be dropped in too: ARGUS's "companies to
 contact" workbook, a tab per area, read top to bottom. It has an "Add to live
@@ -28,8 +37,9 @@ import re
 from datetime import date, datetime
 
 from .models import SessionLocal, Company, Contact
-from .routes import _clean, _clean_people, _log, _parse_pct, _people_slots, PEOPLE_SLOTS
-from . import stages as ST
+from .routes import (_clean, _clean_people, _log, _parse_date, _parse_pct, _people_slots,
+                     PEOPLE_SLOTS)
+from . import facts as FX, stages as ST
 
 # (header, where it lives). Headers are the words a person sees in Excel; the
 # import reads them back case-insensitively, in any order, with any missing.
@@ -70,11 +80,23 @@ CONTACT_DETAIL_COLUMNS = [
     ("Hook", "hook"),
 ]
 COMMENT_COLUMNS = [("Comments", "notes")]
+# Whether the company is suitable to work with, and why (27 Oct 2026).
+SUITABLE_COLUMNS = [
+    ("Suitable?", "suitable"),
+    ("Why suitable or not", "suitable_why"),
+    ("Decided by", "suitable_by"),
+    ("Decided on", "suitable_on"),
+]
+CH_LINK = "Companies House link"
+FACT_COLUMNS = [(label, key) for key, label in FX.FACTS]
+FACTS_ON = "Facts as of"
 PEOPLE_COLUMNS = [h for i in range(1, PEOPLE_SLOTS + 1)
                   for h in (f"Person {i}", f"Person {i} status", f"Person {i} RAG")]
 
 HEADERS = ([h for h, _ in COMPANY_COLUMNS + CONTACT_COLUMNS + CARD_COLUMNS
-            + COMPANY_DETAIL_COLUMNS + CONTACT_DETAIL_COLUMNS + COMMENT_COLUMNS]
+            + COMPANY_DETAIL_COLUMNS + CONTACT_DETAIL_COLUMNS + COMMENT_COLUMNS
+            + SUITABLE_COLUMNS]
+           + [CH_LINK] + [h for h, _ in FACT_COLUMNS] + [FACTS_ON]
            + PEOPLE_COLUMNS)
 
 COMPANY_FIELDS = dict(COMPANY_COLUMNS + COMPANY_DETAIL_COLUMNS + COMMENT_COLUMNS)
@@ -86,6 +108,10 @@ RAG_WORDS = {"red": "red", "r": "red", "amber": "amber", "a": "amber",
 # ARGUS's companies-to-contact workbook: the rows to add carry a Yes here.
 PICK_COLUMN = "Add to live site?"
 YES_WORDS = {"yes", "y", "x", "true", "1", "✓", "✔"}
+NO_WORDS = {"no", "n", "false", "0", "✗", "✘"}
+# Its score and verdict columns, read as those facts when a file has no
+# "ARGUS score" / "ARGUS verdict" column of its own.
+FACT_ALIASES = {"score": "Score (out of 100)", "verdict": "Verdict"}
 # Its plainer headers: "Why now" lists the reasons one a line (the tracker's
 # "Why they fit"), "What ARGUS found" is the evidence (the "Hook", which ARGUS
 # heads "What ARGUS found:"), "Other directors" follow the contact into the
@@ -119,6 +145,21 @@ def _people_cells(people) -> dict:
     return cells
 
 
+def _facts_cells(number, facts, facts_on) -> dict:
+    """The Companies House link, the key facts and their date as cells."""
+    cells = {CH_LINK: FX.companies_house_url(number)}
+    have = FX.clean_facts(facts)
+    cells.update({h: have.get(key, "") for h, key in FACT_COLUMNS})
+    cells[FACTS_ON] = facts_on.isoformat() if isinstance(facts_on, date) else _clean(facts_on)
+    return cells
+
+
+def _suitable_cells(suitable, why, by, on) -> dict:
+    return {"Suitable?": {"yes": "Yes", "no": "No"}.get(suitable or "", ""),
+            "Why suitable or not": why or "", "Decided by": by or "",
+            "Decided on": on.isoformat() if on else ""}
+
+
 def board_rows() -> list[dict]:
     """Every contact on the board as a row, company details repeated, best
     stage first. A company with no contact still gets one row."""
@@ -130,6 +171,8 @@ def board_rows() -> list[dict]:
             kids.setdefault(c.company_id, []).append(c)
         for co in sorted(s.query(Company).all(), key=lambda co: (co.name or "").lower()):
             base = {h: getattr(co, f) or "" for h, f in COMPANY_FIELDS.items()}
+            base.update(_suitable_cells(co.suitable, co.suitable_why, co.suitable_by, co.suitable_on))
+            base.update(_facts_cells(co.company_number, co.facts, co.facts_on))
             base.update(_people_cells(_people_slots(co, kids.get(co.id, []))))
             mine = sorted(kids.get(co.id, []), key=lambda c: (-(c.stage or 1), c.id))
             for c in mine or [None]:
@@ -151,6 +194,8 @@ def lead_row(company: dict, contact: dict) -> dict:
     row.update({h: contact.get(f, "") for h, f in CONTACT_FIELDS.items()})
     row["Stage"] = ST.STAGES[0]["label"]
     row["Priority"] = contact.get("priority") or "Medium"
+    row.update(_facts_cells(company.get("company_number"), company.get("facts"),
+                            company.get("facts_on")))
     row.update(_people_cells(company.get("people") or []))
     return row
 
@@ -274,11 +319,22 @@ def _lines(text: str, commas: bool = False) -> list[str]:
     return [p.strip(" -•\t") for p in parts if p.strip(" -•\t")]
 
 
+def _suitable(value) -> str:
+    """'Yes' / 'Suitable' -> 'yes', 'No' / 'Not suitable' -> 'no', else ''."""
+    text = _clean(value).lower()
+    if text in YES_WORDS or text == "suitable":
+        return "yes"
+    if text in NO_WORDS or text in ("not suitable", "unsuitable"):
+        return "no"
+    return ""
+
+
 def import_file(raw: bytes) -> dict:
     """Add the companies in a CSV, or in an Excel file's tabs, as leads.
     Returns what happened, for the page to say: companies added, contacts
-    added, companies already on the board (left alone), rows skipped, and,
-    for a file with an "Add to live site?" column, the rows not marked Yes."""
+    added, companies already on the board (kept as they are), those of them
+    whose blanks were filled in, rows skipped, and, for a file with an "Add
+    to live site?" column, the rows not marked Yes."""
     excel = raw[:4] == b"PK\x03\x04"           # an .xlsx is a zip
     tables = _xlsx_tables(raw) if excel else _csv_tables(raw)
     if not any("company" in {_norm(h) for h in header} for header, _ in tables):
@@ -286,7 +342,7 @@ def import_file(raw: bytes) -> dict:
                          'or from ARGUS ("Download for the tracker", or the Excel of '
                          'companies to contact).')
 
-    added, already, skipped, contacts = [], [], 0, 0
+    added, already, filled, skipped, contacts = [], [], [], 0, 0
     picking, marked, unmarked = False, 0, 0
     with SessionLocal.begin() as s:
         here = {}            # this file's companies: key -> Company, or None when already on the board
@@ -308,6 +364,29 @@ def import_file(raw: bytes) -> dict:
             def contact_cell(values, header, field):
                 return _fit(Contact, field, cell(values, header))
 
+            def company_fields(values):
+                fields = {f: company_cell(values, h, f) for h, f in COMPANY_FIELDS.items()}
+                if not fields["why_fit"] and plain["Why now"]:
+                    fields["why_fit"] = _fit(Company, "why_fit", "; ".join(_lines(cell(values, "Why now"))))
+                return fields
+
+            def row_facts(values):
+                facts = {key: cell(values, label) for label, key in FACT_COLUMNS}
+                for key, alias in FACT_ALIASES.items():
+                    label = dict(FX.FACTS)[key]
+                    if _norm(label) not in col and cell(values, alias):
+                        facts[key] = cell(values, alias)
+                        if key == "score":
+                            facts[key] += " of 100"
+                return FX.clean_facts(facts)
+
+            def row_decision(values):
+                answer = _suitable(cell(values, "Suitable?"))
+                return {"suitable": answer,
+                        "suitable_why": cell(values, "Why suitable or not"),
+                        "suitable_by": cell(values, "Decided by"),
+                        "suitable_on": _parse_date(cell(values, "Decided on"))} if answer else None
+
             for values in rows:
                 name = company_cell(values, "Company", "name")
                 if not name:
@@ -321,6 +400,7 @@ def import_file(raw: bytes) -> dict:
                 number = _fit(Company, "company_number",
                               company_number(cell(values, "Companies House number")))
                 key = number or name.lower()
+                facts_on = _parse_date(cell(values, FACTS_ON))
                 if key not in here:
                     co = None
                     if number:
@@ -328,13 +408,16 @@ def import_file(raw: bytes) -> dict:
                     if co is None:
                         co = s.query(Company).filter(Company.name.ilike(name)).first()
                     if co is not None:
+                        # Kept as it is, bar its blanks (27 Oct 2026).
                         here[key] = None
                         already.append(co.name)
+                        if FX.fill_blanks(co, {**company_fields(values), "company_number": number},
+                                          row_facts(values), facts_on, row_decision(values)):
+                            filled.append(co.name)
                         continue
-                    co = Company(**{f: company_cell(values, h, f) for h, f in COMPANY_FIELDS.items()})
+                    co = Company(**company_fields(values))
                     co.name, co.company_number = name, number
-                    if not co.why_fit and plain["Why now"]:
-                        co.why_fit = _fit(Company, "why_fit", "; ".join(_lines(cell(values, "Why now"))))
+                    FX.fill_blanks(co, None, row_facts(values), facts_on, row_decision(values))
                     people = [{"name": cell(values, f"Person {i}"),
                                "status": cell(values, f"Person {i} status"),
                                "rag": RAG_WORDS.get(cell(values, f"Person {i} RAG").lower(), "")}
@@ -375,5 +458,5 @@ def import_file(raw: bytes) -> dict:
                 s.flush()
                 _log(s, c, "Note", note=f"Added from {'an Excel' if excel else 'a CSV'} import.")
                 contacts += 1
-    return {"added": added, "contacts": contacts, "already": already, "skipped": skipped,
-            "pick_column": picking, "marked": marked, "unmarked": unmarked}
+    return {"added": added, "contacts": contacts, "already": already, "filled": filled,
+            "skipped": skipped, "pick_column": picking, "marked": marked, "unmarked": unmarked}

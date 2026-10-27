@@ -20,6 +20,9 @@ library and the playbook) lives in a drawer, not in a nav bar.
     amber / green, then one Comments box. That replaced the latest update,
     chance slider, next step and Details on 8 Oct 2026 (user's request);
     those columns are still in the database, unshown;
+  * since 27 Oct 2026 the record also says whether the company is suitable
+    to work with, why, who decided and when, above its key facts (facts.py),
+    so anyone new to it can see the reasons;
   * the Role & Hook library, which pre-fills the role and the wedge when a
     contact is added.
 
@@ -47,7 +50,7 @@ from .models import (
     init_db, SessionLocal, Company, Contact, Activity, RoleHook,
     get_setting,
 )
-from . import stages as ST
+from . import facts as FX, stages as ST
 from .seed_data import seed_if_empty
 
 bp = Blueprint(
@@ -254,7 +257,15 @@ def _company_dict(co, contacts=None):
         "website": co.website or "",
         "notes": co.notes or "",
         "company_number": co.company_number or "",
+        "ch_url": FX.companies_house_url(co.company_number),
         "live_site_on": _iso(co.live_site_on),
+        # The key facts and whether it is suitable to work with (27 Oct 2026).
+        "facts": FX.facts_list(co),
+        "facts_on": _iso(co.facts_on),
+        "suitable": co.suitable or "",
+        "suitable_why": co.suitable_why or "",
+        "suitable_by": co.suitable_by or "",
+        "suitable_on": _iso(co.suitable_on),
         "people": _people_slots(co, contacts),
         "contact_count": len(contacts),
         "open_count": len(open_),
@@ -533,6 +544,7 @@ def api_contact_delete():
 COMPANY_FIELDS = {
     "name", "sub_sector", "ownership", "scale", "why_fit",
     "priority_functions", "warm_intro", "website", "notes",
+    "suitable_why", "suitable_by",
 }
 COMPANY_DATE_FIELDS = {"live_site_on"}
 
@@ -541,18 +553,25 @@ COMPANY_DATE_FIELDS = {"live_site_on"}
 def api_company_update():
     """Edit a company: {id, fields: {name: value, ...}}. `people` is the
     record's whole five-row table, saved together, so the client always sends
-    every slot."""
+    every slot. `suitable` is 'yes', 'no' or '' (not decided); the day it
+    was decided is stamped here, not sent."""
     d = request.get_json(silent=True) or {}
     fields = _fields_of(d)
     for key in fields:
-        if key not in COMPANY_FIELDS | COMPANY_DATE_FIELDS and key != "people":
+        if key not in COMPANY_FIELDS | COMPANY_DATE_FIELDS and key not in ("people", "suitable"):
             return jsonify({"error": f"Field '{key}' cannot be edited."}), 400
+    suitable = _clean(fields.get("suitable"))
+    if suitable and suitable not in FX.SUITABLE:
+        return jsonify({"error": f"'{suitable}' is not a known answer."}), 400
     with SessionLocal.begin() as s:
         co = s.get(Company, int(d.get("id") or 0))
         if not co:
             return jsonify({"error": "No such company."}), 404
         if "people" in fields:
             co.people = json.dumps(_clean_people(fields["people"]))
+        if "suitable" in fields and suitable != (co.suitable or ""):
+            co.suitable = suitable
+            co.suitable_on = date.today() if suitable else None
         _apply(co, fields, COMPANY_FIELDS, date_fields=COMPANY_DATE_FIELDS)
         s.flush()
         kids = s.query(Contact).filter(Contact.company_id == co.id).all()

@@ -85,6 +85,18 @@ class Company(Base):
     # sets TRACKING_LIVE_SITE_MARK (ARGUS's local copy) shows or sets it, so the
     # live site never offers it. NULL = not on the live site yet.
     live_site_on = Column(Date, nullable=True)
+    # The key facts a lead finder handed over (27 Oct 2026): JSON {key: text}
+    # under the keys in facts.FACTS, and the day they were taken. Read-only on
+    # the page.
+    facts = Column(Text, nullable=True)
+    facts_on = Column(Date, nullable=True)
+    # Whether it is suitable to work with (27 Oct 2026): 'yes' | 'no' | ''
+    # (not decided), why, who decided and when, so anyone new to the company
+    # can see the reasons.
+    suitable = Column(String(16), default="")
+    suitable_why = Column(Text, default="")
+    suitable_by = Column(String(128), default="")
+    suitable_on = Column(Date, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     contacts = relationship("Contact", back_populates="company")
@@ -222,6 +234,12 @@ def _ensure_columns():
             "company_number": "VARCHAR(16)",
             "people": "TEXT",
             "live_site_on": "DATE",
+            "facts": "TEXT",
+            "facts_on": "DATE",
+            "suitable": "VARCHAR(16)",
+            "suitable_why": "TEXT",
+            "suitable_by": "VARCHAR(128)",
+            "suitable_on": "DATE",
         },
         "activity": {
             "from_stage": "INTEGER",

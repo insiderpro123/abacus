@@ -7,15 +7,16 @@ plain dicts and calls add_lead(); every write stays in this package, so the
 schema has one owner. On a host with no lead finder nothing here is called.
 
 A lead is matched on its Companies House number first, then on the exact
-company name, so handing the same company over twice adds nothing.
+company name, so handing the same company over twice adds no second card; it
+only fills in what the first is missing (27 Oct 2026, facts.fill_blanks).
 """
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 from .models import SessionLocal, Company, Contact
-from .routes import _clean, _clean_people, _company_dict, _contact_dict, _log
-from . import stages as ST
+from .routes import _clean, _clean_people, _company_dict, _contact_dict, _log, _parse_date
+from . import facts as FX, stages as ST
 
 COMPANY_KEYS = {
     "name", "sub_sector", "ownership", "scale", "why_fit",
@@ -42,25 +43,34 @@ def add_lead(company, contact, source="ARGUS"):
 
     `company` and `contact` are {field: value} dicts using the model's field
     names; anything else is ignored. `company` may also carry `people`, up to
-    five names to put in the record's people slots. Returns (contact, company,
-    created) as the page's own dicts, so the board can patch them in without a
-    reload. When the company is already on the board, its first contact comes
-    back and created is False: nothing is overwritten.
+    five names to put in the record's people slots, and `facts` ({key: text},
+    facts.FACTS) with `facts_on`, the day they were taken. Returns (contact,
+    company, created) as the page's own dicts, so the board can patch them in
+    without a reload. When the company is already on the board, its first
+    contact comes back and created is False: nothing is overwritten, but its
+    blank fields and missing facts are filled in.
     """
     number = _clean(company.get("company_number"))
     name = _clean(company.get("name"))
     if not name:
         raise ValueError("A lead needs a company name.")
+    facts = FX.clean_facts(company.get("facts"))
+    facts_on = company.get("facts_on")
+    if not isinstance(facts_on, date):
+        facts_on = _parse_date(facts_on)
     with SessionLocal.begin() as s:
         co = _find_company(s, number, name)
         if co is None:
             co = Company(**{k: _clean(v) for k, v in company.items() if k in COMPANY_KEYS})
             if company.get("people"):
                 co.people = json.dumps(_clean_people(company["people"]))
+            if facts:
+                co.facts = json.dumps(facts, ensure_ascii=False)
+                co.facts_on = facts_on
             s.add(co)
             s.flush()
-        elif number and not co.company_number:
-            co.company_number = number
+        else:
+            FX.fill_blanks(co, company, facts, facts_on)
 
         c = (s.query(Contact).filter(Contact.company_id == co.id)
              .order_by(Contact.id).first())
