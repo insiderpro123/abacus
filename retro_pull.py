@@ -74,6 +74,7 @@ import os
 import re
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -88,6 +89,14 @@ ABACUS_ENV = HERE / ".." / ".." / "Process - Abacus" / "02 Working" / "abacus on
 TIMEOUT = 30    # seconds per request
 _PAGE = 100     # Jira's maximum page size
 HISTORY_DAYS = 190
+
+# A sync makes dozens of calls and Atlassian now and then drops one ("Connection reset by
+# peer" on the live site, 28 Oct 2026), which used to fail the whole sync. Every call here
+# only reads, so a dropped connection or a busy Jira is tried again after a short wait:
+# 1s, 2s, then 4s. A Retry-After longer than RETRY_AFTER_CAP is not waited out.
+RETRIES = 4                             # tries per call, the first one included
+RETRY_STATUSES = {429, 502, 503, 504}
+RETRY_AFTER_CAP = 20                    # seconds
 
 # Sprints not started yet, counted in weeks after this one: this week plus two (Sam, 5 Oct
 # 2026). Further ahead they are left out, though Jira holds ISP sprints well into next year.
@@ -144,6 +153,48 @@ SECTOR_RANK = {"Customer": 0, "Process and Ops": 1, "Marketing": 2}
 
 class JiraError(Exception):
     """Any Jira call that failed, with a message fit to show on screen."""
+
+
+def _transient(e):
+    """A failure worth trying again: the connection dropped, or Jira did not answer in time."""
+    return isinstance(e, (requests.ConnectionError, requests.Timeout,
+                          requests.exceptions.ChunkedEncodingError))
+
+
+def _unreachable(e):
+    tries = f" after {RETRIES} tries" if _transient(e) else ""
+    return f"Could not reach Jira{tries}: {e}"
+
+
+def _retry_after(r):
+    """Seconds Jira asked us to wait (Retry-After), or None."""
+    try:
+        return max(0.0, float(r.headers.get("Retry-After", "")))
+    except ValueError:
+        return None
+
+
+def _send(session, method, url, **kwargs):
+    """One HTTP call, tried up to RETRIES times when the connection drops or Jira is busy.
+    Raises the last requests exception, or returns the last response, as a single call would."""
+    for attempt in range(1, RETRIES + 1):
+        wait = 2 ** (attempt - 1)
+        last = attempt == RETRIES
+        try:
+            r = session.request(method, url, timeout=TIMEOUT, **kwargs)
+        except requests.RequestException as e:
+            if last or not _transient(e):
+                raise
+            time.sleep(wait)
+            continue
+        if last or r.status_code not in RETRY_STATUSES:
+            return r
+        asked = _retry_after(r)
+        if asked is not None:
+            if asked > RETRY_AFTER_CAP:
+                return r
+            wait = asked
+        time.sleep(wait)
 
 
 # --------------------------------------------------------------------------- config
@@ -216,7 +267,7 @@ class Jira:
         if self._cloud_id:
             return self._cloud_id
         try:
-            r = self.session.get(f"{self.base_url}/_edge/tenant_info", timeout=TIMEOUT)
+            r = _send(self.session, "GET", f"{self.base_url}/_edge/tenant_info")
             r.raise_for_status()
             self._cloud_id = r.json()["cloudId"]
         except (requests.RequestException, KeyError, ValueError) as e:
@@ -228,10 +279,10 @@ class Jira:
             raise JiraError("Jira is not configured - JIRA_API_TOKEN is not set.")
         url = f"https://api.atlassian.com/ex/jira/{self.cloud_id()}{path}"
         try:
-            r = self.session.get(url, params=params, auth=(self.email, self.token),
-                                 headers={"Accept": "application/json"}, timeout=TIMEOUT)
+            r = _send(self.session, "GET", url, params=params, auth=(self.email, self.token),
+                      headers={"Accept": "application/json"})
         except requests.RequestException as e:
-            raise JiraError(f"Could not reach Jira: {e}") from e
+            raise JiraError(_unreachable(e)) from e
         if r.status_code == 401:
             raise JiraError("Jira rejected the credentials (401). Check JIRA_EMAIL and JIRA_API_TOKEN.")
         if r.status_code == 403:
@@ -251,10 +302,10 @@ class Jira:
             raise JiraError("Jira is not configured - JIRA_API_TOKEN is not set.")
         url = f"https://api.atlassian.com/ex/jira/{self.cloud_id()}{path}"
         try:
-            r = self.session.post(url, json=body, auth=(self.email, self.token),
-                                  headers={"Accept": "application/json"}, timeout=TIMEOUT)
+            r = _send(self.session, "POST", url, json=body, auth=(self.email, self.token),
+                      headers={"Accept": "application/json"})
         except requests.RequestException as e:
-            raise JiraError(f"Could not reach Jira: {e}") from e
+            raise JiraError(_unreachable(e)) from e
         if r.status_code >= 400:
             raise JiraError(f"Jira returned {r.status_code}: {r.text[:200]}")
         try:

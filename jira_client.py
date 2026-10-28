@@ -32,6 +32,14 @@ API_TOKEN = os.environ.get("JIRA_API_TOKEN", "")
 TIMEOUT = 30  # seconds per request
 _PAGE = 100   # Jira max page size
 
+# Atlassian now and then drops a connection ("Connection reset by peer", 28 Oct 2026). Reads
+# are tried again after 1s, 2s, then 4s; a Retry-After longer than RETRY_AFTER_CAP is not
+# waited out. Writes are NOT retried: a create whose answer was lost may still have happened,
+# and a second try would make a duplicate issue.
+RETRIES = 4                             # tries per read, the first one included
+RETRY_STATUSES = {429, 502, 503, 504}
+RETRY_AFTER_CAP = 20                    # seconds
+
 # names Jira uses for the story-point field (company- vs team-managed projects)
 _SP_FIELD_NAMES = ("story points", "story point estimate")
 
@@ -56,13 +64,50 @@ def _auth():
     return (EMAIL, API_TOKEN)
 
 
+def _transient(e):
+    """A failure worth trying again: the connection dropped, or Jira did not answer in time."""
+    return isinstance(e, (requests.ConnectionError, requests.Timeout,
+                          requests.exceptions.ChunkedEncodingError))
+
+
+def _retry_after(r):
+    """Seconds Jira asked us to wait (Retry-After), or None."""
+    try:
+        return max(0.0, float(r.headers.get("Retry-After", "")))
+    except ValueError:
+        return None
+
+
+def _read(url, **kwargs):
+    """A GET tried up to RETRIES times when the connection drops or Jira is busy. Raises the
+    last requests exception, or returns the last response, as a single requests.get would."""
+    for attempt in range(1, RETRIES + 1):
+        wait = 2 ** (attempt - 1)
+        last = attempt == RETRIES
+        try:
+            r = requests.get(url, timeout=TIMEOUT, **kwargs)
+        except requests.RequestException as e:
+            if last or not _transient(e):
+                raise
+            time.sleep(wait)
+            continue
+        if last or r.status_code not in RETRY_STATUSES:
+            return r
+        asked = _retry_after(r)
+        if asked is not None:
+            if asked > RETRY_AFTER_CAP:
+                return r
+            wait = asked
+        time.sleep(wait)
+
+
 def _cloudid():
     """Resolve the site's cloudId (public, unauthenticated); cached."""
     global _cloud_id
     if _cloud_id:
         return _cloud_id
     try:
-        r = requests.get(f"{SITE_URL}/_edge/tenant_info", timeout=TIMEOUT)
+        r = _read(f"{SITE_URL}/_edge/tenant_info")
         r.raise_for_status()
         _cloud_id = r.json()["cloudId"]
     except (requests.RequestException, KeyError, ValueError) as e:
@@ -76,10 +121,10 @@ def _get(path, params=None):
         raise JiraError("Jira is not configured (JIRA_API_TOKEN is not set).")
     url = f"https://api.atlassian.com/ex/jira/{_cloudid()}{path}"
     try:
-        r = requests.get(url, params=params, auth=_auth(),
-                         headers={"Accept": "application/json"}, timeout=TIMEOUT)
+        r = _read(url, params=params, auth=_auth(), headers={"Accept": "application/json"})
     except requests.RequestException as e:
-        raise JiraError(f"Could not reach Jira: {e}") from e
+        tries = f" after {RETRIES} tries" if _transient(e) else ""
+        raise JiraError(f"Could not reach Jira{tries}: {e}") from e
     if r.status_code == 401:
         raise JiraError("Jira rejected the credentials (401). Check JIRA_EMAIL + JIRA_API_TOKEN.")
     if r.status_code == 403:
