@@ -86,8 +86,9 @@ colours the Sprint Retro and Meeting Notes already use for those categories).
 are still `tracking`) is the outbound lead tracker. The `tracking/` folder is a
 copy of the package that also runs inside ARGUS (`Marketing - Customer Relationship
 Management\03 Live\argus lead detection system\app\tracking`); make changes there and copy
-the folder across, so the two stay the same. Its five tables (`company`, `contact`,
-`activity`, `role_hook`, `setting`) sit on the same database as Abacus. Companies arrive by
+the folder across, so the two stay the same. Its six tables (`company`, `contact`,
+`activity`, `company_log` (each record's activity log, since 29 Oct 2026), `role_hook`,
+`setting`) sit on the same database as Abacus. Companies arrive by
 its **CSV** button: a file from ARGUS's "Download for the tracker", the ARGUS tracker's own
 "Download the board", or ARGUS's "Download all to contact" Excel (a tab per area; only the
 rows with Yes in its "Add to live site?" column are added). Import only adds, so the same

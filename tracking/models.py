@@ -14,11 +14,13 @@ The engine is this package's own, so on the live site it sits beside the
 Abacus one on the same database. None of the five table names below is used
 by the live site's models.py; keep it that way when adding a table.
 
-Five tables:
-  Company   the account (a target group, from the Target Companies tab)
-  Contact   one target person: the CRM record that moves through the pipeline
-  Activity  background history: every stage move (not shown on the page)
-  RoleHook  the Role & Hook reference library (which role owns which budget)
+Six tables:
+  Company     the account (a target group, from the Target Companies tab)
+  Contact     one target person: the CRM record that moves through the pipeline
+  Activity    background history: every stage move (not shown on the page)
+  CompanyLog  the record's activity log: who at the company was contacted,
+              when and how (29 Oct 2026)
+  RoleHook    the Role & Hook reference library (which role owns which budget)
   Setting   editable key/value lists (the owners, the playbook) plus the
             schema version, which is what makes the stage migration run once
 """
@@ -77,9 +79,11 @@ class Company(Base):
     # The Companies House number, set when the company came from a lead finder
     # such as ARGUS (see intake.py). It is what stops one being added twice.
     company_number = Column(String(16), default="")
-    # The five people to contact here, as JSON: [{name, status, rag}, ...].
-    # NULL until first saved, when the record offers the names already on the
-    # company's contacts (routes._people_slots).
+    # The people to contact here, as JSON: [{name, position, comment}, ...],
+    # as many as were added (29 Oct 2026; five fixed {name, status, rag} slots
+    # before, which routes._clean_people still reads). NULL until first saved,
+    # when the record offers the names already on the company's contacts
+    # (routes._people_of).
     people = Column(Text, nullable=True)
     # The day it was put on the live site's CRM (26 Oct 2026). Only a host that
     # sets TRACKING_LIVE_SITE_MARK (ARGUS's local copy) shows or sets it, so the
@@ -100,6 +104,8 @@ class Company(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     contacts = relationship("Contact", back_populates="company")
+    log_entries = relationship("CompanyLog", cascade="all, delete-orphan",
+                               back_populates="company")
 
 
 class Contact(Base):
@@ -157,6 +163,26 @@ class Activity(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     contact = relationship("Contact", back_populates="activities")
+
+
+class CompanyLog(Base):
+    """One line of a company's activity log (29 Oct 2026, the user's ask: "an
+    activity log at the bottom to keep track of who we have contacted for each
+    company"): who was contacted, on which day, how, a note, and who on our
+    side did it. It belongs to the company, so every card there shows the same
+    log. Unlike Activity, this one is typed by people and shown on the page."""
+    __tablename__ = "company_log"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = Column(Integer, ForeignKey("company.id", ondelete="CASCADE"),
+                        index=True, nullable=False)
+    happened_on = Column(Date, nullable=True)
+    person = Column(String(255), default="")          # who at the company
+    method = Column(String(32), default="")           # Email, Call ... (stages.LOG_METHODS)
+    note = Column(Text, default="")
+    logged_by = Column(String(128), default="")       # who on our side
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    company = relationship("Company", back_populates="log_entries")
 
 
 class RoleHook(Base):

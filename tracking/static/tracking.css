@@ -186,9 +186,11 @@ a{color:var(--blue)}
 .rec-main,.rec-side{display:contents}
 .rec-sec.o1{order:1} .rec-sec.o2{order:2} .rec-sec.o3{order:3} .rec-sec.o4{order:4}
 .rec-sec.o5{order:5} .rec-sec.o6{order:6} .rec-sec.o7{order:7} .rec .no-co{order:8}
+.rec-sec.o8{order:9}
 @media (min-width:1100px){
   .rec{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0 48px;align-items:start}
   .rec-main,.rec-side{display:block}
+  .rec > .rec-sec.o8{grid-column:1 / -1}       /* the activity log, under both */
 }
 @keyframes sheetin{from{transform:translateX(26px);opacity:.5}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.sheet-panel{animation:none}}
@@ -238,30 +240,52 @@ body.sheet-open{overflow:hidden}
 .ob.on.o-Lost   {background:rgba(214,69,60,.12);color:#B23A32;border-color:var(--danger)}
 .ob.on.o-Nurture{background:#E8EDF3;color:var(--slate);border-color:var(--slate-light)}
 
-/* the record's five people to contact (8 Oct 2026): a name, a contact status
-   anyone can type, and a red / amber / green. The lit dot is filled; the
-   others are rings in their own colour, so the choice reads without the fill. */
+/* the record's people to contact (29 Oct 2026): a name, a position and a
+   comment each, a cross to delete one and "Add person" under the list. The
+   comment box grows with what is typed (tracking.js). */
 .people{display:flex;flex-direction:column;gap:7px}
-.people-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) 104px;gap:8px;align-items:center}
+.people-list{display:flex;flex-direction:column;gap:7px}
+.people-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.4fr) 34px;
+  gap:8px;align-items:start}
 .people-head{font-size:11.5px;font-weight:700;color:var(--slate-light);text-transform:uppercase;letter-spacing:.1em}
-.people-head span:last-child{text-align:center}
-.people input{width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;
-  font-family:'Inter';font-size:14.5px;color:var(--ink);background:#fff;outline:none;
+.people-head[hidden]{display:none}
+.people input,.people textarea{width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;
+  font-family:'Inter';font-size:14.5px;line-height:1.45;color:var(--ink);background:#fff;outline:none;
   transition:border-color .12s,box-shadow .12s}
-.people input:focus{border-color:var(--blue-300);box-shadow:0 0 0 3px rgba(22,99,199,.12)}
-.people input::placeholder{color:#A3B0BF}
-.rag{display:flex;justify-content:center;gap:8px}
-.rag-dot{width:26px;height:26px;flex:none;border-radius:50%;border:2px solid;background:#fff;padding:0;
-  cursor:pointer;transition:background .12s,box-shadow .12s}
-.rag-dot:hover{box-shadow:0 0 0 3px rgba(22,99,199,.12)}
-.rag-dot:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-.rag-red  {border-color:rgba(214,69,60,.6)}
-.rag-amber{border-color:rgba(224,163,46,.75)}
-.rag-green{border-color:rgba(46,158,91,.6)}
-.rag-red.on  {background:var(--danger);border-color:var(--danger)}
-.rag-amber.on{background:#E0A32E;border-color:#E0A32E}
-.rag-green.on{background:var(--good);border-color:var(--good)}
+.people textarea{resize:none;overflow:hidden;min-height:39px;display:block}
+.people input:focus,.people textarea:focus{border-color:var(--blue-300);box-shadow:0 0 0 3px rgba(22,99,199,.12)}
+.people input::placeholder,.people textarea::placeholder{color:#A3B0BF}
+/* the cross that deletes a person, or a log entry */
+.pp-del{width:34px;height:34px;margin-top:3px;flex:none;border-radius:50%;border:1px solid transparent;background:none;
+  color:var(--slate-light);font-size:20px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.pp-del:hover{border-color:rgba(214,69,60,.45);color:var(--danger);background:rgba(214,69,60,.06)}
+.pp-del:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.people-foot{margin-top:4px}
+.people-foot .save-hint{margin-top:0}
 .comments-box textarea{min-height:130px}
+
+/* the activity log (29 Oct 2026): the form to add a line, then the lines,
+   newest first */
+.clog-form{display:grid;grid-template-columns:150px minmax(0,1fr) 130px minmax(0,2fr) minmax(0,.8fr) auto;
+  gap:10px 12px;align-items:end;background:var(--paper-2);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:14px}
+.clog-form .lg-add{height:40px;white-space:nowrap}
+.clog-msg{margin-top:6px;min-height:20px}
+.clog-msg.ok{color:var(--good);font-weight:600}
+.clog-msg.error{color:var(--danger);font-weight:600}
+.clog-list{margin-top:6px;border-top:1px solid var(--line)}
+.clog-list > .note-hint{padding:12px 0}
+.clog-row{display:grid;grid-template-columns:110px 96px minmax(0,1fr) auto 34px;gap:4px 14px;
+  align-items:start;padding:10px 0;border-bottom:1px solid var(--line);font-size:14.5px;color:var(--ink)}
+.clog-day{font-weight:600;padding-top:7px;white-space:nowrap}
+.clog-how{padding-top:5px}
+.clog-how span{display:inline-block;font-size:12.5px;font-weight:600;color:var(--teal-600);
+  background:rgba(18,181,165,.1);border-radius:999px;padding:3px 10px}
+.clog-main{padding-top:7px;line-height:1.5;overflow-wrap:anywhere}
+.clog-note{color:var(--slate);white-space:pre-wrap}
+.clog-main b + .clog-note{margin-top:2px}
+.clog-by{padding-top:7px;color:var(--slate-light);font-size:13.5px;white-space:nowrap}
+.clog-row .pp-del{margin-top:0}
 .save-hint{margin-top:6px}
 .save-hint.ok{color:var(--good);font-weight:600}
 .no-co{margin-top:24px}
@@ -330,6 +354,11 @@ td.ed input{width:100%;border:1px solid var(--blue-300);border-radius:6px;paddin
   .board{flex-wrap:wrap}
   .col{flex:1 1 calc(50% - 7px);min-width:220px}
   .col-head{position:static}
+  /* the log's form in three rows: when, who and how; the note; by and Add */
+  .clog-form{grid-template-columns:150px minmax(0,1fr) minmax(0,1fr) auto;
+    grid-template-areas:"day who who how" "note note note note" "by by by add"}
+  .lg-day{grid-area:day} .lg-who{grid-area:who} .lg-how{grid-area:how}
+  .lg-note{grid-area:note} .lg-by{grid-area:by} .clog-form .lg-add{grid-area:add}
 }
 @media (max-width:640px){
   .tk-head{position:static;margin-top:0;padding-top:0}
@@ -340,13 +369,23 @@ td.ed input{width:100%;border:1px solid var(--blue-300);border-radius:6px;paddin
   .facts{grid-template-columns:1fr}
   .facts .fk{padding-bottom:0;border-bottom:none}
   .facts .fv{padding-top:2px}
-  /* a person is two lines on a phone: name and colour, then the status */
+  /* a person is three lines on a phone: name and the cross, then the
+     position, then the comment */
   .people-head{display:none}
-  .people{gap:12px}
-  .people-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name rag" "status status";gap:6px 10px}
+  .people-list{gap:14px}
+  .people-row{grid-template-columns:minmax(0,1fr) 34px;grid-template-areas:"name del" "pos pos" "comment comment";gap:6px 8px}
   .pp-name{grid-area:name}
-  .pp-status{grid-area:status}
-  .rag{grid-area:rag}
+  .pp-pos{grid-area:pos}
+  .pp-comment{grid-area:comment}
+  .people-row .pp-del{grid-area:del}
+  /* the log's form one box a line, the day beside how; an entry is its day,
+     how and the cross, then who and the note under them */
+  .clog-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    grid-template-areas:"day how" "who who" "note note" "by by" "add add"}
+  .clog-row{grid-template-columns:auto minmax(0,1fr) 34px;grid-template-areas:"day how del" "main main main" "by by by";gap:2px 10px}
+  .clog-day{grid-area:day} .clog-how{grid-area:how} .clog-main{grid-area:main;padding-top:2px}
+  .clog-by{grid-area:by;padding-top:2px}
+  .clog-row .pp-del{grid-area:del}
   .sheet-body{padding:6px 16px 40px}
   #detail{--rec-pad:16px}
   .panel-head,.modal-head{padding:20px 16px 14px}

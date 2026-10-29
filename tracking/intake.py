@@ -42,8 +42,8 @@ def add_lead(company, contact, source="ARGUS"):
     """Put one company on the board as a New contact.
 
     `company` and `contact` are {field: value} dicts using the model's field
-    names; anything else is ignored. `company` may also carry `people`, up to
-    five names to put in the record's people slots, and `facts` ({key: text},
+    names; anything else is ignored. `company` may also carry `people`, the
+    names to put in the record's people to contact, and `facts` ({key: text},
     facts.FACTS) with `facts_on`, the day they were taken. Returns (contact,
     company, created) as the page's own dicts, so the board can patch them in
     without a reload. When the company is already on the board, its first

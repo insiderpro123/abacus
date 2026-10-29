@@ -15,14 +15,17 @@ library and the playbook) lives in a drawer, not in a nav bar.
     chance of a win came off the card the same day; it still sorts a column;
   * the card's arrow advances the stage without reloading the screen: every
     write returns the updated record;
-  * the record (click a card) is the company's: the stage row, then five
-    people to contact, each with a free-text contact status and a red /
-    amber / green, then one Comments box. That replaced the latest update,
+  * the record (click a card) is the company's: the stage row, then the
+    people to contact, then one Comments box. That replaced the latest update,
     chance slider, next step and Details on 8 Oct 2026 (user's request);
     those columns are still in the database, unshown;
   * since 27 Oct 2026 the record also says whether the company is suitable
     to work with, why, who decided and when, above its key facts (facts.py),
     so anyone new to it can see the reasons;
+  * since 29 Oct 2026 each person to contact has a position and a comment
+    (the contact status and red / amber / green went), people are added and
+    deleted one at a time instead of filling five fixed rows, and the record
+    ends with the company's activity log: who was contacted, when and how;
   * the Role & Hook library, which pre-fills the role and the wedge when a
     contact is added.
 
@@ -46,8 +49,10 @@ from datetime import date, datetime, timedelta
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request, url_for
 
+from sqlalchemy.orm import selectinload
+
 from .models import (
-    init_db, SessionLocal, Company, Contact, Activity, RoleHook,
+    init_db, SessionLocal, Company, CompanyLog, Contact, Activity, RoleHook,
     get_setting,
 )
 from . import facts as FX, stages as ST
@@ -201,33 +206,34 @@ def _contact_dict(c, company_name=""):
     }
 
 
-# The record's people table (8 Oct 2026): five people to contact at the
-# company, each with a free-text contact status and a red / amber / green.
-PEOPLE_SLOTS = 5
-RAG = ("red", "amber", "green")
+# The record's people to contact (29 Oct 2026): each a name, a position and a
+# comment, added and deleted one at a time. From 8 Oct 2026 they were five
+# fixed rows of name, contact status and red / amber / green. The cap only
+# stops a runaway list.
+PEOPLE_MAX = 50
 
 
 def _clean_people(value):
-    """Five {name, status, rag} slots from whatever was sent: a list of
-    dicts, or of plain names. Anything past five is dropped, short lists are
-    padded with empty slots, and an unknown colour is no colour."""
-    slots = []
-    for item in (value if isinstance(value, list) else [])[:PEOPLE_SLOTS]:
+    """[{name, position, comment}] from whatever was sent: a list of dicts, or
+    of plain names. A row with nothing in it is dropped. A row saved before
+    29 Oct 2026 has a contact status instead of a comment, and that text
+    becomes the comment, so nothing typed is lost; its colour is dropped."""
+    people = []
+    for item in (value if isinstance(value, list) else []):
         if not isinstance(item, dict):
             item = {"name": item}
-        rag = _clean(item.get("rag")).lower()
-        slots.append({"name": _clean(item.get("name")),
-                      "status": _clean(item.get("status")),
-                      "rag": rag if rag in RAG else ""})
-    while len(slots) < PEOPLE_SLOTS:
-        slots.append({"name": "", "status": "", "rag": ""})
-    return slots
+        p = {"name": _clean(item.get("name")),
+             "position": _clean(item.get("position")),
+             "comment": _clean(item.get("comment")) or _clean(item.get("status"))}
+        if any(p.values()):
+            people.append(p)
+    return people[:PEOPLE_MAX]
 
 
-def _people_slots(co, contacts):
-    """The company's five slots as saved. Until they are first saved, they
-    offer the names already held on its contacts, so nothing has to be typed
-    twice."""
+def _people_of(co, contacts):
+    """The company's people to contact as saved. Until they are first saved,
+    the names already held on its contacts are offered, so nothing has to be
+    typed twice."""
     if co.people:
         try:
             return _clean_people(json.loads(co.people))
@@ -239,6 +245,15 @@ def _people_slots(co, contacts):
         if name and name.lower() not in {n.lower() for n in names}:
             names.append(name)
     return _clean_people(names)
+
+
+def _log_list(entries):
+    """A company's activity log as the page shows it: newest day first, and
+    the later entry first within a day."""
+    entries = sorted(entries, key=lambda e: (e.happened_on or date.min, e.id), reverse=True)
+    return [{"id": e.id, "happened_on": _iso(e.happened_on), "person": e.person or "",
+             "method": e.method or "", "note": e.note or "", "logged_by": e.logged_by or ""}
+            for e in entries]
 
 
 def _company_dict(co, contacts=None):
@@ -266,7 +281,8 @@ def _company_dict(co, contacts=None):
         "suitable_why": co.suitable_why or "",
         "suitable_by": co.suitable_by or "",
         "suitable_on": _iso(co.suitable_on),
-        "people": _people_slots(co, contacts),
+        "people": _people_of(co, contacts),
+        "log": _log_list(co.log_entries),
         "contact_count": len(contacts),
         "open_count": len(open_),
     }
@@ -368,7 +384,9 @@ def board_payload():
     /api/tracking/data; a host can also write it into a file (ARGUS's
     view-only "Tracking dashboard.html")."""
     with SessionLocal() as s:
-        cos = {co.id: co for co in s.query(Company).all()}
+        # The logs come in one query for every company, not one each.
+        cos = {co.id: co for co in
+               s.query(Company).options(selectinload(Company.log_entries)).all()}
         contacts = s.query(Contact).all()
         rows = [_contact_dict(c, cos[c.company_id].name if c.company_id in cos else "")
                 for c in contacts]
@@ -390,6 +408,7 @@ def board_payload():
             "last_open_stage": ST.LAST_OPEN_STAGE,
             "priorities": ST.PRIORITIES,
             "outcomes": ST.OUTCOMES,
+            "log_methods": ST.LOG_METHODS,
             "hooks": [_hook_dict(h) for h in
                       s.query(RoleHook).order_by(RoleHook.tier, RoleHook.cost_area).all()],
             "playbook": get_setting(s, "playbook", []),
@@ -552,9 +571,10 @@ COMPANY_DATE_FIELDS = {"live_site_on"}
 @bp.route("/api/tracking/company/update", methods=["POST"])
 def api_company_update():
     """Edit a company: {id, fields: {name: value, ...}}. `people` is the
-    record's whole five-row table, saved together, so the client always sends
-    every slot. `suitable` is 'yes', 'no' or '' (not decided); the day it
-    was decided is stamped here, not sent."""
+    record's whole list of people to contact, saved together, so the client
+    always sends every row (one left out is deleted). `suitable` is 'yes',
+    'no' or '' (not decided); the day it was decided is stamped here, not
+    sent."""
     d = request.get_json(silent=True) or {}
     fields = _fields_of(d)
     for key in fields:
@@ -577,6 +597,56 @@ def api_company_update():
         kids = s.query(Contact).filter(Contact.company_id == co.id).all()
         out = _company_dict(co, kids)
     return jsonify({"ok": True, "company": out})
+
+
+# --------------------------------------------------------------------------- #
+# API - a company's activity log (29 Oct 2026)
+#
+# Entries are added and deleted, not edited. Both routes answer with the
+# company's whole log and nothing else, so a people save still on its way
+# cannot be overwritten by an older copy of the company.
+# --------------------------------------------------------------------------- #
+LOG_FIELDS = {"person", "method", "note", "logged_by"}
+
+
+def _log_of(s, company_id):
+    return _log_list(s.query(CompanyLog).filter(CompanyLog.company_id == company_id).all())
+
+
+@bp.route("/api/tracking/log/add", methods=["POST"])
+def api_log_add():
+    """Add one line: {company_id, happened_on, person, method, note,
+    logged_by}. A blank day is today. It needs at least who was contacted or
+    a note, or there is nothing to keep."""
+    d = request.get_json(silent=True) or {}
+    if not _clean(d.get("person")) and not _clean(d.get("note")):
+        return jsonify({"error": "Say who was contacted, or add a note."}), 400
+    with SessionLocal.begin() as s:
+        co = s.get(Company, int(d.get("company_id") or 0))
+        if not co:
+            return jsonify({"error": "No such company."}), 404
+        e = CompanyLog(company_id=co.id)
+        _apply(e, {k: d.get(k) for k in LOG_FIELDS | {"happened_on"}}, LOG_FIELDS,
+               date_fields={"happened_on"})
+        e.happened_on = e.happened_on or date.today()
+        s.add(e)
+        s.flush()
+        out = _log_of(s, co.id)
+    return jsonify({"ok": True, "company_id": co.id, "log": out})
+
+
+@bp.route("/api/tracking/log/delete", methods=["POST"])
+def api_log_delete():
+    d = request.get_json(silent=True) or {}
+    with SessionLocal.begin() as s:
+        e = s.get(CompanyLog, int(d.get("id") or 0))
+        if not e:
+            return jsonify({"error": "That entry has already gone."}), 404
+        company_id = e.company_id
+        s.delete(e)
+        s.flush()
+        out = _log_of(s, company_id)
+    return jsonify({"ok": True, "company_id": company_id, "log": out})
 
 
 # --------------------------------------------------------------------------- #

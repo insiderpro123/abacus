@@ -147,8 +147,8 @@ def static_v(filename):
 
 
 init_db()  # create tables if missing (safe to call every start)
-# /tracking and /api/tracking/...; registering creates its five tables
-# (company, contact, activity, role_hook, setting) on the same database.
+# /tracking and /api/tracking/...; registering creates its six tables
+# (company, contact, activity, company_log, role_hook, setting) on the same database.
 app.register_blueprint(tracking_bp)
 
 

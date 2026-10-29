@@ -39,9 +39,9 @@ const stageOf = (num) =>
 const isClosed = (stage) => (DATA.closed_stages || []).includes(stage);
 const isWon = (stage) => (DATA.won_stages || []).includes(stage);   // Work agreed
 
-/* There is no sign-in and no touch log: it is an Insider Pro tool. Where a
-   company has got to is in its record: the people to contact, their red /
-   amber / green, and one Comments box (8 Oct 2026). Since 20 Oct 2026 each
+/* There is no sign-in: it is an Insider Pro tool. Where a company has got to
+   is in its record: the people to contact, one Comments box (8 Oct 2026) and,
+   since 29 Oct 2026, its activity log of who has been contacted. Since 20 Oct 2026 each
    card also says who is responsible for it (as initials), its sector and a
    few words on where it stands, all typed in the record. The chance of a win
    came off the card the same day; it still sorts each column. */
@@ -366,17 +366,11 @@ function toggleContact(id) {
 
 /* ---------- the record panel ----------
    The company's record (8 Oct 2026, the user's layout): the stage row, then
-   five people to contact there, each with a contact status anyone can type
-   and a red / amber / green, then one Comments box. The latest update, chance
-   of a win, next step and Details it replaced are still in the database,
-   unshown. People and Comments belong to the company, so every card at that
+   the people to contact there, then one Comments box, and since 29 Oct 2026
+   the activity log across the bottom. The latest update, chance of a win,
+   next step and Details it replaced are still in the database, unshown.
+   People, Comments and the log belong to the company, so every card at that
    company opens the same ones. */
-const RAG = [
-  { key: "red",   label: "Red" },
-  { key: "amber", label: "Amber" },
-  { key: "green", label: "Green" },
-];
-
 const companyOf = (c) => (DATA.companies || []).find((x) => x.id === c.company_id);
 
 function renderDetail() {
@@ -396,8 +390,9 @@ function renderDetail() {
 
   /* The record fills the screen (27 Oct 2026, the user's ask). On a wide
      one the working parts sit on the left and About this company on the
-     right; on a narrow one they stack, About straight after the decision
-     (each section's o1..o7 order, tracking.css). */
+     right, with the activity log under both; on a narrow one they stack,
+     About straight after the decision (each section's o1..o8 order,
+     tracking.css). */
   sheetShell(host, title, (body) => {
     const rec = el("div", "rec");
     const main = el("div", "rec-main");
@@ -427,6 +422,7 @@ function renderDetail() {
     }
     section(main, 6, "People to contact", peopleBlock(co));
     section(main, 7, "Comments", commentsBlock(co));
+    section(rec, 8, "Activity log", logBlock(co));
   }, (acts) => {
     if (c.linkedin_url) {
       const a = el("a", "btn btn-ghost btn-sm", "LinkedIn");
@@ -746,18 +742,23 @@ function saveHint() {
   return hint;
 }
 
-/* The five people to contact: a name, a contact status (anything at all) and
-   a red / amber / green. Names start from the people already on the record,
-   or the directors ARGUS sent over, and every one can be typed over. The five
-   rows save together; saves queue, so a quick click on a colour straight after
+/* The people to contact (29 Oct 2026, the user's layout): a name, their
+   position and a comment each. "Add person" puts a new row at the end and the
+   cross takes one off; there were five fixed rows of name, contact status and
+   red / amber / green before. Names start from the people already on the
+   record, or the directors ARGUS sent over, and every one can be typed over.
+   The whole list saves together; saves queue, so a delete straight after
    typing cannot land before the typing does. */
 function peopleBlock(co) {
   const wrap = el("div", "people");
-  wrap.appendChild(el("div", "people-row people-head",
-    "<span>Name</span><span>Contact status</span><span>RAG</span>"));
-  const rows = (co.people || []).map((p) => ({ ...p }));
-  const snap = () => JSON.stringify(rows.map((p) => ({
-    name: p.name.trim(), status: p.status.trim(), rag: p.rag })));
+  const head = el("div", "people-row people-head",
+    "<span>Name</span><span>Position</span><span>Comment</span><span></span>");
+  const list = el("div", "people-list");
+  const rows = (co.people || []).map((p) => ({ name: "", position: "", comment: "", ...p }));
+  // A row with nothing typed in it is not a person yet, so it is never sent.
+  const snap = () => JSON.stringify(rows
+    .map((p) => ({ name: p.name.trim(), position: p.position.trim(), comment: p.comment.trim() }))
+    .filter((p) => p.name || p.position || p.comment));
   let saved = snap();
   let queue = Promise.resolve();
   const hint = saveHint();
@@ -772,48 +773,220 @@ function peopleBlock(co) {
     });
   };
 
-  rows.forEach((p, i) => {
+  const personRow = (p, i) => {
     const row = el("div", "people-row");
-    const text = (key, cls, placeholder, label) => {
+    const text = (key, cls, placeholder) => {
       const input = el("input", cls);
       input.type = "text";
+      input.maxLength = 255;
       input.value = p[key];
       input.placeholder = placeholder;
-      input.setAttribute("aria-label", `${label}, person ${i + 1}`);
+      input.setAttribute("aria-label", `${placeholder}, person ${i + 1}`);
       input.oninput = () => { p[key] = input.value; };
       input.onblur = commit;
       input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); input.blur(); } };
       return input;
     };
-    row.appendChild(text("name", "pp-name", "Name", "Name"));
-    row.appendChild(text("status", "pp-status", "Contact status", "Contact status"));
+    row.appendChild(text("name", "pp-name", "Name"));
+    row.appendChild(text("position", "pp-pos", "Position"));
 
-    const rag = el("div", "rag");
-    rag.setAttribute("role", "group");
-    rag.setAttribute("aria-label", `Red, amber or green, person ${i + 1}`);
-    const dots = RAG.map((r) => {
-      const b = el("button", `rag-dot rag-${r.key}`);
-      b.type = "button";
-      b.onclick = () => {
-        p.rag = p.rag === r.key ? "" : r.key;     // the lit colour again clears it
-        paint();
-        commit();
+    /* The comment grows with what is typed. Enter saves, as in the other two
+       boxes; Shift+Enter starts a new line. */
+    const note = el("textarea", "pp-comment");
+    note.rows = 1;
+    note.value = p.comment;
+    note.placeholder = "Comment";
+    note.setAttribute("aria-label", `Comment, person ${i + 1}`);
+    const fit = () => {
+      note.style.height = "auto";
+      if (note.scrollHeight) note.style.height = `${note.scrollHeight + 2}px`;
+    };
+    note.oninput = () => { p.comment = note.value; fit(); };
+    note.onfocus = fit;
+    note.onblur = commit;
+    note.onkeydown = (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); note.blur(); }
+    };
+    row.appendChild(note);
+    requestAnimationFrame(fit);           // once it is on the page and has a height
+
+    const del = el("button", "pp-del", "&times;");
+    del.type = "button";
+    del.title = "Delete this person";
+    del.setAttribute("aria-label", `Delete ${p.name.trim() || `person ${i + 1}`}`);
+    del.onclick = () => {
+      const typed = p.name.trim() || p.position.trim() || p.comment.trim();
+      if (typed && !confirm(`Delete ${p.name.trim() || "this person"} from the people to contact?`)) return;
+      rows.splice(rows.indexOf(p), 1);
+      draw();
+      commit();
+    };
+    row.appendChild(del);
+    return row;
+  };
+
+  const draw = () => {
+    list.innerHTML = "";
+    head.hidden = !rows.length;
+    if (!rows.length) list.appendChild(el("p", "note-hint", "No one added yet."));
+    rows.forEach((p, i) => list.appendChild(personRow(p, i)));
+  };
+
+  const add = el("button", "ob people-add", "+ Add person");
+  add.type = "button";
+  add.onclick = () => {
+    rows.push({ name: "", position: "", comment: "" });
+    draw();
+    list.lastElementChild.querySelector(".pp-name").focus();
+  };
+
+  draw();
+  wrap.appendChild(head);
+  wrap.appendChild(list);
+  const foot = el("div", "orow people-foot");
+  foot.appendChild(add);
+  foot.appendChild(hint);
+  wrap.appendChild(foot);
+  return wrap;
+}
+
+/* The company's activity log (29 Oct 2026, the user's ask): a line each time
+   someone there is contacted, newest first, so anyone can see who has been
+   approached, when and how. The form on top adds one; the cross takes a slip
+   off. Entries are not edited. Who did it is remembered on this computer for
+   the next entry, as there is no sign-in to know it from. */
+const LOG_BY_KEY = "tracking.logBy";
+function rememberedBy() {
+  try { return localStorage.getItem(LOG_BY_KEY) || ""; } catch (e) { return ""; }
+}
+function rememberBy(name) {
+  try { localStorage.setItem(LOG_BY_KEY, name); } catch (e) { /* storage blocked: nothing to keep */ }
+}
+
+function logBlock(co) {
+  const wrap = el("div", "clog");
+  const form = el("div", "clog-form");
+  const field = (key, label, input, list) => {
+    const f = el("div", `field lg-${key}`);
+    const lab = el("label", null, esc(label));
+    input.id = `log-${key}`;
+    lab.htmlFor = input.id;
+    f.appendChild(lab);
+    f.appendChild(input);
+    if (list) f.appendChild(list);
+    form.appendChild(f);
+  };
+
+  const day = el("input");
+  day.type = "date";
+  day.value = todayIso();
+  field("day", "Date", day);
+
+  // Offers the people to contact as they are now, so a name added a moment
+  // ago is there too.
+  const [who, whoList] = suggestInput("log-people", []);
+  who.placeholder = "Who was contacted";
+  who.maxLength = 255;
+  who.onfocus = () => {
+    whoList.innerHTML = "";
+    inUse((co.people || []).map((p) => p.name)).forEach((n) => whoList.appendChild(new Option(n, n)));
+  };
+  field("who", "Who", who, whoList);
+
+  const how = el("select");
+  (DATA.log_methods || []).forEach((m) => how.appendChild(new Option(m, m)));
+  field("how", "How", how);
+
+  const note = el("input");
+  note.type = "text";
+  note.placeholder = "What happened, e.g. sent the intro email";
+  field("note", "Note", note);
+
+  const [by, byList] = suggestInput("log-team", inUse([
+    ...responsibleOptions(),
+    ...(DATA.companies || []).flatMap((x) => (x.log || []).map((e) => e.logged_by)),
+  ]));
+  by.placeholder = "Name";
+  by.maxLength = 128;
+  by.value = rememberedBy();
+  field("by", "By", by, byList);
+
+  const addBtn = el("button", "btn btn-primary btn-sm lg-add", "Add to log");
+  addBtn.type = "button";
+  form.appendChild(addBtn);
+  wrap.appendChild(form);
+  const msg = el("div", "note-hint clog-msg");
+  wrap.appendChild(msg);
+  const say = (text, cls) => {
+    msg.textContent = text;
+    msg.className = `note-hint clog-msg${cls ? " " + cls : ""}`;
+  };
+
+  const list = el("div", "clog-list");
+  wrap.appendChild(list);
+  const draw = () => {
+    list.innerHTML = "";
+    const entries = co.log || [];
+    if (!entries.length) {
+      list.appendChild(el("p", "note-hint", "Nothing logged yet."));
+      return;
+    }
+    entries.forEach((e) => {
+      const row = el("div", "clog-row");
+      row.appendChild(el("div", "clog-day", esc(e.happened_on ? dayText(e.happened_on) : "No date")));
+      row.appendChild(el("div", "clog-how", e.method ? `<span>${esc(e.method)}</span>` : ""));
+      row.appendChild(el("div", "clog-main",
+        (e.person ? `<b>${esc(e.person)}</b>` : "") +
+        (e.note ? `<div class="clog-note">${esc(e.note)}</div>` : "")));
+      row.appendChild(el("div", "clog-by", e.logged_by ? `by ${esc(e.logged_by)}` : ""));
+      const del = el("button", "pp-del", "&times;");
+      del.type = "button";
+      del.title = "Delete this entry";
+      del.setAttribute("aria-label", "Delete this entry");
+      del.onclick = async () => {
+        if (!confirm(`Delete this entry${e.person ? ` for ${e.person}` : ""} from the log?`)) return;
+        try {
+          const res = await api("/log/delete", { id: e.id });
+          co.log = res.log;
+          draw();
+          say("Entry deleted.");
+        } catch (err) { say(err.message, "error"); }
       };
-      rag.appendChild(b);
-      return b;
+      row.appendChild(del);
+      list.appendChild(row);
     });
-    const paint = () => RAG.forEach((r, k) => {
-      const on = p.rag === r.key;
-      dots[k].classList.toggle("on", on);
-      dots[k].setAttribute("aria-pressed", on ? "true" : "false");
-      dots[k].title = on ? `${r.label}. Click again to clear.` : r.label;
-      dots[k].setAttribute("aria-label", r.label);
-    });
-    paint();
-    row.appendChild(rag);
-    wrap.appendChild(row);
-  });
-  wrap.appendChild(hint);
+  };
+
+  const add = async () => {
+    if (!who.value.trim() && !note.value.trim()) {
+      say("Say who was contacted, or add a note.", "error");
+      who.focus();
+      return;
+    }
+    addBtn.disabled = true;
+    try {
+      const res = await api("/log/add", {
+        company_id: co.id, happened_on: day.value, person: who.value.trim(),
+        method: how.value, note: note.value.trim(), logged_by: by.value.trim(),
+      });
+      co.log = res.log;
+      rememberBy(by.value.trim());
+      who.value = "";
+      note.value = "";
+      day.value = todayIso();
+      draw();
+      say("Added to the log.", "ok");
+    } catch (err) {
+      say(err.message, "error");
+    } finally {
+      addBtn.disabled = false;
+    }
+  };
+  addBtn.onclick = add;
+  // Only the note adds on Enter: Enter in the name boxes picks a suggestion.
+  note.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } };
+
+  draw();
   return wrap;
 }
 
@@ -924,7 +1097,7 @@ function renderCsv(file) {
     body.appendChild(el("div", "seclabel", "Download"));
     body.appendChild(el("p", "csv-text",
       "Every company and contact on this board, one row per contact, with its stage, " +
-      "people, comments, key facts and whether it is suitable. It opens in Excel."));
+      "people, comments, activity log, key facts and whether it is suitable. It opens in Excel."));
     const dl = el("a", "btn btn-ghost", "Download the board (CSV)");
     dl.href = API + "/export.csv";
     body.appendChild(dl);

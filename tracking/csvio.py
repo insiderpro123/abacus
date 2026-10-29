@@ -22,6 +22,12 @@ The key facts (facts.FACTS) go one column each under their own labels, then
 or not", "Decided by" and "Decided on". "Companies House link" is written for
 reading only; the number is what an import goes by.
 
+Since 29 Oct 2026 each person to contact is "Person N", "Person N position"
+and "Person N comment" (a file has room for five and grows more columns at
+the end for a company with more), and the company's activity log is one
+"Activity log" cell, an entry a line. Both are read only for a company the
+import adds, the same as the people always were.
+
 Since 20 Oct 2026 an Excel file can be dropped in too: ARGUS's "companies to
 contact" workbook, a tab per area, read top to bottom. It has an "Add to live
 site?" column, and only the rows marked Yes are added, so a list can be
@@ -36,9 +42,11 @@ import json
 import re
 from datetime import date, datetime
 
-from .models import SessionLocal, Company, Contact
-from .routes import (_clean, _clean_people, _log, _parse_date, _parse_pct, _people_slots,
-                     PEOPLE_SLOTS)
+from sqlalchemy.orm import selectinload
+
+from .models import SessionLocal, Company, CompanyLog, Contact
+from .routes import (_clean, _clean_people, _log, _log_list, _parse_date, _parse_pct,
+                     _people_of)
 from . import facts as FX, stages as ST
 
 # (header, where it lives). Headers are the words a person sees in Excel; the
@@ -90,20 +98,28 @@ SUITABLE_COLUMNS = [
 CH_LINK = "Companies House link"
 FACT_COLUMNS = [(label, key) for key, label in FX.FACTS]
 FACTS_ON = "Facts as of"
-PEOPLE_COLUMNS = [h for i in range(1, PEOPLE_SLOTS + 1)
-                  for h in (f"Person {i}", f"Person {i} status", f"Person {i} RAG")]
+LOG_COLUMN = "Activity log"
+# The people to contact, three columns each (29 Oct 2026). Every file has
+# room for five, so ARGUS's files keep one fixed set of headers; write() adds
+# more at the end when a company has more. Older files have "Person N status"
+# and "Person N RAG": the status is read as the comment, the colour dropped.
+PEOPLE_IN_EVERY_FILE = 5
+
+
+def _person_headers(i: int) -> list[str]:
+    return [f"Person {i}", f"Person {i} position", f"Person {i} comment"]
+
+
+PEOPLE_COLUMNS = [h for i in range(1, PEOPLE_IN_EVERY_FILE + 1) for h in _person_headers(i)]
 
 HEADERS = ([h for h, _ in COMPANY_COLUMNS + CONTACT_COLUMNS + CARD_COLUMNS
             + COMPANY_DETAIL_COLUMNS + CONTACT_DETAIL_COLUMNS + COMMENT_COLUMNS
             + SUITABLE_COLUMNS]
            + [CH_LINK] + [h for h, _ in FACT_COLUMNS] + [FACTS_ON]
-           + PEOPLE_COLUMNS)
+           + [LOG_COLUMN] + PEOPLE_COLUMNS)
 
 COMPANY_FIELDS = dict(COMPANY_COLUMNS + COMPANY_DETAIL_COLUMNS + COMMENT_COLUMNS)
 CONTACT_FIELDS = dict(CARD_COLUMNS + CONTACT_DETAIL_COLUMNS)
-
-RAG_WORDS = {"red": "red", "r": "red", "amber": "amber", "a": "amber",
-             "green": "green", "g": "green"}
 
 # ARGUS's companies-to-contact workbook: the rows to add carry a Yes here.
 PICK_COLUMN = "Add to live site?"
@@ -127,9 +143,15 @@ LINK_COLUMNS = ("LinkedIn", "Website")
 
 def write(rows) -> bytes:
     """Rows ({header: value}) as CSV bytes. The BOM makes Excel read the
-    pound signs as UTF-8, the same as ARGUS's other CSVs."""
+    pound signs as UTF-8, the same as ARGUS's other CSVs. A company with more
+    than five people to contact adds their columns at the end."""
+    rows = list(rows)
+    most = max([PEOPLE_IN_EVERY_FILE]
+               + [sum(1 for h in row if re.fullmatch(r"Person \d+", h)) for row in rows])
+    fieldnames = HEADERS + [h for i in range(PEOPLE_IN_EVERY_FILE + 1, most + 1)
+                            for h in _person_headers(i)]
     out = io.StringIO()
-    w = csv.DictWriter(out, fieldnames=HEADERS, extrasaction="ignore", lineterminator="\r\n")
+    w = csv.DictWriter(out, fieldnames=fieldnames, extrasaction="ignore", lineterminator="\r\n")
     w.writeheader()
     for row in rows:
         w.writerow({h: ("" if v is None else v) for h, v in row.items()})
@@ -139,10 +161,38 @@ def write(rows) -> bytes:
 def _people_cells(people) -> dict:
     cells = {}
     for i, p in enumerate(_clean_people(people), start=1):
-        cells[f"Person {i}"] = p["name"]
-        cells[f"Person {i} status"] = p["status"]
-        cells[f"Person {i} RAG"] = p["rag"]
+        name, position, comment = _person_headers(i)
+        cells[name], cells[position], cells[comment] = p["name"], p["position"], p["comment"]
     return cells
+
+
+def _log_cell(entries) -> str:
+    """A company's activity log (routes._log_list) as one cell, an entry a
+    line: "2026-10-29 | Email | who | by whom | note". The note goes last and
+    on one line, so a "|" inside it reads back as it was."""
+    def part(text):
+        return " ".join(str(text or "").replace("|", "/").split())
+    return "\n".join(" | ".join([e["happened_on"], part(e["method"]), part(e["person"]),
+                                 part(e["logged_by"]), " ".join(e["note"].split())])
+                     for e in entries)
+
+
+def _log_entries(text) -> list[dict]:
+    """The Activity log cell read back. A line with no "|" in it, typed by
+    hand, is kept as a note; a day that cannot be read is left blank rather
+    than guessed."""
+    out = []
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        parts = [p.strip() for p in line.split("|", 4)]
+        parts = ["", "", "", "", parts[0]] if len(parts) == 1 else parts + [""] * (5 - len(parts))
+        day, method, person, by, note = parts
+        if person or note:
+            out.append({"happened_on": _parse_date(day), "method": _fit(CompanyLog, "method", method),
+                        "person": _fit(CompanyLog, "person", person),
+                        "logged_by": _fit(CompanyLog, "logged_by", by), "note": note})
+    return out
 
 
 def _facts_cells(number, facts, facts_on) -> dict:
@@ -169,11 +219,13 @@ def board_rows() -> list[dict]:
         kids = {}
         for c in contacts:
             kids.setdefault(c.company_id, []).append(c)
-        for co in sorted(s.query(Company).all(), key=lambda co: (co.name or "").lower()):
+        companies = s.query(Company).options(selectinload(Company.log_entries)).all()
+        for co in sorted(companies, key=lambda co: (co.name or "").lower()):
             base = {h: getattr(co, f) or "" for h, f in COMPANY_FIELDS.items()}
             base.update(_suitable_cells(co.suitable, co.suitable_why, co.suitable_by, co.suitable_on))
             base.update(_facts_cells(co.company_number, co.facts, co.facts_on))
-            base.update(_people_cells(_people_slots(co, kids.get(co.id, []))))
+            base.update(_people_cells(_people_of(co, kids.get(co.id, []))))
+            base[LOG_COLUMN] = _log_cell(_log_list(co.log_entries))
             mine = sorted(kids.get(co.id, []), key=lambda c: (-(c.stage or 1), c.id))
             for c in mine or [None]:
                 row = dict(base)
@@ -353,6 +405,8 @@ def import_file(raw: bytes) -> dict:
             pick = col.get(_norm(PICK_COLUMN))
             picking = picking or pick is not None
             plain = {h: _norm(h) in col for h in PLAIN_COLUMNS}
+            people_n = max([0] + [int(m.group(1)) for h in col
+                                  for m in [re.fullmatch(r"person (\d+)", h)] if m])
 
             def cell(values, name):
                 i = col.get(_norm(name))
@@ -418,20 +472,24 @@ def import_file(raw: bytes) -> dict:
                     co = Company(**company_fields(values))
                     co.name, co.company_number = name, number
                     FX.fill_blanks(co, None, row_facts(values), facts_on, row_decision(values))
-                    people = [{"name": cell(values, f"Person {i}"),
-                               "status": cell(values, f"Person {i} status"),
-                               "rag": RAG_WORDS.get(cell(values, f"Person {i} RAG").lower(), "")}
-                              for i in range(1, PEOPLE_SLOTS + 1)]
-                    if not any(p["name"] or p["status"] for p in people) and plain["Other directors"]:
+                    people = _clean_people(
+                        [{"name": cell(values, f"Person {i}"),
+                          "position": cell(values, f"Person {i} position"),
+                          "comment": (cell(values, f"Person {i} comment")
+                                      or cell(values, f"Person {i} status"))}
+                         for i in range(1, people_n + 1)])
+                    if not people and plain["Other directors"]:
                         names = []
                         for n in [cell(values, "Contact name")] + _lines(cell(values, "Other directors"), True):
                             if n and n.lower() not in {x.lower() for x in names}:
                                 names.append(n)
-                        people = [{"name": n, "status": "", "rag": ""} for n in names]
-                    if any(p["name"] or p["status"] for p in people):
-                        co.people = json.dumps(_clean_people(people))
+                        people = _clean_people(names)
+                    if people:
+                        co.people = json.dumps(people)
                     s.add(co)
                     s.flush()
+                    for entry in _log_entries(cell(values, LOG_COLUMN)):
+                        s.add(CompanyLog(company_id=co.id, **entry))
                     here[key] = co
                     added.append(name)
                 co = here[key]

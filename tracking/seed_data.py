@@ -25,7 +25,7 @@ import sys
 from datetime import date, datetime
 
 from .models import (
-    SessionLocal, init_db, Company, Contact, Activity, RoleHook,
+    SessionLocal, init_db, Company, CompanyLog, Contact, Activity, RoleHook,
     set_setting, ROOT,
 )
 from .stages import stage_from_excel, outcome_from_excel
@@ -118,6 +118,7 @@ def seed(workbook=None, force=False, quiet=False):
             say("--force: clearing seeded tables ...")
             s.query(Activity).delete()
             s.query(Contact).delete()
+            s.query(CompanyLog).delete()
             s.query(Company).delete()
             s.query(RoleHook).delete()
 

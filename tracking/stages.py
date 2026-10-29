@@ -198,9 +198,13 @@ def outcome_from_excel(value):
 # --------------------------------------------------------------------------- #
 PRIORITIES = ["High", "Medium", "Low"]
 
-# There is no touch log (removed 6 Oct 2026). The owner went the same day, but
-# on 20 Oct 2026 the user asked for the name of whoever is responsible for each
-# card, shown as initials: that is Contact.responsible, typed in the record.
+# The touch log on each card went on 6 Oct 2026. The owner went the same day,
+# but on 20 Oct 2026 the user asked for the name of whoever is responsible for
+# each card, shown as initials: that is Contact.responsible, typed in the record.
+# On 29 Oct 2026 the user asked for a log again, this time one per company
+# (models.CompanyLog), of who there has been contacted. How it happened is one
+# of these; the last one covers anything else.
+LOG_METHODS = ["Email", "Call", "LinkedIn", "Meeting", "Other"]
 
 # Offered when a card's sector tag is typed, beside every sector already in
 # use. The user's own examples (20 Oct 2026); any other word can be typed.
