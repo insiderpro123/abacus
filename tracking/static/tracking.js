@@ -4,9 +4,9 @@
    The board of live leads, the record panel and the reference drawer. Vanilla
    JS, no dependencies (same convention as the Abacus tracker).
 
-   There are no filters and no number tiles: every live lead is on the board,
-   in its stage column, all the time. Closed contacts are off the board behind
-   one toggle, which is the only thing that changes what you can see.
+   There are no number tiles: every live lead is on the board, in its stage
+   column. Closed contacts are off the board behind one toggle, and the one
+   filter (2 Nov 2026) narrows the cards to a Suitable? answer.
 
    The rule that keeps it quick: /api/tracking/data is fetched once, on load.
    Every write returns the record it changed, and applyContact() patches that
@@ -20,6 +20,7 @@ const API = "/api/tracking";
 let DATA = null;
 let selectedId = null;          // the contact whose record panel is open
 let showClosed = false;         // the board is live leads only until you ask
+let suitFilter = "";            // "" = every card, else "yes" / "no" / "open" (see SUIT_FILTERS)
 
 /* ---------- helpers (same shape as Abacus static/app.js) ---------- */
 const $ = (sel) => document.querySelector(sel);
@@ -112,6 +113,16 @@ function suitableOf(c) {
   return { cls: "open", html: "Suitable? Not decided yet", co };
 }
 
+/* The filter above the board (2 Nov 2026): every card, or only those whose
+   company is suitable, not suitable or not decided yet. A card with no
+   company counts as not decided. */
+const SUIT_FILTERS = [["", "All"], ["yes", "Suitable"], ["no", "Not suitable"], ["open", "Not decided"]];
+function suitKey(c) {
+  const co = companyOf(c);
+  return (co && (co.suitable === "yes" || co.suitable === "no")) ? co.suitable : "open";
+}
+const passesFilter = (c) => !suitFilter || suitKey(c) === suitFilter;
+
 /* The company's sub-sector ("Care homes", 26 Oct 2026), or "" when it only
    repeats the card's sector tag, as older companies' "Healthcare" does. */
 function subSectorOf(c) {
@@ -183,13 +194,18 @@ function applyContact(c, opts = {}) {
 }
 
 /* ---------- the one line above the board ----------
-   The live count (agreed work is no longer a lead), and the toggle that brings
-   the Closed column back when there is anything in it. Nothing here hides a
-   live lead. */
+   The live count (agreed work is no longer a lead), the Suitable? filter, and
+   the toggle that brings the Closed column back when there is anything in it.
+   Only the filter hides a live lead, and the count then says "N of M". */
 function renderTop() {
-  const live = DATA.contacts.filter((c) => !isClosed(c.stage) && !isWon(c.stage)).length;
+  const leads = DATA.contacts.filter((c) => !isClosed(c.stage) && !isWon(c.stage));
+  const live = leads.length;
   const closed = DATA.contacts.filter((c) => isClosed(c.stage)).length;
-  $("#live-count").textContent = `${live} live lead${live === 1 ? "" : "s"}`;
+  const kept = leads.filter(passesFilter).length;
+  $("#live-count").textContent = suitFilter
+    ? `${kept} of ${live} live lead${live === 1 ? "" : "s"}`
+    : `${live} live lead${live === 1 ? "" : "s"}`;
+  renderSuitFilter();
   const btn = $("#show-closed");
   btn.hidden = !closed;
   btn.textContent = showClosed ? `Hide closed (${closed})` : `Closed (${closed})`;
@@ -198,16 +214,35 @@ function renderTop() {
   btn.classList.toggle("on", showClosed);
 }
 
+/* One small row of pills, each with how many cards on the board it keeps;
+   the lit one again goes back to All. */
+function renderSuitFilter() {
+  const box = $("#suit-filter");
+  if (!box) return;
+  const onBoard = DATA.contacts.filter((c) => showClosed || !isClosed(c.stage));
+  box.innerHTML = "";
+  SUIT_FILTERS.forEach(([key, label]) => {
+    const n = key ? onBoard.filter((c) => suitKey(c) === key).length : onBoard.length;
+    const b = el("button", `f-${key || "all"}${suitFilter === key ? " on" : ""}`,
+      `${esc(label)}<span class="n">${n}</span>`);
+    b.type = "button";
+    b.setAttribute("aria-pressed", suitFilter === key ? "true" : "false");
+    b.title = key ? `Show only the cards marked ${label}` : "Show every card";
+    b.onclick = () => { suitFilter = suitFilter === key ? "" : key; render(); };
+    box.appendChild(b);
+  });
+}
+
 /* ---------- board ----------
    Every live lead, in its stage column, best chance at the top. The Closed
    column only appears when the toggle is on, so the board is the leads you are
-   actually working. */
+   actually working. The Suitable? filter takes cards out of every column. */
 function renderBoard() {
   const board = $("#board");
   board.innerHTML = "";
   const columns = DATA.stages.filter((st) => showClosed || !isClosed(st.num));
   columns.forEach((st) => {
-    const cards = DATA.contacts.filter((c) => c.stage === st.num).sort((a, b) =>
+    const cards = DATA.contacts.filter((c) => c.stage === st.num && passesFilter(c)).sort((a, b) =>
       (b.chance ?? -1) - (a.chance ?? -1) || (a.company || "").localeCompare(b.company || ""));
     const col = el("div", `col tone-${st.tone}${isClosed(st.num) ? " closed-stage" : ""}`);
     col.dataset.stage = st.num;
@@ -507,7 +542,7 @@ function suitableBlock(co) {
     b.onclick = async () => {
       if (await saveCompany(co, { suitable: co.suitable === key ? "" : key })) {
         paint();
-        renderBoard();
+        render();                    // the filter's counts move too
         hint.flash();
       }
     };
@@ -747,18 +782,23 @@ function saveHint() {
    cross takes one off; there were five fixed rows of name, contact status and
    red / amber / green before. Names start from the people already on the
    record, or the directors ARGUS sent over, and every one can be typed over.
-   The whole list saves together; saves queue, so a delete straight after
-   typing cannot land before the typing does. */
+   Since 2 Nov 2026 a second line under each takes their email, LinkedIn
+   address and phone, typed in by hand when found; all three go out in the
+   CSV. The whole list saves together; saves queue, so a delete straight
+   after typing cannot land before the typing does. */
+const PERSON_KEYS = ["name", "position", "comment", "email", "linkedin", "phone"];
 function peopleBlock(co) {
   const wrap = el("div", "people");
   const head = el("div", "people-row people-head",
     "<span>Name</span><span>Position</span><span>Comment</span><span></span>");
   const list = el("div", "people-list");
-  const rows = (co.people || []).map((p) => ({ name: "", position: "", comment: "", ...p }));
+  const blank = () => Object.fromEntries(PERSON_KEYS.map((k) => [k, ""]));
+  const rows = (co.people || []).map((p) => ({ ...blank(), ...p }));
+  const typed = (p) => PERSON_KEYS.some((k) => p[k].trim());
   // A row with nothing typed in it is not a person yet, so it is never sent.
   const snap = () => JSON.stringify(rows
-    .map((p) => ({ name: p.name.trim(), position: p.position.trim(), comment: p.comment.trim() }))
-    .filter((p) => p.name || p.position || p.comment));
+    .map((p) => Object.fromEntries(PERSON_KEYS.map((k) => [k, p[k].trim()])))
+    .filter(typed));
   let saved = snap();
   let queue = Promise.resolve();
   const hint = saveHint();
@@ -775,9 +815,9 @@ function peopleBlock(co) {
 
   const personRow = (p, i) => {
     const row = el("div", "people-row");
-    const text = (key, cls, placeholder) => {
+    const text = (key, cls, placeholder, type = "text") => {
       const input = el("input", cls);
-      input.type = "text";
+      input.type = type;                  // email / url / tel bring up the right phone keyboard
       input.maxLength = 255;
       input.value = p[key];
       input.placeholder = placeholder;
@@ -810,13 +850,16 @@ function peopleBlock(co) {
     row.appendChild(note);
     requestAnimationFrame(fit);           // once it is on the page and has a height
 
+    row.appendChild(text("email", "pp-email", "Email", "email"));
+    row.appendChild(text("linkedin", "pp-li", "LinkedIn address", "url"));
+    row.appendChild(text("phone", "pp-phone", "Phone", "tel"));
+
     const del = el("button", "pp-del", "&times;");
     del.type = "button";
     del.title = "Delete this person";
     del.setAttribute("aria-label", `Delete ${p.name.trim() || `person ${i + 1}`}`);
     del.onclick = () => {
-      const typed = p.name.trim() || p.position.trim() || p.comment.trim();
-      if (typed && !confirm(`Delete ${p.name.trim() || "this person"} from the people to contact?`)) return;
+      if (typed(p) && !confirm(`Delete ${p.name.trim() || "this person"} from the people to contact?`)) return;
       rows.splice(rows.indexOf(p), 1);
       draw();
       commit();
@@ -835,7 +878,7 @@ function peopleBlock(co) {
   const add = el("button", "ob people-add", "+ Add person");
   add.type = "button";
   add.onclick = () => {
-    rows.push({ name: "", position: "", comment: "" });
+    rows.push(blank());
     draw();
     list.lastElementChild.querySelector(".pp-name").focus();
   };
@@ -1097,7 +1140,8 @@ function renderCsv(file) {
     body.appendChild(el("div", "seclabel", "Download"));
     body.appendChild(el("p", "csv-text",
       "Every company and contact on this board, one row per contact, with its stage, " +
-      "people, comments, activity log, key facts and whether it is suitable. It opens in Excel."));
+      "people (with their email, LinkedIn and phone), comments, activity log, key facts and " +
+      "whether it is suitable. It opens in Excel."));
     const dl = el("a", "btn btn-ghost", "Download the board (CSV)");
     dl.href = API + "/export.csv";
     body.appendChild(dl);

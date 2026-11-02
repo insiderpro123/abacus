@@ -79,8 +79,9 @@ class Company(Base):
     # The Companies House number, set when the company came from a lead finder
     # such as ARGUS (see intake.py). It is what stops one being added twice.
     company_number = Column(String(16), default="")
-    # The people to contact here, as JSON: [{name, position, comment}, ...],
-    # as many as were added (29 Oct 2026; five fixed {name, status, rag} slots
+    # The people to contact here, as JSON: [{name, position, comment, email,
+    # linkedin, phone}, ...] (the last three since 2 Nov 2026), as many as
+    # were added (29 Oct 2026; five fixed {name, status, rag} slots
     # before, which routes._clean_people still reads). NULL until first saved,
     # when the record offers the names already on the company's contacts
     # (routes._people_of).

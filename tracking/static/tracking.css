@@ -45,6 +45,21 @@ a{color:var(--blue)}
 .status{font-size:13.5px;color:var(--slate);min-height:18px;line-height:18px}
 .status.error{color:var(--danger);font-weight:600}
 
+/* The Suitable? filter (2 Nov 2026): one small row of pills with a count each,
+   the lit one in the same colour as the card's Suitable line. */
+.suit-filter{display:inline-flex;flex-wrap:wrap;gap:2px;padding:2px;background:#fff;
+  border:1px solid var(--line);border-radius:999px}
+.suit-filter button{font:inherit;font-size:12.5px;font-weight:600;color:var(--slate);background:none;
+  border:0;border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap}
+.suit-filter button:hover{color:var(--ink);background:var(--paper-2)}
+.suit-filter button:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.suit-filter .n{margin-left:5px;color:var(--slate-light);font-weight:600}
+.suit-filter button.on{background:var(--paper-2);color:var(--blue)}
+.suit-filter button.on.f-yes{background:rgba(46,158,91,.14);color:#217A45}
+.suit-filter button.on.f-no{background:rgba(214,69,60,.12);color:#B23A32}
+.suit-filter button.on.f-open{background:rgba(224,163,46,.16);color:#94650C}
+.suit-filter button.on .n{color:inherit}
+
 /* --------------------------------------------------------------------------
    Pipeline board: one column per live stage, sharing the width. One surface:
    a column is never a scroll box, every card in a stage is on the page at
@@ -242,12 +257,25 @@ body.sheet-open{overflow:hidden}
 
 /* the record's people to contact (29 Oct 2026): a name, a position and a
    comment each, a cross to delete one and "Add person" under the list. The
-   comment box grows with what is typed (tracking.js). */
+   comment box grows with what is typed (tracking.js). Since 2 Nov 2026 a
+   second, smaller line holds the email, LinkedIn and phone, with a faint
+   rule between people so the two lines read as one person. */
 .people{display:flex;flex-direction:column;gap:7px}
-.people-list{display:flex;flex-direction:column;gap:7px}
+.people-list{display:flex;flex-direction:column;gap:10px}
 .people-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.4fr) 34px;
-  gap:8px;align-items:start}
+  grid-template-areas:"name pos comment del" "email li phone .";gap:6px 8px;align-items:start}
+.people-list .people-row{padding-bottom:10px;border-bottom:1px solid var(--paper-2)}
+.people-list .people-row:last-child{padding-bottom:0;border-bottom:0}
+.pp-name{grid-area:name}
+.pp-pos{grid-area:pos}
+.pp-comment{grid-area:comment}
+.people-row .pp-del{grid-area:del}
+.pp-email{grid-area:email}
+.pp-li{grid-area:li}
+.pp-phone{grid-area:phone}
+.people .pp-email,.people .pp-li,.people .pp-phone{font-size:13.5px;padding:6px 10px}
 .people-head{font-size:11.5px;font-weight:700;color:var(--slate-light);text-transform:uppercase;letter-spacing:.1em}
+.people-head{grid-template-areas:none}
 .people-head[hidden]{display:none}
 .people input,.people textarea{width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;
   font-family:'Inter';font-size:14.5px;line-height:1.45;color:var(--ink);background:#fff;outline:none;
@@ -363,21 +391,22 @@ td.ed input{width:100%;border:1px solid var(--blue-300);border-radius:6px;paddin
 @media (max-width:640px){
   .tk-head{position:static;margin-top:0;padding-top:0}
   .tk-head h1{font-size:22px}
+  .suit-filter{border-radius:14px}                  /* a wrapped filter stays a tidy box */
+  .suit-filter button{font-size:12px;padding:5px 7px}
+  .suit-filter .n{margin-left:3px}
   .col{flex-basis:100%}
   .fieldgrid{grid-template-columns:1fr}
   /* a fact is its label over its value on a phone */
   .facts{grid-template-columns:1fr}
   .facts .fk{padding-bottom:0;border-bottom:none}
   .facts .fv{padding-top:2px}
-  /* a person is three lines on a phone: name and the cross, then the
-     position, then the comment */
+  /* a person is one box a line on a phone: name and the cross, then the
+     position, the comment, the email, LinkedIn and phone */
   .people-head{display:none}
   .people-list{gap:14px}
-  .people-row{grid-template-columns:minmax(0,1fr) 34px;grid-template-areas:"name del" "pos pos" "comment comment";gap:6px 8px}
-  .pp-name{grid-area:name}
-  .pp-pos{grid-area:pos}
-  .pp-comment{grid-area:comment}
-  .people-row .pp-del{grid-area:del}
+  .people-row{grid-template-columns:minmax(0,1fr) 34px;
+    grid-template-areas:"name del" "pos pos" "comment comment" "email email" "li li" "phone phone";gap:6px 8px}
+  .people-list .people-row{padding-bottom:14px}
   /* the log's form one box a line, the day beside how; an entry is its day,
      how and the cross, then who and the note under them */
   .clog-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr);
@@ -395,7 +424,7 @@ td.ed input{width:100%;border:1px solid var(--blue-300);border-radius:6px;paddin
 }
 @media print{
   .tk-head,.col-head{position:static}
-  .qk.adv,#show-closed{display:none}
+  .qk.adv,#show-closed,.suit-filter{display:none}
 }
 
 /* Moving companies with a CSV (20 Oct 2026): Download, and a drop area for Import. */

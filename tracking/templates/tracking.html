@@ -17,15 +17,16 @@
 {% endblock %}
 
 {% block content %}
-<!-- One row above the board: what this is, how many live leads there are, and
-     the Closed toggle. No filters and no number tiles: the board of live leads
-     is the whole view. -->
+<!-- One row above the board: what this is, how many live leads there are, the
+     Suitable? filter (2 Nov 2026) and the Closed toggle. No number tiles: the
+     board of live leads is the whole view. -->
 <section class="tk-head" id="tk-head">
   <h1>Pipeline</h1>
   <span class="livecount" id="live-count"></span>
   <p class="hint">Click a card to open it, drag it to move it.</p>
   <div id="status" class="status" role="status"></div>
   <div class="spacer"></div>
+  <div class="suit-filter" id="suit-filter" role="group" aria-label="Show cards by Suitable to work with?"></div>
   <button class="btn btn-ghost btn-sm" id="show-closed" hidden></button>
 </section>
 

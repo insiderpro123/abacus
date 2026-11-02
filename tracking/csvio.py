@@ -23,8 +23,9 @@ or not", "Decided by" and "Decided on". "Companies House link" is written for
 reading only; the number is what an import goes by.
 
 Since 29 Oct 2026 each person to contact is "Person N", "Person N position"
-and "Person N comment" (a file has room for five and grows more columns at
-the end for a company with more), and the company's activity log is one
+and "Person N comment", and since 2 Nov 2026 "Person N email", "Person N
+LinkedIn" and "Person N phone" too (a file has room for five and grows more
+columns at the end for a company with more), and the company's activity log is one
 "Activity log" cell, an entry a line. Both are read only for a company the
 import adds, the same as the people always were.
 
@@ -99,15 +100,19 @@ CH_LINK = "Companies House link"
 FACT_COLUMNS = [(label, key) for key, label in FX.FACTS]
 FACTS_ON = "Facts as of"
 LOG_COLUMN = "Activity log"
-# The people to contact, three columns each (29 Oct 2026). Every file has
-# room for five, so ARGUS's files keep one fixed set of headers; write() adds
-# more at the end when a company has more. Older files have "Person N status"
-# and "Person N RAG": the status is read as the comment, the colour dropped.
+# The people to contact, six columns each (three on 29 Oct 2026, the email,
+# LinkedIn and phone on 2 Nov 2026). Every file has room for five, so ARGUS's
+# files keep one fixed set of headers; write() adds more at the end when a
+# company has more. Older files have "Person N status" and "Person N RAG":
+# the status is read as the comment, the colour dropped.
 PEOPLE_IN_EVERY_FILE = 5
+# (header after "Person N", key in routes.PERSON_KEYS); the name is "Person N" itself.
+PERSON_PARTS = [("position", "position"), ("comment", "comment"), ("email", "email"),
+                ("LinkedIn", "linkedin"), ("phone", "phone")]
 
 
 def _person_headers(i: int) -> list[str]:
-    return [f"Person {i}", f"Person {i} position", f"Person {i} comment"]
+    return [f"Person {i}"] + [f"Person {i} {part}" for part, _ in PERSON_PARTS]
 
 
 PEOPLE_COLUMNS = [h for i in range(1, PEOPLE_IN_EVERY_FILE + 1) for h in _person_headers(i)]
@@ -161,8 +166,8 @@ def write(rows) -> bytes:
 def _people_cells(people) -> dict:
     cells = {}
     for i, p in enumerate(_clean_people(people), start=1):
-        name, position, comment = _person_headers(i)
-        cells[name], cells[position], cells[comment] = p["name"], p["position"], p["comment"]
+        cells[f"Person {i}"] = p["name"]
+        cells.update({f"Person {i} {part}": p[key] for part, key in PERSON_PARTS})
     return cells
 
 
@@ -474,9 +479,8 @@ def import_file(raw: bytes) -> dict:
                     FX.fill_blanks(co, None, row_facts(values), facts_on, row_decision(values))
                     people = _clean_people(
                         [{"name": cell(values, f"Person {i}"),
-                          "position": cell(values, f"Person {i} position"),
-                          "comment": (cell(values, f"Person {i} comment")
-                                      or cell(values, f"Person {i} status"))}
+                          **{key: cell(values, f"Person {i} {part}") for part, key in PERSON_PARTS},
+                          "status": cell(values, f"Person {i} status")}
                          for i in range(1, people_n + 1)])
                     if not people and plain["Other directors"]:
                         names = []

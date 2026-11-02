@@ -208,23 +208,25 @@ def _contact_dict(c, company_name=""):
 
 # The record's people to contact (29 Oct 2026): each a name, a position and a
 # comment, added and deleted one at a time. From 8 Oct 2026 they were five
-# fixed rows of name, contact status and red / amber / green. The cap only
-# stops a runaway list.
+# fixed rows of name, contact status and red / amber / green. Since 2 Nov 2026
+# each also has an email, a LinkedIn address and a phone, typed in by hand
+# when found. The cap only stops a runaway list.
 PEOPLE_MAX = 50
+PERSON_KEYS = ("name", "position", "comment", "email", "linkedin", "phone")
 
 
 def _clean_people(value):
-    """[{name, position, comment}] from whatever was sent: a list of dicts, or
-    of plain names. A row with nothing in it is dropped. A row saved before
-    29 Oct 2026 has a contact status instead of a comment, and that text
-    becomes the comment, so nothing typed is lost; its colour is dropped."""
+    """[{name, position, comment, email, linkedin, phone}] from whatever was
+    sent: a list of dicts, or of plain names. A row with nothing in it is
+    dropped. A row saved before 29 Oct 2026 has a contact status instead of a
+    comment, and that text becomes the comment, so nothing typed is lost; its
+    colour is dropped."""
     people = []
     for item in (value if isinstance(value, list) else []):
         if not isinstance(item, dict):
             item = {"name": item}
-        p = {"name": _clean(item.get("name")),
-             "position": _clean(item.get("position")),
-             "comment": _clean(item.get("comment")) or _clean(item.get("status"))}
+        p = {key: _clean(item.get(key)) for key in PERSON_KEYS}
+        p["comment"] = p["comment"] or _clean(item.get("status"))
         if any(p.values()):
             people.append(p)
     return people[:PEOPLE_MAX]
