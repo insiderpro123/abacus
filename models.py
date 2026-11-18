@@ -88,7 +88,7 @@ class WorkPackage(Base):
     # External links (per work package) shown as buttons on the detail panel
     confluence_url = Column(Text, default="")
     dropbox_url = Column(Text, default="")
-    jamie_tag = Column(String(128), default="")   # Jamie tag NAME for this project's meeting notes
+    jamie_tag = Column(String(128), default="")   # no longer used (Meeting Notes reads Jamie directly); kept so old values stay
     # NULL = top-level project; set = a sub-work-package nested under another work package
     parent_id = Column(Integer, ForeignKey("work_package.id", ondelete="CASCADE"), nullable=True, index=True)
     sub_num = Column(Integer, nullable=True)   # per-parent sub-work-package number (1, 2, 3 ...)

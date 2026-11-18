@@ -571,7 +571,7 @@ function subWpItem(c) {
 }
 
 // Minimal add/edit dialog for a sub-work-package: just a name + which of the 12
-// steps apply (no icon / Jira / links / Jamie - those are for top-level projects).
+// steps apply (no icon / Jira / links - those are for top-level projects).
 function openSubWpForm(parent, child) {
   closeEditor();
   const isEdit = !!child;
@@ -650,8 +650,7 @@ function openSubWpForm(parent, child) {
         url = "/api/edit_project";
         payload = { wp_id: child.wp_id, client: child.client, name, description: child.description || "",
           icon: child.icon || "", nr_codes, jira_project_key: child.jira_project_key || "",
-          confluence_url: child.confluence_url || "", dropbox_url: child.dropbox_url || "",
-          jamie_tag: child.jamie_tag || "" };
+          confluence_url: child.confluence_url || "", dropbox_url: child.dropbox_url || "" };
       } else {
         url = "/api/add_project";
         payload = { parent_id: parent.wp_id, client: parent.client, name, nr_codes };
@@ -1291,10 +1290,6 @@ function openProjectForm(mode, wp, presetCategory) {
           value="${isEdit ? esc(wp.dropbox_url || "") : ""}" />
         <button type="button" class="btn" id="ap-dropbox-browse">Browse…</button>
       </div>
-      <div class="field-label">Jamie tag <span class="field-hint">optional · links this project's meeting notes</span></div>
-      <select class="text-input" id="ap-jamie">
-        <option value="">none</option>
-      </select>
       <div class="field-label">Icon <span class="field-hint">required · pick an emoji (a picture, not text)</span></div>
       <div class="emoji-row">
         ${emojiBtns}
@@ -1364,23 +1359,6 @@ function openProjectForm(mode, wp, presetCategory) {
 
   // Jira epic dropdown - shown only when the server has Jira configured.
   // Epics are grouped by their Jira project via <optgroup>.
-  // Populate the Jamie tag dropdown (preselect the current tag on edit)
-  const jamieSel = modal.querySelector("#ap-jamie");
-  const curJamie = isEdit ? (wp.jamie_tag || "") : "";
-  fetch("/api/jamie/tags").then((r) => r.json()).then((j) => {
-    (j.tags || []).forEach((t) => {
-      const o = document.createElement("option");
-      o.value = t; o.textContent = t;
-      if (t === curJamie) o.selected = true;
-      jamieSel.appendChild(o);
-    });
-    // keep a previously-set tag selectable even if it's no longer returned
-    if (curJamie && ![...jamieSel.options].some((o) => o.value === curJamie)) {
-      const o = document.createElement("option");
-      o.value = curJamie; o.textContent = curJamie; o.selected = true;
-      jamieSel.appendChild(o);
-    }
-  }).catch(() => {});
 
   const jiraSel = modal.querySelector("#ap-jira");
   const jiraLabel = modal.querySelector("#ap-jira-label");
@@ -1470,15 +1448,14 @@ function openProjectForm(mode, wp, presetCategory) {
     const jira_project_key = jiraSel ? jiraSel.value : "";
     const confluence_url = modal.querySelector("#ap-confluence").value.trim();
     const dropbox_url = modal.querySelector("#ap-dropbox").value.trim();
-    const jamie_tag = modal.querySelector("#ap-jamie").value.trim();
     const btn = modal.querySelector("#ap-save");
     btn.disabled = true;
     btn.textContent = isEdit ? "Saving…" : "Adding…";
     try {
       const url = isEdit ? "/api/edit_project" : "/api/add_project";
       const payload = isEdit
-        ? { wp_id: wp.wp_id, client, name, description, icon, nr_codes, jira_project_key, confluence_url, dropbox_url, jamie_tag }
-        : { client, name, description, category: chosenCategory, icon, nr_codes, jira_project_key, confluence_url, dropbox_url, jamie_tag };
+        ? { wp_id: wp.wp_id, client, name, description, icon, nr_codes, jira_project_key, confluence_url, dropbox_url }
+        : { client, name, description, category: chosenCategory, icon, nr_codes, jira_project_key, confluence_url, dropbox_url };
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

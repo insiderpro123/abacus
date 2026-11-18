@@ -487,7 +487,6 @@ def get_data():
                 "jira_done": wp.jira_done or 0, "jira_total": wp.jira_total or 0,
                 "jira_synced_at": wp.jira_synced_at.strftime("%d %b %H:%M") if wp.jira_synced_at else "",
                 "confluence_url": wp.confluence_url or "", "dropbox_url": wp.dropbox_url or "",
-                "jamie_tag": wp.jamie_tag or "",
                 "parent_id": (str(wp.parent_id) if wp.parent_id else None),
                 "sub_num": wp.sub_num or None,
                 "children": [],
@@ -568,16 +567,6 @@ def _shape_meeting_detail(detail):
         "summaryHtml": summary.get("html") or "", "summaryMarkdown": summary.get("markdown") or "",
         "hasSummary": bool(summary.get("html") or summary.get("markdown")), "tasks": tasks,
     }
-
-
-@app.route("/api/jamie/tags")
-def api_jamie_tags():
-    """Jamie tag names, for the Edit-project dropdown (staff)."""
-    try:
-        tags = [t.get("name", "") for t in jamie_client.fetch_tags() if t.get("name")]
-    except jamie_client.JamieError as e:
-        return jsonify({"tags": [], "error": str(e)})
-    return jsonify({"tags": sorted(tags, key=str.lower)})
 
 
 @app.route("/meeting-notes")
@@ -1115,7 +1104,6 @@ def api_add_project():
     jira_key = _clean(body.get("jira_project_key")).upper()
     confluence_url = _norm_url(body.get("confluence_url"))
     dropbox_url = _clean(body.get("dropbox_url"))   # a local folder path (relative to Clients), not a URL
-    jamie_tag = _clean(body.get("jamie_tag"))
     parent_raw = _clean(body.get("parent_id"))
     parent_id = int(parent_raw) if parent_raw.isdigit() else None
     nr_codes = [c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)]
@@ -1151,7 +1139,7 @@ def api_add_project():
                           status="Active", category=category, icon=icon,
                           jira_project_key=jira_key,
                           confluence_url=confluence_url, dropbox_url=dropbox_url,
-                          jamie_tag=jamie_tag, parent_id=parent_id, sub_num=sub_num))
+                          parent_id=parent_id, sub_num=sub_num))
         # only Customer work packages carry the 12-step (Not-required) configuration
         if category == "Customer":
             for code in nr_codes:
@@ -1611,8 +1599,7 @@ def api_edit_project():
     jira_key = _clean(body.get("jira_project_key")).upper()
     confluence_url = _norm_url(body.get("confluence_url"))
     dropbox_url = _clean(body.get("dropbox_url"))   # a local folder path (relative to Clients), not a URL
-    jamie_tag = _clean(body.get("jamie_tag"))
-    desired = {c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)}
+    desired ={c for c in (_clean(x) for x in (body.get("nr_codes") or [])) if re.fullmatch(r"\d+\.\d+", c)}
     if not wp_id:
         return jsonify({"error": "wp_id is required"}), 400
     with SessionLocal.begin() as s:
@@ -1636,7 +1623,6 @@ def api_edit_project():
         wp.description = description
         wp.confluence_url = confluence_url
         wp.dropbox_url = dropbox_url
-        wp.jamie_tag = jamie_tag
         if jira_key != (wp.jira_project_key or ""):
             # epic link changed -> clear stale totals AND drop the old per-step links
             # (they pointed at the previous epic's issues and are no longer valid)
