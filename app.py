@@ -19,6 +19,7 @@ import os
 import re
 import secrets
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from flask import (
@@ -551,7 +552,8 @@ def index():
 
 
 # --------------------------------------------------------------------------- #
-# Jamie meeting notes per work package (each scoped to that project's own Jamie tag).
+# Jamie meeting notes. The Meeting Notes page reads Jamie directly: its list is Jamie's
+# own tags, with nothing taken from Abacus (no work packages, no Active/Inactive).
 # --------------------------------------------------------------------------- #
 def _shape_meeting_detail(detail):
     summary = detail.get("summary") or {}
@@ -578,57 +580,43 @@ def api_jamie_tags():
     return jsonify({"tags": sorted(tags, key=str.lower)})
 
 
-def _wp_tag(wp_id):
-    with SessionLocal() as s:
-        wp = s.get(WorkPackage, int(wp_id)) if str(wp_id).isdigit() else None
-        return (wp.jamie_tag or "") if wp else None
-
-
 @app.route("/meeting-notes")
 def meeting_notes():
     """Every project's Jamie meeting notes on one page. Used to be a toggle inside Abacus."""
     return render_template("meeting_notes.html")
 
 
+def _latest_meeting(tag):
+    """startTime of a tag's newest meeting (Jamie lists newest first), or "" if none/failed."""
+    try:
+        got = jamie_client.fetch_meetings(tag, limit=1)
+    except jamie_client.JamieError:
+        return ""
+    return (got[0].get("startTime") or "") if got else ""
+
+
 @app.route("/api/meeting-notes/projects")
 def api_meeting_notes_projects():
-    """One entry per Jamie tag, for the Meeting notes page's list. Meetings are looked up
-    by tag, and some tags are shared by several work packages (two Bridgepoint projects,
-    two DMU), so listing work packages would show the same meetings twice. wp_id is one of
-    the tag's work packages, used only to reach the existing /api/wp/<id>/meeting(s) routes."""
-    with SessionLocal() as s:
-        wps = s.query(WorkPackage).all()
-    by_id = {w.id: w for w in wps}
-    tags, untagged = {}, 0
-    for w in wps:
-        tag = (w.jamie_tag or "").strip()
-        if not tag:
-            untagged += 1
-            continue
-        parent = by_id.get(w.parent_id) if w.parent_id else None
-        t = tags.setdefault(tag.lower(), {"tag": tag, "client": "", "category": "", "projects": [],
-                                          "active": False, "wp_id": None})
-        active = (w.status or "") == "Active"
-        # Point at an active work package where the tag has one.
-        if t["wp_id"] is None or (active and not t["active"]):
-            t["wp_id"] = str(w.id)
-            t["client"] = (parent.client if parent else w.client) or tag
-            t["category"] = w.category or "Customer"
-        t["active"] = t["active"] or active
-        t["projects"].append({"name": w.name or "", "status": w.status or "Unknown"})
-    out = sorted(tags.values(), key=lambda t: (not t["active"], t["client"].lower()))
-    for t in out:
-        t["projects"].sort(key=lambda p: (p["status"] != "Active", p["name"].lower()))
-    return jsonify({"tags": out, "untagged": untagged})
+    """Jamie's tags, straight from Jamie, newest meeting first. Each tag's latest meeting
+    date is looked up at the same time (one small call per tag, run side by side)."""
+    try:
+        names = sorted({(t.get("name") or "").strip() for t in jamie_client.fetch_tags()} - {""},
+                       key=str.lower)
+    except jamie_client.JamieError as e:
+        return jsonify({"error": str(e)}), 502
+    with ThreadPoolExecutor(max_workers=min(10, len(names) or 1)) as pool:
+        latest = list(pool.map(_latest_meeting, names))
+    out = [{"tag": n, "latest": l} for n, l in zip(names, latest)]
+    # Newest meeting first; tags with no meetings at the bottom, A-Z (sort is stable).
+    out.sort(key=lambda t: t["latest"], reverse=True)
+    return jsonify({"tags": out})
 
 
-@app.route("/api/wp/<int:wp_id>/meetings")
-def api_wp_meetings(wp_id):
-    tag = _wp_tag(wp_id)
-    if tag is None:
-        return jsonify({"error": "work package not found"}), 404
+@app.route("/api/meeting-notes/meetings")
+def api_meeting_notes_meetings():
+    tag = (request.args.get("tag") or "").strip()
     if not tag:
-        return jsonify({"meetings": [], "note": "No Jamie tag set for this project - add one via Edit."})
+        return jsonify({"error": "No Jamie tag given."}), 400
     try:
         meetings = jamie_client.fetch_meetings(tag)
     except jamie_client.JamieError as e:
@@ -638,18 +626,20 @@ def api_wp_meetings(wp_id):
     return jsonify({"meetings": out})
 
 
-@app.route("/api/wp/<int:wp_id>/meeting/<meeting_id>")
-def api_wp_meeting(wp_id, meeting_id):
-    tag = _wp_tag(wp_id)
+@app.route("/api/meeting-notes/meeting/<meeting_id>")
+def api_meeting_notes_meeting(meeting_id):
+    """One meeting's notes. Only served if the meeting carries the tag being browsed, so
+    the page can only open meetings that sit under a Jamie tag."""
+    tag = (request.args.get("tag") or "").strip()
     if not tag:
-        return jsonify({"error": "No Jamie tag set for this project."}), 400
+        return jsonify({"error": "No Jamie tag given."}), 400
     try:
         detail = jamie_client.fetch_meeting_detail(meeting_id)
     except jamie_client.JamieError as e:
         return jsonify({"error": str(e)}), 502
     tag_names = {(t.get("name") or "").lower() for t in (detail.get("tags") or [])}
     if tag.lower() not in tag_names:
-        return jsonify({"error": "This meeting is not tagged for this project."}), 403
+        return jsonify({"error": "This meeting is not tagged " + tag + " in Jamie."}), 403
     return jsonify(_shape_meeting_detail(detail))
 
 

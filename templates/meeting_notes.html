@@ -46,13 +46,8 @@ h1,h2,h3{font-family:'Sora','Inter',sans-serif}
 .item:hover{background:var(--paper-2)}
 .item.active{background:var(--tint-blue);border-left-color:var(--blue)}
 .item:focus-visible{outline:2px solid var(--blue-300);outline-offset:-2px}
-.item .i1{font-weight:700;font-size:14.5px;line-height:1.3;display:flex;align-items:center;gap:7px}
+.item .i1{font-weight:700;font-size:14.5px;line-height:1.3}
 .item .i2{font-size:12.5px;color:var(--slate-light);margin-top:3px;line-height:1.35}
-.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--cat-customer)}
-.dot.c-ProcessandOps{background:var(--cat-ops)} .dot.c-Marketing{background:var(--cat-marketing)}
-.tag-inactive{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--slate-light);
-              border:1px solid var(--line);border-radius:999px;padding:1px 7px}
-.group-lbl{padding:12px 16px 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--slate-light)}
 
 .detail{padding:20px 24px 24px;min-height:200px}
 .note-badge{display:inline-block;background:var(--grad-brand);color:#fff;font-size:10.5px;font-weight:700;
@@ -134,10 +129,9 @@ h1,h2,h3{font-family:'Sora','Inter',sans-serif}
 <script>
 "use strict";
 
-/* The notes come from Jamie, scoped by each project's Jamie tag (set in Abacus via Edit).
-   This page only reads: the list of tags from /api/meeting-notes/projects, then a tag's
-   meetings through the same /api/wp/<id>/meeting(s) routes Abacus used when the notes
-   were a toggle inside it. */
+/* Everything here comes straight from Jamie, nothing from Abacus. This page only reads:
+   Jamie's tags (newest meeting first) from /api/meeting-notes/projects, then a tag's
+   meetings from /api/meeting-notes/meetings and one meeting from /api/meeting-notes/meeting. */
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
@@ -203,23 +197,15 @@ async function getJson(url){
 
 function renderTags(){
   const q = $("tagSearch").value.trim().toLowerCase();
-  const hits = TAGS.filter((t) => !q ||
-    [t.client, t.tag, ...t.projects.map((p) => p.name)].join(" ").toLowerCase().includes(q));
+  const hits = TAGS.filter((t) => !q || t.tag.toLowerCase().includes(q));
   $("tagCount").textContent = TAGS.length ? String(TAGS.length) : "";
 
-  const row = (t) => {
-    const names = t.projects.map((p) => p.name).join(", ");
-    return '<button class="item' + (tag && tag.tag === t.tag ? " active" : "") + '" data-tag="' + esc(t.tag) + '">' +
-      '<div class="i1"><span class="dot c-' + esc(t.category.replace(/\s+/g, "")) + '"></span>' + esc(t.client) +
-      (t.active ? "" : ' <span class="tag-inactive">Inactive</span>') + "</div>" +
-      '<div class="i2">' + esc(names) + "</div></button>";
-  };
-  const active = hits.filter((t) => t.active), inactive = hits.filter((t) => !t.active);
-  let html = active.map(row).join("");
-  if (inactive.length) html += '<div class="group-lbl">Inactive</div>' + inactive.map(row).join("");
-  $("tagList").innerHTML = html || '<div class="empty">' +
-    (TAGS.length ? "No project matches that." :
-      "No project has a Jamie tag yet. In <b>Abacus</b>, click a project's <b>Edit</b> and choose its Jamie tag.") +
+  const row = (t) =>
+    '<button class="item' + (tag && tag.tag === t.tag ? " active" : "") + '" data-tag="' + esc(t.tag) + '">' +
+      '<div class="i1">' + esc(t.tag) + "</div>" +
+      '<div class="i2">' + (t.latest ? "Last meeting " + esc(fmtDate(t.latest)) : "No meetings yet") + "</div></button>";
+  $("tagList").innerHTML = hits.map(row).join("") || '<div class="empty">' +
+    (TAGS.length ? "No project matches that." : "Jamie has no tags yet. Tag a meeting in <b>Jamie</b> and it shows here.") +
     "</div>";
   $("tagList").querySelectorAll(".item").forEach((b) => {
     b.onclick = () => selectTag(b.dataset.tag);
@@ -239,12 +225,12 @@ async function selectTag(name){
   $("detail").innerHTML = "";
   const req = ++mtgReq;
   try{
-    const j = await getJson("/api/wp/" + encodeURIComponent(tag.wp_id) + "/meetings");
+    const j = await getJson("/api/meeting-notes/meetings?tag=" + encodeURIComponent(tag.tag));
     if (req !== mtgReq) return;
     meetings = j.meetings || [];
     if (!meetings.length){
-      $("mtgList").innerHTML = '<div class="empty">' + esc(j.note || "No meetings in Jamie for this tag yet.") + "</div>";
-      $("detail").innerHTML = '<div class="empty">Nothing to show for ' + esc(tag.client) + ".</div>";
+      $("mtgList").innerHTML = '<div class="empty">No meetings in Jamie for this tag yet.</div>';
+      $("detail").innerHTML = '<div class="empty">Nothing to show for ' + esc(tag.tag) + ".</div>";
       return;
     }
     $("mtgCount").textContent = String(meetings.length);
@@ -272,7 +258,7 @@ async function selectMeeting(id){
   $("detail").innerHTML = '<div class="empty">Loading notes…</div>';
   const req = ++noteReq;
   try{
-    const j = await getJson("/api/wp/" + encodeURIComponent(tag.wp_id) + "/meeting/" + encodeURIComponent(id));
+    const j = await getJson("/api/meeting-notes/meeting/" + encodeURIComponent(id) + "?tag=" + encodeURIComponent(tag.tag));
     if (req !== noteReq) return;
     detail = j; renderDetail();
   }catch(e){
@@ -296,7 +282,7 @@ function renderDetail(){
   }).join("") : '<li class="empty" style="padding:4px 0">No action items captured.</li>';
 
   $("detail").innerHTML =
-    '<span class="note-badge">' + esc(tag.client) + (isFirst ? " · Latest meeting" : "") + "</span>" +
+    '<span class="note-badge">' + esc(tag.tag) + (isFirst ? " · Latest meeting" : "") + "</span>" +
     '<h3 class="note-title">' + esc(d.title) + "</h3>" +
     '<div class="note-meta">' + esc(fmtDate(d.startTime, true)) + "</div>" +
     '<div class="note-toggle">' +
@@ -323,7 +309,7 @@ async function boot(){
     return;
   }
   renderTags();
-  /* Open the tag in the link, else the last one looked at, else the first active one. */
+  /* Open the tag in the link, else the last one looked at, else the one met most recently. */
   let want = new URL(location.href).searchParams.get("tag");
   if (!want){ try{ want = localStorage.getItem("meetingNotesTag"); }catch(e){} }
   const start = TAGS.find((t) => t.tag === want) || TAGS[0];
